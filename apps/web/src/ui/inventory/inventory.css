@@ -33,7 +33,10 @@
   transition: filter .1s;
 }
 .item:hover { filter: brightness(1.25); }
-.item.r1 { --rc: #2e322f; } .item.r2 { --rc: #2c4130; } .item.r3 { --rc: #263b54; } .item.r4 { --rc: #432b55; } .item.r5 { --rc: #5e4a1c; }
+.item.r1 { --rc: #2a2e2b; } .item.r2 { --rc: #283a2c; } .item.r3 { --rc: #23364d; } .item.r4 { --rc: #3c274d; } .item.r5 { --rc: #54421a; }
+.item { background: radial-gradient(120% 90% at 50% 40%, rgba(255,255,255,.08), rgba(0,0,0,.35)), var(--rc, #3a3d3b); }
+.item-img { object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); }
+.item-svg { filter: drop-shadow(0 1px 1px rgba(0,0,0,.7)); opacity: .92; }
 .item.hidden { cursor: progress; background: #151816; display: flex; align-items: center; justify-content: center; }
 .search-spin { width: 16px; height: 16px; border: 2px solid var(--line-2); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

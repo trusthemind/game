@@ -13,7 +13,7 @@ import {
   type ItemInstance,
   type Slot,
 } from '@ashfall/engine';
-import { CategoryIcon } from './icons';
+import { ItemArt } from './ItemArt';
 import { canDrop, splitGridId, toSource, toTarget, type DstRef, type InvHost, type MenuAction, type SrcRef } from './host';
 import { useDrag, zones } from './drag';
 import { audio } from '../../audio/AudioEngine';
@@ -194,7 +194,7 @@ export function ItemTile({ item, cell, hidden, src, style, fit }: TileProps) {
       }}
     >
       <div className="item-icon" style={{ transform: item.rot ? 'rotate(90deg)' : undefined }}>
-        <CategoryIcon category={d.category} size={Math.min(w, h) * 0.55} />
+        <ItemArt item={item} w={item.rot ? h : w} h={item.rot ? w : h} />
       </div>
       <span className="item-name">{d.short}</span>
       {d.stackMax && d.category !== 'money' && <span className="item-count">{item.stack}</span>}
@@ -398,7 +398,7 @@ export function DragLayer() {
         style={{ width: f.w * cell, height: f.h * cell, marginLeft: -(drag.grabX + 0.5) * cell, marginTop: -(drag.grabY + 0.5) * cell }}
       >
         <div className="item-icon" style={{ transform: drag.rot ? 'rotate(90deg)' : undefined }}>
-          <CategoryIcon category={d.category} size={Math.min(f.w, f.h) * cell * 0.55} />
+          <ItemArt item={drag.item} w={(drag.rot ? f.h : f.w) * cell} h={(drag.rot ? f.w : f.h) * cell} />
         </div>
         <span className="item-name">{d.short}</span>
       </div>

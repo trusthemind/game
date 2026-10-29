@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import * as engine from '@ashfall/engine';
 import { createProfile, migrateProfile, type Profile } from '@ashfall/engine';
 import { api, ApiError } from './api';
 import { loadAuth, loadLocalProfile, saveAuth, saveLocalProfile, wipeLocal, type AuthState } from './persistence';
@@ -165,3 +166,6 @@ if (typeof window !== 'undefined') {
     if (p) void saveLocalProfile(p);
   });
 }
+
+// Test/automation hook (Playwright scripts inspect and seed profiles through it).
+if (typeof window !== 'undefined') Object.assign(window, { __profile: useProfile, __engine: engine });

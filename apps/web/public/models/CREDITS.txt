@@ -6,3 +6,5 @@ Universal Base Characters [Standard] — Quaternius (CC0 1.0) — https://quater
 Universal Animation Library 2 [Standard] — Quaternius (CC0 1.0) — https://opengameart.org/content/universal-animation-library-2
   merged into character.glb / character_f.glb
 Ultimate Gun Pack accessories — Quaternius (CC0 1.0) — mods.glb (suppressors, scopes, grip, stock, flashlight)
+
+Item icons — game-icons.net (CC BY 3.0) by Lorc, Delapouite, Skoll, sbed and contributors — https://game-icons.net
