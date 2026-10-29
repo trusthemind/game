@@ -26,12 +26,14 @@ jobs:
       - run: npm run build -w @ashfall/web
 
   server:
-    # MongoDB refuses to start on Linux 6.19+ (SERVER-121912), which ubuntu-latest is moving to.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     services:
       mongo:
         image: mongo:8
         ports: ['27017:27017']
+        # mongod 8 refuses to start on Linux 6.19–7.0.13 (SERVER-121912) unless glibc owns rseq.
+        env:
+          GLIBC_TUNABLES: glibc.pthread.rseq=1
         options: >-
           --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
           --health-interval 5s --health-timeout 5s --health-retries 10

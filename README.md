@@ -195,7 +195,9 @@ Set `MONGODB_TEST_URI=mongodb://localhost:27017` to run the store tests against 
 
 ### Deploying to Railway
 
-1. Create a project and add a **MongoDB** service.
+1. Create a project and add a **MongoDB** service. If it crash-loops with "Linux kernel versions 6.19 and
+   newer has a known incompatibility", add the variable `GLIBC_TUNABLES=glibc.pthread.rseq=1` to the
+   MongoDB service and redeploy it (MongoDB issue SERVER-121912).
 2. Add a service from this GitHub repo and set its **Root Directory** to `server`. Railway picks up
    `server/railway.json`, which builds the Dockerfile and health-checks `/api/v1/health`.
 3. In that service's variables, set `MONGODB_URI` to `${{MongoDB.MONGO_URL}}` and `ALLOWED_ORIGINS` to
