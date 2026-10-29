@@ -325,7 +325,7 @@ function PauseMenu({ session }: { session: GameSession }) {
   const [confirm, setConfirm] = useState(false);
   return (
     <div className="overlay center">
-      <div className="panel pause fade-in">
+      <div className="panel pause">
         <div className="panel-title">
           <span>Paused</span>
           <span className="kbd">Esc</span>

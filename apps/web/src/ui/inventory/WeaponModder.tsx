@@ -1,5 +1,6 @@
 import { useContext } from 'react';
 import { create } from 'zustand';
+import { useEscape } from '../components/useEscape';
 import {
   addItem,
   createItem,
@@ -57,6 +58,7 @@ function stat(label: string, base: number, cur: number, fmt: (n: number) => stri
 export function WeaponModder() {
   const src = useModder((s) => s.src);
   const ctx = useContext(InvContext);
+  useEscape(() => useModder.getState().close(), !!src);
   if (!src || !ctx) return null;
   const { host } = ctx;
   const s = toSource(host.resolver, src);

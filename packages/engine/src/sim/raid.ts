@@ -644,7 +644,8 @@ export class Raid {
     if (v > 0.4) {
       a.stepT -= dt * v;
       if (a.stepT <= 0) {
-        a.stepT = 0.75;
+        // Stride length: a jog covers ground in long strides, a crouch shuffles.
+        a.stepT = a.sprinting ? 1.45 : a.crouching ? 0.6 : 0.8;
         const r = a.crouching ? 1.4 : a.sprinting ? 8 : 3.5;
         this.makeNoise(a.pos.x, a.pos.y, a.archetype === 'infected' ? r * 0.5 : r, a.id, 'step');
         const tx = Math.floor(a.pos.x);

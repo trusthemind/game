@@ -26,6 +26,7 @@ import { DropZoneBox, InventoryRoot, ItemGrid } from '../inventory/components';
 import { GearPanel } from '../inventory/GearPanel';
 import { ItemInspector } from '../inventory/ItemInspector';
 import { CharacterPreview } from '../components/CharacterPreview';
+import { useEscape } from '../components/useEscape';
 import { makeProfileHost } from '../inventory/hosts';
 import { ItemArt } from '../inventory/ItemArt';
 import { DialogueBox } from '../components/DialogueBox';
@@ -485,6 +486,7 @@ function DeployModal({ onClose }: { onClose(): void }) {
   const comp = profile.companion ? NPCS[profile.companion] : null;
   const atRisk = equipmentValue(profile.equipment);
   const armed = !!(profile.equipment.slots.primary || profile.equipment.slots.secondary);
+  useEscape(onClose);
   return (
     <div className="modal-backdrop fade-in" onClick={onClose}>
       <div className="panel modal" onClick={(e) => e.stopPropagation()}>

@@ -70,6 +70,14 @@ export function CharLab() {
       cam.position.set(0, 1.9, 5.2);
       cam.lookAt(0, 1.2, 0);
     }
+    if (view === 'strafe' || view === 'strafetop') {
+      // Everyone aims at the camera while walking forward / right / left / back / diagonal.
+      cast.length = 0;
+      for (let i = 0; i < 5; i++) cast.push({ look: lookFor(i + 40, 'scav'), eq: ['ak74m:primary'], active: 'primary', speed: 0 });
+      if (view === 'strafetop') cam.position.set(0, 7, 1.2);
+      else cam.position.set(0, 2.6, 6.5);
+      cam.lookAt(0, 0.9, 0);
+    }
     if (view === 'guns') {
       const ids = ALL_ITEMS.filter((d) => d.weapon).map((d) => d.id);
       cast.length = 0;
@@ -165,7 +173,7 @@ export function CharLab() {
         const v = new CharacterView(lib, c.look, u, true);
         const a = {
           pos: { x: (i - (cast.length - 1) / 2) * (view === 'guns' || view === 'gear' ? 1.05 : 1.35), y: 0 },
-          vel: { x: 0, y: c.speed },
+          vel: view.startsWith('strafe') ? { x: [0, 2.6, -2.6, 0, 1.9][i]!, y: [2.6, 0, 0, -2.0, 1.9][i]! } : { x: 0, y: c.speed },
           facing: view === 'guns' ? 0 : view === 'gear' ? Math.PI / 2 + [-0.7, 0.7, 2.6, -0.4, 3.4][i % 5]! : Math.PI / 2,
           crouching: !!c.crouch,
           sprinting: false,
@@ -176,7 +184,7 @@ export function CharLab() {
         scene.add(v.root);
         views.push({ v, a });
       });
-      for (const id of view === 'guns' || view === 'rack' || view === 'gear' ? [] : ['lena', 'mykola', 'vera']) {
+      for (const id of view === 'guns' || view === 'rack' || view === 'gear' || view.startsWith('strafe') ? [] : ['lena', 'mykola', 'vera']) {
         const img = document.createElement('img');
         img.src = renderPortrait(lib, lookFor(0, 'npc', id), 512);
         img.style.cssText = 'position:fixed;top:12px;width:300px;height:300px;border:1px solid #555;left:' + (12 + ['lena', 'mykola', 'vera'].indexOf(id) * 310) + 'px';
@@ -192,6 +200,7 @@ export function CharLab() {
       for (const { v, a } of views) {
         v.update(a, dt, true, true);
         a.pos.y = 0;
+        if (view.startsWith('strafe')) a.pos.x = views.indexOf(views.find((w) => w.a === a)!) * 1.3 - 2.6;
       }
       for (const m of mixers) m.update(dt);
       renderer.render(scene, cam);

@@ -105,6 +105,7 @@ export class GameSession {
   private interact: Interactable | null = null;
   private interactT = 0;
   private endT = -1;
+  private frozenStats: ReturnType<GameRenderer['render']> | null = null;
   private ended = false;
   private lastInv = -1;
   private onResize = () => this.renderer.resize();
@@ -238,7 +239,11 @@ export class GameSession {
       this.interactT = 0.1;
       this.interact = raid.status === 'active' ? raid.nearestInteractable() : null;
     }
-    const stats = this.renderer.render(this.paused && ui.overlay !== 'dialogue' ? 0 : dt, this.interact);
+    // On the pause menu the world is frozen: draw it once and then leave the frame to the UI (and the battery).
+    const frozen = this.paused && ui.overlay === 'pause';
+    let stats = frozen ? this.frozenStats : null;
+    if (!stats) stats = this.renderer.render(this.paused && ui.overlay !== 'dialogue' ? 0 : dt, this.interact);
+    this.frozenStats = frozen ? stats : null;
     const t2 = performance.now();
 
     this.perf.push(dt * 1000);
@@ -274,13 +279,13 @@ export class GameSession {
     }
 
     if (raid.status !== 'active' && !this.ended) {
+      // Wall-clock delay: on a slow machine the clamped frame dt would stretch the death banner for ages.
       if (this.endT < 0) {
-        this.endT = 2.8;
+        this.endT = performance.now() + 2800;
         useRaidUi.setState({ overlay: null });
         this.input.enabled = false;
       }
-      this.endT -= dt;
-      if (this.endT <= 0) {
+      if (performance.now() >= this.endT) {
         this.ended = true;
         this.opts.onEnd(raid.result());
       }

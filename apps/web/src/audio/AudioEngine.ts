@@ -7,6 +7,15 @@
  * (and indoors). Pitch and sample choice are randomised so repeated shots and steps don't sound robotic.
  */
 export type Surface = 'grass' | 'leaves' | 'wood' | 'stone' | 'gravel' | 'mud';
+
+const SURFACE_FILTER: Partial<Record<Surface, { type: BiquadFilterType; freq: number; q?: number; gain?: number }>> = {
+  grass: { type: 'lowpass', freq: 2000, q: 0.6 },
+  leaves: { type: 'highshelf', freq: 3500, gain: 3 },
+  stone: { type: 'highshelf', freq: 2500, gain: 6 },
+  wood: { type: 'peaking', freq: 260, q: 1.1, gain: 6 },
+  mud: { type: 'lowpass', freq: 1400, q: 0.8 },
+};
+const SURFACE_GAIN: Partial<Record<Surface, number>> = { grass: 0.85, stone: 1.1, wood: 1.0, gravel: 1.05, leaves: 1.0, mud: 0.9 };
 export type GunClass = 'pistol' | 'pistol_heavy' | 'rifle' | 'carbine' | 'smg' | 'semi' | 'shotgun' | 'sniper';
 
 type Bank = Record<string, AudioBuffer[]>;
@@ -19,6 +28,8 @@ interface Voice {
   /** ± random pitch. */
   jitter?: number;
   delay?: number;
+  /** Optional tone shaping for this one voice. */
+  filter?: { type: BiquadFilterType; freq: number; q?: number; gain?: number };
 }
 
 export class AudioEngine {
@@ -182,7 +193,14 @@ export class AudioEngine {
     src.playbackRate.value = (v.rate ?? 1) * (1 + (Math.random() * 2 - 1) * (v.jitter ?? 0.03));
     const g = ctx.createGain();
     g.gain.value = v.gain ?? 1;
-    src.connect(g).connect(dest);
+    if (v.filter) {
+      const f = ctx.createBiquadFilter();
+      f.type = v.filter.type;
+      f.frequency.value = v.filter.freq;
+      f.Q.value = v.filter.q ?? 0.7;
+      if (v.filter.gain !== undefined) f.gain.value = v.filter.gain;
+      src.connect(f).connect(g).connect(dest);
+    } else src.connect(g).connect(dest);
     src.start(t + (v.delay ?? 0));
     return true;
   }
@@ -253,12 +271,22 @@ export class AudioEngine {
     this.lastStep.set(actor, now);
     const s = this.spatial(mine ? null : x, mine ? null : y, 26, 0.04);
     if (!s) return;
-    const g = (mine ? 0.32 : 0.6) * loud;
-    if (!this.play(s.input, s.t, { set: `step_${surface}`, gain: g, jitter: 0.08 })) {
+    const run = loud > 1.1;
+    const g = (mine ? 0.5 : 0.65) * loud * (SURFACE_GAIN[surface] ?? 1);
+    // Each surface gets its own colour so you can hear where you (and they) are walking:
+    // grass is a soft muffled swish, concrete a sharp heel click with a short slap-back, wood a hollow knock.
+    const filter = SURFACE_FILTER[surface];
+    if (!this.play(s.input, s.t, { set: `step_${surface}`, gain: g, jitter: run ? 0.12 : 0.08, rate: run ? 1.08 : 1, filter })) {
       this.noiseBurst(s.input, s.t, 0.08, g * 0.5, 'lowpass', 900, 0.8);
     }
+    if (surface === 'grass' || surface === 'leaves') this.noiseBurst(s.input, s.t + 0.01, run ? 0.18 : 0.12, g * 0.22, 'bandpass', surface === 'leaves' ? 3200 : 1800, 0.9, 0.02);
+    else if (surface === 'stone') {
+      this.noiseBurst(s.input, s.t, 0.03, g * 0.35, 'highpass', 2600, 0.8);
+      this.play(s.input, s.t, { set: 'step_stone', gain: g * 0.18, delay: 0.07, filter: { type: 'lowpass', freq: 1800 } });
+    } else if (surface === 'wood') this.tone(s.input, s.t, 'sine', 140, 90, 0.09, g * 0.25);
+    else if (surface === 'gravel') this.noiseBurst(s.input, s.t + 0.02, 0.1, g * 0.3, 'bandpass', 4200, 1.4, 0.01);
     // Kit rattles when you run.
-    if (loud > 1.1 && Math.random() < 0.5) this.play(s.input, s.t, { set: Math.random() < 0.5 ? 'gear' : 'cloth', gain: g * 0.35, jitter: 0.1, delay: 0.03 });
+    if (run && Math.random() < 0.6) this.play(s.input, s.t, { set: Math.random() < 0.5 ? 'gear' : 'cloth', gain: g * 0.35, jitter: 0.1, delay: 0.03 });
   }
 
   reload(weapon: string, x: number, y: number, mine: boolean): void {

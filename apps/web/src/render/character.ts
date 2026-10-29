@@ -950,8 +950,44 @@ export class CharacterView {
     else this.setLower('Idle_Loop', 1, layer);
 
     // Skip skinning work for actors the player can't see (big win with 40 bots).
-    if (!this.hidden) this.mixer.update(dt);
+    if (!this.hidden) {
+      // Undo last frame's leg twist first (the mixer only rewrites bones its clips animate).
+      for (const [b, q] of this.yawSaved) b.quaternion.copy(q);
+      this.yawSaved.length = 0;
+      this.mixer.update(dt);
+      this.twistLegs(a, dt, moving && !zombie && !sprint && !a.crouching ? along : null);
+    }
     this.placeHeld(a);
+  }
+
+  private legYaw = 0;
+  private yawSaved: [THREE.Bone, THREE.Quaternion][] = [];
+  private yawBones: { pelvis: THREE.Bone | null; s1: THREE.Bone | null; s2: THREE.Bone | null } | null = null;
+
+  /**
+   * There are no strafe clips, so when you walk sideways while aiming, turn the hips and legs towards the
+   * direction of travel and twist the spine back so the chest and gun keep pointing at the cursor.
+   * Walking backwards plays the clip in reverse with the legs aligned to the backward direction.
+   */
+  private twistLegs(a: Actor, dt: number, along: number | null): void {
+    let target = 0;
+    if (along !== null) {
+      let ang = Math.atan2(a.vel.y, a.vel.x) - a.facing;
+      ang = Math.atan2(Math.sin(ang), Math.cos(ang));
+      if (along < -0.35) ang = Math.atan2(Math.sin(ang + Math.PI), Math.cos(ang + Math.PI));
+      target = Math.max(-1.25, Math.min(1.25, -ang));
+    }
+    this.legYaw += (target - this.legYaw) * (1 - Math.exp(-dt * 10));
+    if (Math.abs(this.legYaw) < 0.01) return;
+    const sk = this.skinned.skeleton;
+    this.yawBones ??= { pelvis: sk.getBoneByName('pelvis') ?? null, s1: sk.getBoneByName('spine_01') ?? null, s2: sk.getBoneByName('spine_02') ?? null };
+    const { pelvis, s1, s2 } = this.yawBones;
+    if (!pelvis || !s1 || !s2) return;
+    this.root.updateMatrixWorld(true);
+    for (const b of [pelvis, s1, s2]) this.yawSaved.push([b, b.quaternion.clone()]);
+    yawBone(pelvis, this.legYaw);
+    yawBone(s1, -this.legYaw * 0.5);
+    yawBone(s2, -this.legYaw * 0.5);
   }
 
   /** Guns are placed in actor space between the hands and always point along the aim; melee rides the hand bone. */
@@ -1022,6 +1058,19 @@ export class CharacterView {
   dispose(): void {
     this.mixer.stopAllAction();
   }
+}
+
+const _pq = new THREE.Quaternion();
+const _rq = new THREE.Quaternion();
+const _up = new THREE.Vector3(0, 1, 0);
+/** Rotate a bone about the world up axis (keeps the rest of its pose), then refresh its subtree. */
+function yawBone(bone: THREE.Bone, angle: number): void {
+  const parent = bone.parent!;
+  parent.getWorldQuaternion(_pq);
+  _rq.setFromAxisAngle(_up, angle);
+  // local' = P⁻¹ · R · P · local
+  bone.quaternion.premultiply(_pq).premultiply(_rq).premultiply(_pq.invert());
+  bone.updateMatrixWorld(true);
 }
 
 export function disposeCharacterCaches(): void {
