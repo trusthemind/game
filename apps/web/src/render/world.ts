@@ -36,6 +36,7 @@ const CONTAINER_SHAPE: Record<ContainerKind, { w: number; h: number; d: number; 
   jacket: { w: 0.6, h: 0.18, d: 0.5, color: 0x3e4a3a },
   carTrunk: { w: 0.5, h: 0.12, d: 0.5, color: 0x6a5a3a },
   stash: { w: 0.6, h: 0.35, d: 0.6, color: 0x4a4030 },
+  modbox: { w: 0.8, h: 0.45, d: 0.5, color: 0x3d4a32 },
   ground: { w: 0.5, h: 0.1, d: 0.5, color: 0x55503f },
 };
 

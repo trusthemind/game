@@ -4,6 +4,8 @@ import { Rng, getDef, type Actor, type Corpse, type Equipment } from '@ashfall/e
 import type { AssetLibrary } from './assets';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
 import { faceTexture, type FaceSpec } from './facePainter';
+import { buildGun, gunKey } from './gunsmith';
+import { attachSkinned, cloneHuman, type HumanParts } from './human';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Appearance
@@ -118,13 +120,14 @@ function regionForBone(name: string): Region {
   return Region.Pants;
 }
 
-function analyseRig(meshes: THREE.SkinnedMesh[]): RigInfo {
+function analyseRig(meshes: THREE.SkinnedMesh[], paintedFace = true): RigInfo {
   const boxes = { head: new THREE.Box3(), chest: new THREE.Box3(), hips: new THREE.Box3(), handR: new THREE.Box3(), handL: new THREE.Box3() };
   const geometries = new Map<string, THREE.BufferGeometry>();
   for (const mesh of meshes) {
     analyseMesh(mesh, boxes);
     geometries.set(mesh.name, mesh.geometry);
   }
+  if (!paintedFace) return { geometries, boxes, forward: new THREE.Vector3(0, 0, 1) };
   // Second pass once the head box is known: planar face UVs for head vertices on the front half.
   const hb = boxes.head;
   const hs = hb.getSize(new THREE.Vector3());
@@ -241,6 +244,112 @@ function flatMat(color: number, opts: { rough?: number; metal?: number; side?: b
     if (u) patchWorldMaterial(m, u);
     flatMatCache.set(key, m);
   }
+  return m;
+}
+
+// ── Modelled humans ─────────────────────────────────────────────────────────
+
+/** Average skin colour of the pack's body textures (sRGB #a67350); skin tones are applied relative to it. */
+const TEX_SKIN = new THREE.Color(0xa67350);
+
+const HAIR_MODEL: Record<'m' | 'f', Record<HairStyle, string | null>> = {
+  m: { bald: null, buzz: 'Hair_Buzzed', short: 'Hair_SimpleParted', messy: 'Hair_SimpleParted', long: 'Hair_Long', ponytail: 'Hair_Long', bob: 'Hair_BuzzedFemale', bun: 'Hair_Buns' },
+  f: { bald: null, buzz: 'Hair_BuzzedFemale', short: 'Hair_BuzzedFemale', messy: 'Hair_BuzzedFemale', long: 'Hair_Long', ponytail: 'Hair_Long', bob: 'Hair_BuzzedFemale', bun: 'Hair_Buns' },
+};
+
+const heightCache = new Map<THREE.Object3D, number>();
+/** Scale so the bind-pose model is `target` metres tall. */
+function heightScale(src: THREE.Object3D, target: number): number {
+  let h = heightCache.get(src);
+  if (h === undefined) {
+    h = new THREE.Box3().setFromObject(src).getSize(new THREE.Vector3()).y || 1.8;
+    heightCache.set(src, h);
+  }
+  return target / h;
+}
+
+const humanMatCache = new Map<string, THREE.MeshStandardMaterial>();
+
+/**
+ * PBR skin + painted clothes. Head/neck (and bare hands / tee sleeves) keep the photographic texture,
+ * re-tinted to the actor's skin tone; everything else becomes fabric in the outfit colours, keeping a
+ * little of the texture's shading so folds and muscles still read under the lights.
+ */
+function humanBodyMaterial(src: THREE.MeshStandardMaterial, a: Appearance, u: WorldUniforms, dead = false): THREE.MeshStandardMaterial {
+  const key = `${src.uuid}|${JSON.stringify(a)}|${dead}`;
+  let m = humanMatCache.get(key);
+  if (m) return m;
+  m = src.clone();
+  m.userData.src = src;
+  m.roughness = 0.75;
+  const pal = palette(a, dead);
+  const tint = new THREE.Color(a.skin);
+  tint.r /= TEX_SKIN.r;
+  tint.g /= TEX_SKIN.g;
+  tint.b /= TEX_SKIN.b;
+  if (dead) tint.multiplyScalar(0.7);
+  const skinMask = [1, a.gloves === null ? 1 : 0, 0, a.topStyle === 'tee' ? 1 : 0, 0, 0, 0];
+  patchWorldMaterial(m, u, {
+    pre: (shader) => {
+      shader.uniforms.uPal = { value: pal };
+      shader.uniforms.uSkinTint = { value: tint };
+      shader.uniforms.uSkinMask = { value: skinMask };
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float aRegion;\nvarying float vRegion;\nvarying vec3 vObjPos;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRegion = aRegion;\nvObjPos = position;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform vec3 uPal[7];\nuniform vec3 uSkinTint;\nuniform float uSkinMask[7];\nvarying float vRegion;\nvarying vec3 vObjPos;')
+        .replace(
+          '#include <map_fragment>',
+          `#include <map_fragment>
+          int ri = int(vRegion + 0.5);
+          float skin = 0.0;
+          vec3 cloth = uPal[0];
+          for (int i = 0; i < 7; i++) if (i == ri) { skin = uSkinMask[i]; cloth = uPal[i]; }
+          if (skin > 0.5) {
+            diffuseColor.rgb = min(diffuseColor.rgb * uSkinTint, vec3(1.0));
+          } else {
+            float l = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+            float n = fract(sin(dot(floor(vObjPos * 60.0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+            diffuseColor.rgb = cloth * (0.86 + 0.32 * l) * (0.94 + n * 0.08);
+          }`,
+        );
+    },
+    key: 'human',
+  });
+  humanMatCache.set(key, m);
+  return m;
+}
+
+function hairMaterial(src: THREE.MeshStandardMaterial, color: number, u: WorldUniforms): THREE.MeshStandardMaterial {
+  const key = `${src.uuid}|hair|${color}`;
+  let m = humanMatCache.get(key);
+  if (m) return m;
+  m = src.clone();
+  // The hair textures are grey cards: tint them, cut the transparent strands, render both sides.
+  m.color = new THREE.Color(color).multiplyScalar(1.6);
+  m.alphaTest = 0.4;
+  m.transparent = false;
+  m.side = THREE.DoubleSide;
+  m.roughness = 0.65;
+  patchWorldMaterial(m, u, { key: 'hair' });
+  humanMatCache.set(key, m);
+  return m;
+}
+
+function hairMaterialFor(lib: AssetLibrary, color: number, u: WorldUniforms): THREE.MeshStandardMaterial | undefined {
+  const any = lib.hair.values().next().value as THREE.SkinnedMesh | undefined;
+  return any ? hairMaterial(any.material as THREE.MeshStandardMaterial, color, u) : undefined;
+}
+
+function worldMat(src: THREE.MeshStandardMaterial, u: WorldUniforms, tint: number | null): THREE.MeshStandardMaterial {
+  const key = `${src.uuid}|w|${tint}`;
+  let m = humanMatCache.get(key);
+  if (m) return m;
+  m = src.clone();
+  if (tint !== null) m.color = new THREE.Color(tint);
+  patchWorldMaterial(m, u, { key: 'eyes' });
+  humanMatCache.set(key, m);
   return m;
 }
 
@@ -431,6 +540,7 @@ export class CharacterView {
   private handL: THREE.Bone | null = null;
   private aimT = 0;
   private rig!: RigInfo;
+  private human: HumanParts | null = null;
   dead = false;
   private hidden = false;
 
@@ -440,25 +550,36 @@ export class CharacterView {
     private u: WorldUniforms,
     shadows: boolean,
   ) {
-    const src = look.sex === 'f' && lib.characterF ? lib.characterF.scene : lib.character.scene;
-    this.model = SkeletonUtils.clone(src);
-    const skinnedMeshes: THREE.SkinnedMesh[] = [];
+    // Modelled humans (faces, eyes, real hair) when the pack is present; the mannequin otherwise.
+    const human = cloneHuman(lib, look.sex);
+    this.human = human;
+    const src = human ? (look.sex === 'f' ? lib.humanF! : lib.humanM!).scene : look.sex === 'f' && lib.characterF ? lib.characterF.scene : lib.character.scene;
+    this.model = human ? human.model : SkeletonUtils.clone(src);
+    let skinnedMeshes: THREE.SkinnedMesh[] = [];
     this.model.traverse((o) => {
       if ((o as THREE.SkinnedMesh).isSkinnedMesh) skinnedMeshes.push(o as THREE.SkinnedMesh);
     });
-    if (!skinnedMeshes.length) throw new Error('character.glb has no skinned mesh');
-    // The body is the mesh with the most vertices (the other is the joint rings).
+    if (!skinnedMeshes.length) throw new Error('character model has no skinned mesh');
+    // The body is the mesh with the most vertices (the other is the joint rings / eyes / brows).
     skinnedMeshes.sort((a, b) => b.geometry.attributes.position!.count - a.geometry.attributes.position!.count);
+    if (human) skinnedMeshes = [human.body];
     this.skinned = skinnedMeshes[0]!;
-    if (!rigInfos.has(src)) rigInfos.set(src, analyseRig(skinnedMeshes));
+    if (!rigInfos.has(src)) rigInfos.set(src, analyseRig(skinnedMeshes, !human));
     this.rig = rigInfos.get(src)!;
     this.bodyMeshes = skinnedMeshes;
     for (const m of skinnedMeshes) {
-      m.material = bodyMaterial(look, u);
+      m.material = human ? humanBodyMaterial(human.body.material as THREE.MeshStandardMaterial, look, u) : bodyMaterial(look, u);
       m.castShadow = shadows;
       m.frustumCulled = false;
     }
-    this.model.scale.setScalar(CHAR_SCALE);
+    if (human) {
+      for (const m of [human.eyes, human.brows]) {
+        if (!m) continue;
+        m.material = m === human.brows ? hairMaterial(m.material as THREE.MeshStandardMaterial, look.zombie ? 0x2a2a24 : look.hairColor, u) : worldMat(m.material as THREE.MeshStandardMaterial, u, look.zombie ? 0xc8c0a0 : null);
+        m.frustumCulled = false;
+      }
+      this.model.scale.setScalar(heightScale(src, look.sex === 'f' ? 1.66 : 1.8));
+    } else this.model.scale.setScalar(CHAR_SCALE);
     this.root.add(this.model);
     this.handR = this.skinned.skeleton.getBoneByName('hand_r') ?? null;
     this.handL = this.skinned.skeleton.getBoneByName('hand_l') ?? null;
@@ -476,6 +597,14 @@ export class CharacterView {
     const rig = this.rig;
     const a = this.look;
     const head = this.bone(/^head$/i);
+    if (this.human) {
+      const style = HAIR_MODEL[a.sex][a.hair];
+      const hm = hairMaterialFor(this.lib, a.zombie ? 0x3a3530 : a.hairColor, this.u);
+      if (style && this.lib.hair.get(style)) attachSkinned(this.lib.hair.get(style)!, this.human.body, hm).castShadow = shadows;
+      if (a.beard && a.sex === 'm' && this.lib.hair.get('Hair_Beard')) attachSkinned(this.lib.hair.get('Hair_Beard')!, this.human.body, hm);
+      if (a.topStyle === 'hoodie' || a.topStyle === 'coat') this.addCollar(rig, a);
+      return;
+    }
     const hairMat = flatMat(a.hairColor, { rough: 0.9, side: true }, this.u);
     for (const g of hairGeometry(a.hair, rig.boxes.head)) {
       const m = new THREE.Mesh(g, hairMat);
@@ -483,7 +612,11 @@ export class CharacterView {
       attachToBone(this.skinned, head, m);
     }
     for (const m of earParts(rig.boxes.head, a, this.u)) attachToBone(this.skinned, head, m);
-    if (a.topStyle === 'hoodie' || a.topStyle === 'coat') {
+    if (a.topStyle === 'hoodie' || a.topStyle === 'coat') this.addCollar(rig, a);
+  }
+
+  private addCollar(rig: RigInfo, a: Appearance): void {
+    {
       // Collar / hood roll around the neck.
       const c = rig.boxes.chest.getCenter(new THREE.Vector3());
       const s = rig.boxes.chest.getSize(new THREE.Vector3());
@@ -498,7 +631,7 @@ export class CharacterView {
   syncGear(eq: Equipment, active: 'primary' | 'secondary' | 'melee'): void {
     const s = eq.slots;
     const held = active === 'melee' ? s.melee : s[active];
-    const key = `${s.helmet?.def}|${s.armor?.def}|${s.backpack?.def}|${s.rig?.def}|${held?.def}`;
+    const key = `${s.helmet?.def}|${s.armor?.def}|${s.backpack?.def}|${s.rig?.def}|${gunKey(held)}`;
     if (key === this.gearKey) return;
     this.gearKey = key;
     for (const g of this.gearAttachments) g.parent?.remove(g);
@@ -569,7 +702,7 @@ export class CharacterView {
       const d = getDef(held.def);
       const src = d.melee ? this.lib.melee.get(held.def) : this.lib.weapons.get(held.def);
       if (src) {
-        this.held = src.clone();
+        this.held = d.melee ? src.clone() : buildGun(this.lib, held)!;
         this.heldKind = d.melee ? 'melee' : 'gun';
         this.heavyMelee = /^(axe|sledge|bat|crowbar)$/.test(held.def);
         this.heldLen = new THREE.Box3().setFromObject(src).getSize(tmpV).z;
@@ -773,7 +906,8 @@ export class CharacterView {
       this.mixer.update(0.2);
     }
     this.oneShotT = Infinity;
-    for (const m of this.bodyMeshes) m.material = bodyMaterial(this.look, this.u, true);
+    for (const m of this.bodyMeshes)
+      m.material = this.human ? humanBodyMaterial(this.human.srcMaterial, this.look, this.u, true) : bodyMaterial(this.look, this.u, true);
     if (this.held && this.heldKind === 'gun') {
       // Drop the gun next to the body.
       this.held.position.set(0.5, 0.05, 0.4);
@@ -796,6 +930,8 @@ export class CharacterView {
 export function disposeCharacterCaches(): void {
   for (const m of bodyMatCache.values()) m.dispose();
   for (const m of flatMatCache.values()) m.dispose();
+  for (const m of humanMatCache.values()) m.dispose();
+  humanMatCache.clear();
   bodyMatCache.clear();
   flatMatCache.clear();
 }

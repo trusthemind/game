@@ -230,7 +230,8 @@ export class GameRenderer {
           const view = this.views.get(e.actor);
           const mz = view && view.root.visible ? view.muzzle : null;
           this.effects.tracer(mz ? mz.x : e.fx, mz ? mz.z : e.fy, e.tx, e.ty, e.hit, mz ? mz.y : 0.95);
-          this.effects.muzzleFlash(mz ? mz.x : e.fx, mz ? mz.z : e.fy, mz ? mz.y : 0.95);
+          if (e.pellet) break;
+          this.effects.muzzleFlash(mz ? mz.x : e.fx, mz ? mz.z : e.fy, mz ? mz.y : 0.95, !!e.suppressed);
           view?.fired();
           if (e.actor === pid) this.shake = Math.min(0.35, this.shake + 0.08);
           break;

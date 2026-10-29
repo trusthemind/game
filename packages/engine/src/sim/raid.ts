@@ -17,6 +17,7 @@ import {
 } from '../items/inventory';
 import { generateLoadout } from '../items/loadouts';
 import { CONTAINERS, generateLoot } from '../items/loot';
+import { effectiveWeapon } from '../items/mods';
 import { computeFov } from '../world/fov';
 import type { GameMap, LootContainer, BotArchetype } from '../world/map';
 import { generateMap, MAP_PRESETS, type MapId } from '../world/mapGen';
@@ -540,6 +541,8 @@ export class Raid {
       const it = a.eq.slots[s];
       if (it) mul -= getDef(it.def).armor?.slow ?? 0;
     }
+    const held = this.weaponItem(a);
+    if (held) mul *= effectiveWeapon(held).ergo;
     a.speedMul = Math.max(0.45, mul);
   }
 
@@ -639,7 +642,7 @@ export class Raid {
       this.melee(a);
       return;
     }
-    const def = getDef(w.def).weapon!;
+    const def = effectiveWeapon(w);
     if (!def.auto && !it.firePressed) return;
     if ((w.ammo ?? 0) <= 0) {
       if (it.firePressed && a === this.player) this.emit({ t: 'msg', text: 'Out of ammo — press R to reload' });
@@ -650,25 +653,26 @@ export class Raid {
   }
 
   private fireGun(a: Actor, w: ItemInstance): void {
-    const def = getDef(w.def).weapon!;
+    const def = effectiveWeapon(w);
     a.fireCd = 60 / def.rpm;
     w.ammo = (w.ammo ?? 1) - 1;
     const moving = Math.hypot(a.vel.x, a.vel.y) > 0.6;
-    // Hip fire (player not holding aim) is much less accurate.
-    const hip = !a.brain && !a.intent.aim ? 1.6 : 1;
+    // Hip fire (player not holding aim) is much less accurate; optics only help when aiming.
+    const aiming = !!a.brain || a.intent.aim;
+    const hip = aiming ? def.aimSpreadMul : 1.6;
     const spread = (def.spread * (moving ? 1.8 : 1) * (a.crouching ? 0.7 : 1) * hip + a.bloom) * aimMul(a.health);
     a.bloom = Math.min(0.12, a.bloom + def.recoil * 0.35);
     this.makeNoise(a.pos.x, a.pos.y, def.noise, a.id, 'shot');
     const pellets = def.pellets ?? 1;
     for (let p = 0; p < pellets; p++) {
       const ang = a.facing + gaussian(this.rng) * spread * 0.5;
-      this.traceBullet(a, ang, def.range, def.damage, w.ammoType, w.def);
+      this.traceBullet(a, ang, def.range, def.damage, w.ammoType, w.def, p === 0, def.suppressed);
     }
     if (a === this.player) this.invVersion++;
   }
 
   /** Hitscan bullet: walls stop it, cars/trees/fences may catch it, the nearest actor on the line takes the hit. */
-  private traceBullet(a: Actor, angle: number, range: number, damage: number, ammoType: string | undefined, weapon: string): void {
+  private traceBullet(a: Actor, angle: number, range: number, damage: number, ammoType: string | undefined, weapon: string, first = true, suppressed = false): void {
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
     const ox = a.pos.x + dx * (a.radius + 0.05);
@@ -692,7 +696,7 @@ export class Raid {
     }
     const ex = ox + dx * bestT;
     const ey = oy + dy * bestT;
-    this.emit({ t: 'shot', actor: a.id, fx: ox, fy: oy, tx: ex, ty: ey, weapon, hit: !!best });
+    this.emit({ t: 'shot', actor: a.id, fx: ox, fy: oy, tx: ex, ty: ey, weapon, hit: !!best, suppressed, pellet: !first });
     if (best) {
       // Falloff past effective range.
       const falloff = bestT > range * 0.6 ? 1 - ((bestT - range * 0.6) / (range * 0.4)) * 0.35 : 1;
@@ -848,7 +852,7 @@ export class Raid {
   startReload(a: Actor): boolean {
     const w = this.weaponItem(a);
     if (!w || a.reloadT > 0) return false;
-    const def = getDef(w.def).weapon!;
+    const def = effectiveWeapon(w);
     if ((w.ammo ?? 0) >= def.magSize) return false;
     if (!carryGrids(a.eq).some((g) => g.items.some((p) => getDef(p.item.def).ammo?.caliber === def.caliber))) {
       if (a === this.player) this.emit({ t: 'msg', text: `No ${def.caliber} ammo`, tone: 'bad' });
@@ -862,7 +866,7 @@ export class Raid {
   private finishReload(a: Actor): void {
     const w = this.weaponItem(a);
     if (!w) return;
-    const def = getDef(w.def).weapon!;
+    const def = effectiveWeapon(w);
     const loaded = w.ammo ?? 0;
     const { taken, type } = takeAmmo(a.eq, def.caliber, def.magSize - loaded, loaded > 0 ? w.ammoType : undefined);
     if (taken > 0) {

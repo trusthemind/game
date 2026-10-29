@@ -109,7 +109,7 @@ export interface Noise {
 }
 
 export type RaidEvent =
-  | { t: 'shot'; actor: number; fx: number; fy: number; tx: number; ty: number; weapon: string; hit: boolean; suppressed?: boolean }
+  | { t: 'shot'; actor: number; fx: number; fy: number; tx: number; ty: number; weapon: string; hit: boolean; suppressed?: boolean; pellet?: boolean }
   | { t: 'swing'; actor: number; x: number; y: number; facing: number; weapon: string }
   | { t: 'hit'; target: number; attacker: number; x: number; y: number; zone: HitZone; damage: number; penetrated: boolean; melee: boolean }
   | { t: 'impact'; x: number; y: number; material: 'wood' | 'metal' | 'ground' | 'glass' }

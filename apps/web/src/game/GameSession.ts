@@ -1,5 +1,6 @@
 import {
   Tile,
+  effectiveWeapon,
   BODY_PARTS,
   inPain,
   carryGrids,
@@ -107,6 +108,7 @@ export class GameSession {
     for (const e of events) {
       switch (e.t) {
         case 'shot':
+          if (e.pellet) break;
           audio.shot(e.weapon, e.fx, e.fy, e.actor === pid, !!e.suppressed);
           if (e.hit) audio.hit(e.tx, e.ty, false, false);
           break;
@@ -353,7 +355,7 @@ export class GameSession {
     const raid = this.raid;
     const p = raid.player;
     const w = raid.weaponItem(p);
-    const wd = w ? getDef(w.def).weapon : undefined;
+    const wd = w ? effectiveWeapon(w) : undefined;
     const held = p.active === 'melee' ? p.eq.slots.melee : w;
     const ex = raid.extractingAt !== null ? raid.map.extractions.find((e) => e.id === raid.extractingAt) : undefined;
     const comp = raid.actors.find((a) => a.companion);

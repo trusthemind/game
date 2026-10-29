@@ -11,9 +11,15 @@ export interface AssetLibrary {
   character: GLTF;
   /** Female body on the same skeleton (mesh only; shares the clips). */
   characterF: GLTF | null;
+  /** Modelled human bodies (faces, eyes, eyebrows, PBR skin) + hairstyles, same skeleton. */
+  humanM: GLTF | null;
+  humanF: GLTF | null;
+  hair: Map<string, THREE.SkinnedMesh>;
   clips: Map<string, THREE.AnimationClip>;
   weapons: Map<string, THREE.Object3D>;
   melee: Map<string, THREE.Object3D>;
+  /** Weapon attachments (suppressors, scopes, grips, stocks, lights). */
+  mods: Map<string, THREE.Object3D>;
   props: Map<string, THREE.Object3D>;
   nature: Map<string, THREE.Object3D>;
 }
@@ -37,15 +43,24 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
     for (const c of g.scene.children) m.set(c.name, c);
     return m;
   };
-  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature')]).then(
-    ([character, characterF, weapons, melee, props, nature]) => {
+  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature'), load('mods'), load('human_m').catch(() => null), load('human_f').catch(() => null), load('hair').catch(() => null)]).then(
+    ([character, characterF, weapons, melee, props, nature, mods, humanM, humanF, hairDoc]) => {
+      const hair = new Map<string, THREE.SkinnedMesh>();
+      hairDoc?.scene.traverse((o) => {
+        const sm = o as THREE.SkinnedMesh;
+        if (!sm.isSkinnedMesh) return;
+        // Style name is on the scene-level ancestor.
+        let p: THREE.Object3D | null = sm;
+        while (p && p.parent && p.parent !== hairDoc.scene) p = p.parent;
+        if (p && !hair.has(p.name)) hair.set(p.name, sm);
+      });
       const clips = new Map<string, THREE.AnimationClip>();
       for (const c of character.animations) clips.set(c.name, c);
-      for (const g of [weapons, melee, props, nature])
+      for (const g of [weapons, melee, props, nature, mods])
         g.scene.traverse((o) => {
           if ((o as THREE.Mesh).isMesh) o.castShadow = true;
         });
-      ready = { character, characterF, clips, weapons: byName(weapons), melee: byName(melee), props: byName(props), nature: byName(nature) };
+      ready = { character, characterF, humanM, humanF, hair, clips, weapons: byName(weapons), melee: byName(melee), mods: byName(mods), props: byName(props), nature: byName(nature) };
       return ready;
     },
   );

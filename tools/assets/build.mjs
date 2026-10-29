@@ -168,6 +168,32 @@ const WEAPONS = {
   m4a1: ['AssaultRifle2_1.fbx', 0.9],
   svd: ['SniperRifle_1.fbx', 1.2],
   pkm: ['AssaultRifle2_4.fbx', 1.15],
+  glock17: ['Pistol_2.fbx', 0.3],
+  rhino: ['Revolver_2.fbx', 0.3],
+  toz: ['Shotgun_SawedOff.fbx', 0.58],
+  pp19: ['SubmachineGun_2.fbx', 0.66],
+  mp5: ['SubmachineGun_1.fbx', 0.64],
+  vector: ['SubmachineGun_3.fbx', 0.6],
+  saiga12: ['Shotgun_3.fbx', 1.0],
+  vepr: ['AssaultRifle_3.fbx', 1.0],
+  aug: ['Bullpup_1.fbx', 0.78],
+  hk416: ['AssaultRifle2_2.fbx', 0.92],
+  rpk16: ['AssaultRifle2_3.fbx', 1.06],
+  mosin: ['SniperRifle_2.fbx', 1.25],
+  sv98: ['SniperRifle_3.fbx', 1.2],
+};
+// Attachments (model, length in metres). Orientation: +Z forward like the guns.
+const MODS = {
+  sup_short: ['Silencer_Short.fbx', 0.13],
+  sup_mid: ['Silencer_2.fbx', 0.19],
+  sup_long: ['Silencer_long.fbx', 0.26],
+  brake: ['Silencer_1.fbx', 0.08],
+  scope_dot: ['Scope_1.fbx', 0.12],
+  scope_mid: ['Scope_2.fbx', 0.22],
+  scope_long: ['Scope_3.fbx', 0.32],
+  grip: ['Grip.fbx', 0.1],
+  stock: ['Stock.fbx', 0.24],
+  light: ['Flashlight.fbx', 0.12],
 };
 const MELEE = {
   knife: ['Knife.fbx', 0.4],
@@ -321,12 +347,61 @@ async function buildNature() {
   fs.rmSync(tmp);
 }
 
+// ── Humans (Universal Base Characters: modelled faces, eyes, eyebrows, PBR skin) ───────────────────────
+// Same 65-joint skeleton as the animation libraries. Bodies become human_m / human_f; every hairstyle and
+// the beard go into hair.glb as separate skinned meshes (the renderer rebinds them to the body's bones).
+async function buildHumans() {
+  console.log('humans:');
+  const root = find(path.join(SRC, 'ubc'), 'Superhero_Male_FullBody.gltf');
+  if (!root) return console.warn('  ! ubc missing');
+  const dir = path.dirname(root);
+  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
+  const tex = textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024], quality: 82 });
+  for (const [file, out] of [['Superhero_Male_FullBody.gltf', 'human_m'], ['Superhero_Female_FullBody.gltf', 'human_f']]) {
+    const doc = await io.read(path.join(dir, file));
+    // Roughness maps add little from a top-down camera.
+    for (const m of doc.getRoot().listMaterials()) m.setMetallicRoughnessTexture(null);
+    await doc.transform(prune(), tex);
+    const tmp = path.join(OUT, `${out}.raw.glb`);
+    await io.write(tmp, doc);
+    await optimise(tmp, path.join(OUT, `${out}.glb`), { skinned: true });
+    fs.rmSync(tmp);
+  }
+  // Hair: one document, one named root per style.
+  // The "Rigged to Head Bone" variants are skinned; "Origin at 0" ones are static.
+  const hairDir = path.dirname(find(fs.readdirSync(path.join(SRC, 'ubc'), { recursive: true }).map(String).filter((f) => /Rigged to Head Bone.*glTF/.test(f) && f.endsWith('Hair_Long.gltf')).map((f) => path.join(SRC, 'ubc', path.dirname(f)))[0], 'Hair_Long.gltf'));
+  const styles = ['Hair_Buzzed', 'Hair_BuzzedFemale', 'Hair_SimpleParted', 'Hair_Long', 'Hair_Buns', 'Hair_Beard', 'Eyebrows_Regular', 'Eyebrows_Female'];
+  const { mergeDocuments, unpartition } = await import('@gltf-transform/functions');
+  const base = new (await import('@gltf-transform/core')).Document();
+  base.createBuffer();
+  for (const st of styles) {
+    const d = await io.read(path.join(hairDir, `${st}.gltf`));
+    for (const sc of d.getRoot().listScenes()) for (const n of sc.listChildren()) n.setName(st);
+    mergeDocuments(base, d);
+  }
+  const scenes = base.getRoot().listScenes();
+  const main = scenes[0];
+  for (const sc of scenes.slice(1)) {
+    for (const n of sc.listChildren()) main.addChild(n);
+    sc.dispose();
+  }
+  base.getRoot().setDefaultScene(main);
+  for (const m of base.getRoot().listMaterials()) m.setMetallicRoughnessTexture(null);
+  await base.transform(unpartition(), dedup(), prune(), textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [512, 512], quality: 80 }));
+  const tmp = path.join(OUT, 'hair.raw.glb');
+  await io.write(tmp, base);
+  await optimise(tmp, path.join(OUT, 'hair.glb'), { skinned: true });
+  fs.rmSync(tmp);
+}
+
 // ONLY=character,weapons… rebuilds a subset.
 const only = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
 const want = (k) => !only || only.has(k);
 if (want('character')) await buildCharacter();
+if (want('humans')) await buildHumans();
 if (want('weapons')) await buildSet('weapons', WEAPONS, [path.join(SRC, 'guns')]);
 if (want('melee')) await buildSet('melee', MELEE, [path.join(SRC, 'survival')]);
+if (want('mods')) await buildSet('mods', MODS, [path.join(SRC, 'guns')]);
 if (want('props')) await buildSet('props', PROPS, [path.join(SRC, 'survival')]);
 if (want('nature')) await buildNature();
 fs.writeFileSync(

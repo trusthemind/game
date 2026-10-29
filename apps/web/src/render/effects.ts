@@ -120,12 +120,14 @@ export class Effects {
     this.tracerLife[i] = 0.07;
   }
 
-  muzzleFlash(x: number, z: number, y = 0.95): void {
+  muzzleFlash(x: number, z: number, y = 0.95, suppressed = false): void {
     const f = this.flashes.next();
-    f.life = 0.06;
+    f.life = suppressed ? 0.03 : 0.06;
     f.light.position.set(x, y + 0.15, z);
-    f.light.intensity = 25;
+    f.light.intensity = suppressed ? 3 : 25;
     f.sprite.position.set(x, y, z);
+    f.sprite.scale.setScalar(suppressed ? 0.25 : f.sprite.userData.baseScale ?? (f.sprite.userData.baseScale = f.sprite.scale.x));
+    if (!suppressed) f.sprite.scale.setScalar(f.sprite.userData.baseScale);
     f.sprite.visible = true;
     f.sprite.material.rotation = Math.random() * Math.PI;
   }

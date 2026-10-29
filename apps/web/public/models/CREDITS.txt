@@ -1,2 +1,8 @@
 All 3D models: Quaternius (https://quaternius.com) — CC0 1.0 Universal.
 Universal Animation Library, Ultimate Gun Pack, Survival Pack, Stylized Nature MegaKit.
+
+Universal Base Characters [Standard] — Quaternius (CC0 1.0) — https://quaternius.itch.io/universal-base-characters
+  human_m.glb, human_f.glb, hair.glb (bodies with modelled faces/eyes, hairstyles, beard, eyebrows)
+Universal Animation Library 2 [Standard] — Quaternius (CC0 1.0) — https://opengameart.org/content/universal-animation-library-2
+  merged into character.glb / character_f.glb
+Ultimate Gun Pack accessories — Quaternius (CC0 1.0) — mods.glb (suppressors, scopes, grip, stock, flashlight)

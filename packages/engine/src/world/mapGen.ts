@@ -81,8 +81,8 @@ const ROOM_CONTAINERS: Record<BuildingKind, readonly (readonly [ContainerKind, n
   apartment: [['wardrobe', 3], ['fridge', 3], ['drawer', 5], ['jacket', 3], ['safe', 0.4], ['medcabinet', 0.6]],
   shop: [['shelf', 6], ['register', 2], ['fridge', 2], ['crate', 1]],
   clinic: [['medcabinet', 6], ['drawer', 2], ['safe', 0.4]],
-  warehouse: [['crate', 6], ['toolbox', 4], ['ammocrate', 1], ['jacket', 1]],
-  military: [['weaponbox', 4], ['ammocrate', 4], ['crate', 2], ['safe', 1.2], ['medcabinet', 1]],
+  warehouse: [['crate', 6], ['toolbox', 4], ['ammocrate', 1], ['jacket', 1], ['modbox', 1]],
+  military: [['weaponbox', 4], ['ammocrate', 4], ['modbox', 2], ['crate', 2], ['safe', 1.2], ['medcabinet', 1]],
   barn: [['crate', 4], ['toolbox', 3], ['jacket', 1], ['stash', 0.5]],
   cabin: [['drawer', 3], ['jacket', 3], ['ammocrate', 1.5], ['weaponbox', 0.6], ['stash', 1]],
 };

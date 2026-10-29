@@ -1,5 +1,6 @@
 import type { Rng } from '../core/rng';
 import { angleDiff, angleTo, dist, rayCircle, type Vec2 } from '../core/math';
+import { effectiveWeapon } from '../items/mods';
 import { getDef } from '../items/defs';
 import { addItem, carryGrids, itemValue, removeItem, slotAccepts, type ItemInstance, type Slot } from '../items/inventory';
 import { COVER } from '../world/tiles';
@@ -444,7 +445,7 @@ export class BotBrain {
       return;
     }
 
-    const wd = getDef(w.def).weapon!;
+    const wd = effectiveWeapon(w);
     const preferred = wd.pellets ? 5 : wd.range >= 55 ? 16 : wd.auto ? 11 : 10;
     // Engagement distance is about what fits on the player's screen: no sniping from off-camera.
     const maxEngage = Math.min(wd.range * 0.7, wd.pellets ? 12 : wd.range >= 55 ? 24 : 19);
@@ -528,7 +529,7 @@ export class BotBrain {
     if (arrived) {
       a.intent.crouch = true;
       const w = raid.weaponItem(a);
-      if (w && (w.ammo ?? 0) < getDef(w.def).weapon!.magSize && a.reloadT <= 0) raid.startReload(a);
+      if (w && (w.ammo ?? 0) < effectiveWeapon(w).magSize && a.reloadT <= 0) raid.startReload(a);
       else if (a.useT <= 0 && (a.bleed > 0 || a.hp < a.maxHp * 0.6)) {
         const med = raid.bestMed(a);
         if (med) a.intent.use = med.uid;
@@ -586,7 +587,7 @@ export class BotBrain {
       if (med) a.intent.use = med.uid;
     }
     const w = raid.weaponItem(a);
-    if (w && (w.ammo ?? 0) < getDef(w.def).weapon!.magSize * 0.4 && a.reloadT <= 0) raid.startReload(a);
+    if (w && (w.ammo ?? 0) < effectiveWeapon(w).magSize * 0.4 && a.reloadT <= 0) raid.startReload(a);
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────

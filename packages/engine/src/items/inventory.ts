@@ -1,4 +1,4 @@
-import { getDef, type Caliber, type ItemDef } from './defs';
+import { getDef, type Caliber, type ItemDef, type ModSlot } from './defs';
 
 /** A concrete item. Containers (rigs, backpacks) carry their own grid, so dropping a backpack keeps its contents. */
 export interface ItemInstance {
@@ -17,6 +17,8 @@ export interface ItemInstance {
   uses?: number;
   /** Found in raid. */
   fir?: boolean;
+  /** Installed weapon attachments. */
+  mods?: Partial<Record<ModSlot, ItemInstance>>;
 }
 
 export interface Placed {
@@ -176,6 +178,7 @@ export function itemWeight(item: ItemInstance): number {
   const d = getDef(item.def);
   let w = d.weight * (d.stackMax ? item.stack : 1);
   if (item.grid) for (const p of item.grid.items) w += itemWeight(p.item);
+  for (const m of Object.values(item.mods ?? {})) if (m) w += itemWeight(m);
   return w;
 }
 
@@ -199,6 +202,7 @@ export function itemValue(item: ItemInstance): number {
   let v = d.value * (d.stackMax ? item.stack : 1);
   if (d.armor && item.dur !== undefined) v *= 0.35 + 0.65 * (item.dur / d.armor.durability);
   if (item.grid) for (const p of item.grid.items) v += itemValue(p.item);
+  for (const m of Object.values(item.mods ?? {})) if (m) v += itemValue(m);
   return Math.round(v);
 }
 

@@ -9,6 +9,7 @@ const PATHS: Record<Category, string> = {
   helmet: 'M3 15a9 9 0 0118 0v2H3zm2 2v2h4v-2',
   rig: 'M5 4h14v16H5zM8 8h3v4H8zm5 0h3v4h-3zM8 14h8v3H8z',
   backpack: 'M8 4a4 4 0 018 0h1a3 3 0 013 3v13H4V7a3 3 0 013-3zm1 9h6v4H9z',
+  mod: 'M14 3l2 2-2 2 2 2 3-3 2 2-3 3 2 2-2 2-2-2-2 2-2-2 2-2-2-2-6 6 2 2-2 2-4-4 2-2 2 2 6-6-2-2z',
   secure: 'M6 10V7a6 6 0 0112 0v3h1v11H5V10zm2 0h8V7a4 4 0 00-8 0zm3 4v4h2v-4z',
   med: 'M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7z',
   food: 'M6 6h12v3H6zm1 3h10l-1 11H8z',

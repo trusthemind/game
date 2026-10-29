@@ -33,6 +33,7 @@ export type ContainerKind =
   | 'jacket'
   | 'carTrunk'
   | 'stash'
+  | 'modbox'
   | 'ground';
 
 export interface LootContainer {

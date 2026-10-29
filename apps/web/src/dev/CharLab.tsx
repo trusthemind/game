@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { createEquipment, createItem, type Actor } from '@ashfall/engine';
+import { ALL_ITEMS, createEquipment, createItem, getDef, installMod, modFits, modSlotsFor, type Actor } from '@ashfall/engine';
 import { loadAssets } from '../render/assets';
+import { buildGun } from '../render/gunsmith';
+import { attachSkinned, cloneHuman } from '../render/human';
 import { CharacterView, lookFor, renderPortrait, type Appearance } from '../render/character';
 import type { WorldUniforms } from '../render/patches';
 
@@ -42,7 +44,7 @@ export function CharLab() {
       uFowOn: { value: 0 },
     };
     (u.uFow.value as THREE.DataTexture).needsUpdate = true;
-    const cast: { look: Appearance; eq: string[]; active: 'primary' | 'secondary' | 'melee'; speed: number; crouch?: boolean }[] = [
+    const cast: { look: Appearance; eq: string[]; active: 'primary' | 'secondary' | 'melee'; speed: number; crouch?: boolean; modded?: boolean }[] = [
       { look: lookFor(0, 'npc', 'lena'), eq: ['pm:secondary', 'b_daypack:backpack'], active: 'secondary', speed: 0 },
       { look: lookFor(0, 'npc', 'mykola'), eq: ['mp133:primary'], active: 'primary', speed: 1.4 },
       { look: lookFor(3, 'raider'), eq: ['m4a1:primary', 'trooper:armor', 'zsh:helmet', 'r_alpha:rig', 'b_pilgrim:backpack'], active: 'primary', speed: 0 },
@@ -55,22 +57,96 @@ export function CharLab() {
       { look: lookFor(15, 'scav'), eq: [], active: 'melee', speed: 1.4 },
     ];
     if (view === 'guns') {
-      const ids = ['pm', 'mp443', 'mp133', 'aks74u', 'sks', 'ak74m', 'akm', 'm4a1', 'svd', 'pkm', 'knife', 'karambit', 'machete', 'axe', 'crowbar', 'bat', 'sledge'];
+      const ids = ALL_ITEMS.filter((d) => d.weapon).map((d) => d.id);
       cast.length = 0;
       ids.forEach((id, i) => {
-        const melee = i >= 10;
-        cast.push({ look: lookFor(i + 20, 'scav'), eq: [`${id}:${melee ? 'melee' : i < 2 ? 'secondary' : 'primary'}`], active: melee ? 'melee' : i < 2 ? 'secondary' : 'primary', speed: 0 });
+        const sec = getDef(id).weapon!.cls === 'pistol' || id === 'toz';
+        cast.push({ look: lookFor(i + 20, 'scav'), eq: [`${id}:${sec ? 'secondary' : 'primary'}`], active: sec ? 'secondary' : 'primary', speed: 0, modded: i % 2 === 1 });
       });
-      cam.position.set(0, 1.6, 15);
+      cam.position.set(0, 1.6, 26);
       cam.lookAt(0, 1.0, 0);
     }
     const views: { v: CharacterView; a: Actor }[] = [];
+    const mixers: THREE.AnimationMixer[] = [];
     loadAssets().then((lib) => {
+      if (view === 'humans') {
+        cast.length = 0;
+        const styles = [...lib.hair.keys()].filter((k) => k.startsWith('Hair_'));
+        let i = 0;
+        for (const sex of ['m', 'f'] as const)
+          for (const st of styles) {
+            const h = cloneHuman(lib, sex);
+            if (!h) continue;
+            const hair = lib.hair.get(st);
+            if (hair) attachSkinned(hair, h.body);
+            h.model.position.set(-6 + i * 1.0, 0, 0);
+            scene.add(h.model);
+            const mixer = new THREE.AnimationMixer(h.model);
+            mixer.clipAction(lib.clips.get('Idle_Loop')!).play();
+            mixers.push(mixer);
+            i++;
+          }
+        cam.position.set(0, 1.5, 7);
+        cam.lookAt(0, 1.2, 0);
+      }
+      if (view === 'faces') {
+        cast.length = 0;
+        let i = 0;
+        for (const sex of ['m', 'f'] as const)
+          for (const st of sex === 'm' ? ['Hair_SimpleParted', 'Hair_Buzzed', 'Hair_Beard'] : ['Hair_Long', 'Hair_Buns', 'Hair_BuzzedFemale']) {
+            const h = cloneHuman(lib, sex)!;
+            attachSkinned(lib.hair.get(st)!, h.body);
+            if (st === 'Hair_Beard') attachSkinned(lib.hair.get('Hair_SimpleParted')!, h.body);
+            h.model.position.set(-1.25 + i * 0.5, 0, 0);
+            scene.add(h.model);
+            const mixer = new THREE.AnimationMixer(h.model);
+            mixer.clipAction(lib.clips.get('Idle_Loop')!).play();
+            mixers.push(mixer);
+            i++;
+          }
+        cam.position.set(0, 1.7, 2.6);
+        cam.lookAt(0, 1.55, 0);
+        cam.fov = 30;
+        cam.updateProjectionMatrix();
+      }
+      if (view === 'rack') {
+        // Gun rack: every firearm side-on, plain (left) and fully modded (right).
+        cast.length = 0;
+        const ids = ALL_ITEMS.filter((d) => d.weapon).map((d) => d.id);
+        ids.forEach((id, i) => {
+          const col = i % 4;
+          const row = Math.floor(i / 4);
+          for (const modded of [false, true]) {
+            const it = createItem(id);
+            if (modded)
+              for (const ms of modSlotsFor(id)) {
+                const fit = ALL_ITEMS.find((d) => d.mod?.slot === ms && modFits(d.id, id));
+                if (fit) installMod(it, createItem(fit.id));
+              }
+            const g = buildGun(lib, it);
+            if (!g) continue;
+            g.rotation.y = Math.PI / 2;
+            g.position.set(-10.5 + col * 7 + (modded ? 3.2 : 0), 7.2 - row * 1.25, 0);
+            g.scale.setScalar(2.2);
+            scene.add(g);
+          }
+        });
+        cam.position.set(0, 3.3, 14);
+        cam.lookAt(0, 3.3, 0);
+        scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+        ground.visible = false;
+      }
       cast.forEach((c, i) => {
         const eq = createEquipment();
         for (const e of c.eq) {
           const [def, slot] = e.split(':') as [string, keyof typeof eq.slots];
           eq.slots[slot] = createItem(def);
+          const it = eq.slots[slot]!;
+          if (c.modded && getDef(def).weapon)
+            for (const ms of modSlotsFor(def)) {
+              const fit = ALL_ITEMS.find((d) => d.mod?.slot === ms && modFits(d.id, def));
+              if (fit) installMod(it, createItem(fit.id));
+            }
         }
         const v = new CharacterView(lib, c.look, u, true);
         const a = {
@@ -86,7 +162,7 @@ export function CharLab() {
         scene.add(v.root);
         views.push({ v, a });
       });
-      for (const id of view === 'guns' ? [] : ['lena', 'mykola', 'vera']) {
+      for (const id of view === 'guns' || view === 'rack' ? [] : ['lena', 'mykola', 'vera']) {
         const img = document.createElement('img');
         img.src = renderPortrait(lib, lookFor(0, 'npc', id), 512);
         img.style.cssText = 'position:fixed;top:12px;width:300px;height:300px;border:1px solid #555;left:' + (12 + ['lena', 'mykola', 'vera'].indexOf(id) * 310) + 'px';
@@ -103,6 +179,7 @@ export function CharLab() {
         v.update(a, dt, true, true);
         a.pos.y = 0;
       }
+      for (const m of mixers) m.update(dt);
       renderer.render(scene, cam);
     };
     raf = requestAnimationFrame(tick);

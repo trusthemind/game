@@ -1,6 +1,7 @@
 import type { Rng } from '../core/rng';
 import type { BotArchetype } from '../world/map';
-import { ammoForCaliber, getDef } from './defs';
+import { ALL_ITEMS, ammoForCaliber, getDef } from './defs';
+import { effectiveWeapon, installMod, modFits, modSlotsFor } from './mods';
 import { addItem, createEquipment, createItem, type Equipment } from './inventory';
 import { rollItem, tieredTable } from './loot';
 
@@ -25,8 +26,8 @@ interface ArchetypeKit {
 
 const KITS: Record<BotArchetype, ArchetypeKit> = {
   scav: {
-    primary: [[null, 3], ['mp133', 4], ['aks74u', 3], ['sks', 3], ['akm', 0.8]],
-    secondary: [[null, 6], ['pm', 3], ['mp443', 0.7]],
+    primary: [[null, 3], ['mp133', 4], ['aks74u', 3], ['sks', 3], ['vepr', 2], ['mosin', 1.5], ['pp19', 2], ['akm', 0.8], ['saiga12', 0.6]],
+    secondary: [[null, 6], ['pm', 3], ['toz', 1.5], ['mp443', 0.7], ['glock17', 0.6]],
     melee: [[null, 3], ['knife', 3], ['crowbar', 2], ['bat', 1.5], ['axe', 0.5]],
     armor: [[null, 5], ['paca', 3], ['6b23', 1.2]],
     helmet: [[null, 6], ['ssh68', 3], ['zsh', 0.4]],
@@ -37,8 +38,8 @@ const KITS: Record<BotArchetype, ArchetypeKit> = {
     extras: [['crackers', 4], ['water', 3], ['bolts', 3], ['wires', 3], ['roubles', 5], ['chain', 1.5], ['rolex', 0.3]], extraCount: [0, 3],
   },
   raider: {
-    primary: [['ak74m', 4], ['m4a1', 3], ['akm', 3], ['svd', 0.8]],
-    secondary: [[null, 2], ['mp443', 3]],
+    primary: [['ak74m', 4], ['m4a1', 3], ['akm', 3], ['mp5', 2], ['aug', 1.5], ['vector', 1], ['rpk16', 0.8], ['svd', 0.8], ['hk416', 0.6], ['sv98', 0.4]],
+    secondary: [[null, 2], ['mp443', 3], ['glock17', 2], ['rhino', 0.8]],
     melee: [['knife', 2], ['machete', 2], ['karambit', 0.4]],
     armor: [['trooper', 4], ['gzhel', 2.5], ['6b23', 2]],
     helmet: [['zsh', 5], [null, 1], ['altyn', 0.4]],
@@ -49,7 +50,7 @@ const KITS: Record<BotArchetype, ArchetypeKit> = {
     extras: [['mre', 2], ['water', 2], ['roubles', 4], ['flash', 2], ['cpu', 1.5], ['intel', 0.8], ['bitcoin', 0.5]], extraCount: [1, 3],
   },
   guard: {
-    primary: [['akm', 3], ['ak74m', 3], ['m4a1', 2], ['pkm', 0.4]],
+    primary: [['akm', 3], ['ak74m', 3], ['m4a1', 2], ['rpk16', 1.5], ['saiga12', 1.5], ['pkm', 0.4]],
     secondary: [['mp443', 1]],
     melee: [['machete', 1], ['axe', 1]],
     armor: [['gzhel', 4], ['trooper', 3]],
@@ -61,7 +62,7 @@ const KITS: Record<BotArchetype, ArchetypeKit> = {
     extras: [['roubles', 3], ['rolex', 1], ['bitcoin', 0.6]], extraCount: [0, 2],
   },
   boss: {
-    primary: [['pkm', 2], ['m4a1', 2]],
+    primary: [['pkm', 2], ['hk416', 2], ['rpk16', 1]],
     secondary: [['mp443', 1]],
     melee: [['sledge', 1]],
     armor: [['slick6', 1]],
@@ -97,7 +98,16 @@ function loadWeapon(rng: Rng, eq: Equipment, slot: 'primary' | 'secondary', kit:
   const ammoDefs = ammoForCaliber(w.caliber);
   const q = Math.min(ammoDefs.length - 1, rng.int(kit.ammoQuality[0], kit.ammoQuality[1]));
   const ammoDef = ammoDefs[q]!;
-  eq.slots[slot] = createItem(id, { ammo: w.magSize, ammoType: ammoDef.id });
+  const gun = createItem(id, { ammo: w.magSize, ammoType: ammoDef.id });
+  // Better-geared bots run modded guns (and the mods come off their bodies with the gun).
+  const modChance = kit.mags[0] >= 3 ? 0.55 : 0.12;
+  for (const slotName of modSlotsFor(id)) {
+    if (!rng.chance(modChance)) continue;
+    const options = ALL_ITEMS.filter((d) => d.mod?.slot === slotName && modFits(d.id, id) && (kit.mags[0] >= 3 || d.rarity <= 2));
+    if (options.length) installMod(gun, createItem(rng.pick(options).id));
+  }
+  gun.ammo = effectiveWeapon(gun).magSize;
+  eq.slots[slot] = gun;
   // Spare ammo, roughly `mags` magazines worth, spread into stacks.
   let spare = slot === 'primary' ? w.magSize * rng.int(kit.mags[0], kit.mags[1]) : w.magSize * rng.int(0, 2);
   const stackMax = ammoDef.stackMax ?? 60;

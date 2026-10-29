@@ -9,6 +9,7 @@ export type Category =
   | 'rig'
   | 'backpack'
   | 'secure'
+  | 'mod'
   | 'med'
   | 'food'
   | 'drink'
@@ -18,7 +19,35 @@ export type Category =
 
 export type Caliber = '9x18' | '9x19' | '12g' | '5.45' | '5.56' | '7.62x39' | '7.62x54';
 
+export type WeaponClass = 'pistol' | 'smg' | 'rifle' | 'shotgun' | 'marksman' | 'lmg';
+export type ModSlot = 'muzzle' | 'scope' | 'grip' | 'mag' | 'stock' | 'light';
+export const MOD_SLOTS: readonly ModSlot[] = ['muzzle', 'scope', 'grip', 'stock', 'mag', 'light'];
+
+/** Attachment stats. Multipliers apply to the weapon's base stats; `magSize` replaces it. */
+export interface ModStats {
+  slot: ModSlot;
+  /** Fits weapons with one of these calibers (optionally only these classes), or these exact weapon ids. */
+  calibers?: Caliber[];
+  classes?: WeaponClass[];
+  ids?: string[];
+  spreadMul?: number;
+  /** Extra accuracy only while aiming down sights (scopes). */
+  aimSpreadMul?: number;
+  recoilMul?: number;
+  noiseMul?: number;
+  rangeMul?: number;
+  reloadMul?: number;
+  magSize?: number;
+  suppressed?: boolean;
+  /** Camera pulls back by this factor while aiming (scopes). */
+  zoom?: number;
+  light?: boolean;
+  /** Movement speed multiplier while holding the weapon (heavy optics, drums). */
+  ergo?: number;
+}
+
 export interface WeaponStats {
+  cls: WeaponClass;
   caliber: Caliber;
   damage: number;
   rpm: number;
@@ -79,6 +108,7 @@ export interface ItemDef {
   ammo?: AmmoStats;
   armor?: ArmorStats;
   grid?: { w: number; h: number };
+  mod?: ModStats;
   med?: MedEffect;
   food?: { energy: number; hydration: number; useTime: number };
 }
@@ -86,25 +116,94 @@ export interface ItemDef {
 const defs: ItemDef[] = [
   // ── Weapons ──────────────────────────────────────────────
   { id: 'pm', name: 'PM 9x18 pistol', short: 'PM', category: 'weapon', w: 2, h: 1, weight: 0.7, value: 9000, rarity: 1,
-    weapon: { caliber: '9x18', damage: 28, rpm: 360, magSize: 8, spread: 0.06, range: 22, reloadTime: 1.6, noise: 22, auto: false, recoil: 0.04 } },
+    weapon: { cls: 'pistol', caliber: '9x18', damage: 28, rpm: 360, magSize: 8, spread: 0.06, range: 22, reloadTime: 1.6, noise: 22, auto: false, recoil: 0.04 } },
   { id: 'mp443', name: 'MP-443 9x19 pistol', short: 'MP-443', category: 'weapon', w: 2, h: 1, weight: 0.9, value: 21000, rarity: 2,
-    weapon: { caliber: '9x19', damage: 34, rpm: 400, magSize: 18, spread: 0.05, range: 24, reloadTime: 1.7, noise: 24, auto: false, recoil: 0.045 } },
+    weapon: { cls: 'pistol', caliber: '9x19', damage: 34, rpm: 400, magSize: 18, spread: 0.05, range: 24, reloadTime: 1.7, noise: 24, auto: false, recoil: 0.045 } },
   { id: 'mp133', name: 'MP-133 12ga shotgun', short: 'MP-133', category: 'weapon', w: 4, h: 1, weight: 3.5, value: 18000, rarity: 1,
-    weapon: { caliber: '12g', damage: 24, rpm: 70, magSize: 6, spread: 0.11, range: 16, reloadTime: 3.2, noise: 32, auto: false, pellets: 8, recoil: 0.14 } },
+    weapon: { cls: 'shotgun', caliber: '12g', damage: 24, rpm: 70, magSize: 6, spread: 0.11, range: 16, reloadTime: 3.2, noise: 32, auto: false, pellets: 8, recoil: 0.14 } },
   { id: 'aks74u', name: 'AKS-74U carbine', short: 'AKS-74U', category: 'weapon', w: 3, h: 2, weight: 2.7, value: 34000, rarity: 2,
-    weapon: { caliber: '5.45', damage: 40, rpm: 650, magSize: 30, spread: 0.045, range: 30, reloadTime: 2.3, noise: 30, auto: true, recoil: 0.05 } },
+    weapon: { cls: 'rifle', caliber: '5.45', damage: 40, rpm: 650, magSize: 30, spread: 0.045, range: 30, reloadTime: 2.3, noise: 30, auto: true, recoil: 0.05 } },
   { id: 'sks', name: 'SKS carbine', short: 'SKS', category: 'weapon', w: 4, h: 1, weight: 3.8, value: 29000, rarity: 2,
-    weapon: { caliber: '7.62x39', damage: 54, rpm: 300, magSize: 10, spread: 0.018, range: 42, reloadTime: 2.8, noise: 34, auto: false, recoil: 0.06 } },
+    weapon: { cls: 'marksman', caliber: '7.62x39', damage: 54, rpm: 300, magSize: 10, spread: 0.018, range: 42, reloadTime: 2.8, noise: 34, auto: false, recoil: 0.06 } },
   { id: 'ak74m', name: 'AK-74M assault rifle', short: 'AK-74M', category: 'weapon', w: 4, h: 2, weight: 3.6, value: 62000, rarity: 3,
-    weapon: { caliber: '5.45', damage: 42, rpm: 650, magSize: 30, spread: 0.028, range: 40, reloadTime: 2.4, noise: 34, auto: true, recoil: 0.04 } },
+    weapon: { cls: 'rifle', caliber: '5.45', damage: 42, rpm: 650, magSize: 30, spread: 0.028, range: 40, reloadTime: 2.4, noise: 34, auto: true, recoil: 0.04 } },
   { id: 'm4a1', name: 'M4A1 rifle', short: 'M4A1', category: 'weapon', w: 4, h: 2, weight: 3.2, value: 88000, rarity: 4,
-    weapon: { caliber: '5.56', damage: 44, rpm: 800, magSize: 30, spread: 0.022, range: 44, reloadTime: 2.2, noise: 33, auto: true, recoil: 0.034 } },
+    weapon: { cls: 'rifle', caliber: '5.56', damage: 44, rpm: 800, magSize: 30, spread: 0.022, range: 44, reloadTime: 2.2, noise: 33, auto: true, recoil: 0.034 } },
   { id: 'akm', name: 'AKM assault rifle', short: 'AKM', category: 'weapon', w: 4, h: 2, weight: 3.8, value: 58000, rarity: 3,
-    weapon: { caliber: '7.62x39', damage: 56, rpm: 600, magSize: 30, spread: 0.032, range: 40, reloadTime: 2.5, noise: 36, auto: true, recoil: 0.06 } },
+    weapon: { cls: 'rifle', caliber: '7.62x39', damage: 56, rpm: 600, magSize: 30, spread: 0.032, range: 40, reloadTime: 2.5, noise: 36, auto: true, recoil: 0.06 } },
   { id: 'svd', name: 'SVD marksman rifle', short: 'SVD', category: 'weapon', w: 5, h: 1, weight: 4.3, value: 115000, rarity: 4,
-    weapon: { caliber: '7.62x54', damage: 86, rpm: 200, magSize: 10, spread: 0.008, range: 60, reloadTime: 3.0, noise: 42, auto: false, recoil: 0.09 } },
+    weapon: { cls: 'marksman', caliber: '7.62x54', damage: 86, rpm: 200, magSize: 10, spread: 0.008, range: 60, reloadTime: 3.0, noise: 42, auto: false, recoil: 0.09 } },
   { id: 'pkm', name: 'PKM machine gun', short: 'PKM', category: 'weapon', w: 5, h: 2, weight: 8.9, value: 190000, rarity: 5,
-    weapon: { caliber: '7.62x54', damage: 78, rpm: 700, magSize: 100, spread: 0.04, range: 50, reloadTime: 5.5, noise: 44, auto: true, recoil: 0.05 } },
+    weapon: { cls: 'lmg', caliber: '7.62x54', damage: 78, rpm: 700, magSize: 100, spread: 0.04, range: 50, reloadTime: 5.5, noise: 44, auto: true, recoil: 0.05 } },
+
+  { id: 'glock17', name: 'Glock 17 pistol', short: 'G17', category: 'weapon', w: 2, h: 1, weight: 0.7, value: 26000, rarity: 2,
+    weapon: { cls: 'pistol', caliber: '9x19', damage: 33, rpm: 450, magSize: 17, spread: 0.05, range: 24, reloadTime: 1.6, noise: 24, auto: false, recoil: 0.04 } },
+  { id: 'rhino', name: 'Chiappa Rhino revolver', short: 'RHINO', category: 'weapon', w: 2, h: 1, weight: 0.8, value: 38000, rarity: 3,
+    weapon: { cls: 'pistol', caliber: '9x19', damage: 46, rpm: 220, magSize: 6, spread: 0.035, range: 26, reloadTime: 2.6, noise: 26, auto: false, recoil: 0.08 } },
+  { id: 'toz', name: 'TOZ-66 sawed-off', short: 'TOZ', category: 'weapon', w: 2, h: 1, weight: 2.1, value: 12000, rarity: 1,
+    weapon: { cls: 'shotgun', caliber: '12g', damage: 26, rpm: 400, magSize: 2, spread: 0.16, range: 12, reloadTime: 2.4, noise: 34, auto: false, pellets: 9, recoil: 0.16 } },
+  { id: 'pp19', name: 'PP-19-01 Vityaz SMG', short: 'VITYAZ', category: 'weapon', w: 3, h: 2, weight: 2.9, value: 39000, rarity: 2,
+    weapon: { cls: 'smg', caliber: '9x19', damage: 32, rpm: 700, magSize: 30, spread: 0.042, range: 27, reloadTime: 2.2, noise: 27, auto: true, recoil: 0.03 } },
+  { id: 'mp5', name: 'MP5 submachine gun', short: 'MP5', category: 'weapon', w: 3, h: 2, weight: 2.5, value: 45000, rarity: 3,
+    weapon: { cls: 'smg', caliber: '9x19', damage: 31, rpm: 800, magSize: 30, spread: 0.04, range: 26, reloadTime: 2.0, noise: 26, auto: true, recoil: 0.025 } },
+  { id: 'vector', name: 'KRISS Vector 9x19', short: 'VECTOR', category: 'weapon', w: 3, h: 2, weight: 2.7, value: 120000, rarity: 4,
+    weapon: { cls: 'smg', caliber: '9x19', damage: 30, rpm: 1100, magSize: 17, spread: 0.045, range: 24, reloadTime: 2.1, noise: 26, auto: true, recoil: 0.022 } },
+  { id: 'saiga12', name: 'Saiga-12K shotgun', short: 'SAIGA', category: 'weapon', w: 4, h: 1, weight: 3.6, value: 55000, rarity: 3,
+    weapon: { cls: 'shotgun', caliber: '12g', damage: 24, rpm: 240, magSize: 5, spread: 0.1, range: 17, reloadTime: 3.0, noise: 34, auto: false, pellets: 8, recoil: 0.12 } },
+  { id: 'vepr', name: 'Vepr Hunter carbine', short: 'VEPR', category: 'weapon', w: 4, h: 1, weight: 3.9, value: 33000, rarity: 2,
+    weapon: { cls: 'marksman', caliber: '7.62x39', damage: 58, rpm: 340, magSize: 10, spread: 0.016, range: 44, reloadTime: 2.7, noise: 35, auto: false, recoil: 0.065 } },
+  { id: 'aug', name: 'Steyr AUG A3', short: 'AUG', category: 'weapon', w: 3, h: 2, weight: 3.4, value: 110000, rarity: 4,
+    weapon: { cls: 'rifle', caliber: '5.56', damage: 44, rpm: 700, magSize: 30, spread: 0.021, range: 44, reloadTime: 2.4, noise: 33, auto: true, recoil: 0.032 } },
+  { id: 'hk416', name: 'HK 416A5', short: 'HK416', category: 'weapon', w: 4, h: 2, weight: 3.5, value: 150000, rarity: 5,
+    weapon: { cls: 'rifle', caliber: '5.56', damage: 45, rpm: 850, magSize: 30, spread: 0.02, range: 46, reloadTime: 2.2, noise: 33, auto: true, recoil: 0.03 } },
+  { id: 'rpk16', name: 'RPK-16 light machine gun', short: 'RPK-16', category: 'weapon', w: 5, h: 2, weight: 4.8, value: 98000, rarity: 4,
+    weapon: { cls: 'lmg', caliber: '5.45', damage: 43, rpm: 650, magSize: 45, spread: 0.03, range: 44, reloadTime: 3.2, noise: 35, auto: true, recoil: 0.035 } },
+  { id: 'mosin', name: 'Mosin bolt-action rifle', short: 'MOSIN', category: 'weapon', w: 5, h: 1, weight: 4.0, value: 52000, rarity: 2,
+    weapon: { cls: 'marksman', caliber: '7.62x54', damage: 98, rpm: 45, magSize: 5, spread: 0.006, range: 64, reloadTime: 3.5, noise: 44, auto: false, recoil: 0.12 } },
+  { id: 'sv98', name: 'SV-98 sniper rifle', short: 'SV-98', category: 'weapon', w: 5, h: 1, weight: 5.8, value: 165000, rarity: 5,
+    weapon: { cls: 'marksman', caliber: '7.62x54', damage: 104, rpm: 50, magSize: 10, spread: 0.004, range: 70, reloadTime: 3.2, noise: 44, auto: false, recoil: 0.11 } },
+
+  // ── Weapon mods ──────────────────────────────────────────
+  { id: 'sup_9', name: '9mm suppressor', short: 'SUP 9', category: 'mod', w: 2, h: 1, weight: 0.2, value: 21000, rarity: 3,
+    mod: { slot: 'muzzle', calibers: ['9x18', '9x19'], classes: ['pistol', 'smg'], noiseMul: 0.32, suppressed: true, recoilMul: 0.9, rangeMul: 0.95, ergo: 0.99 } },
+  { id: 'sup_545', name: '5.45 suppressor', short: 'SUP 545', category: 'mod', w: 2, h: 1, weight: 0.4, value: 34000, rarity: 3,
+    mod: { slot: 'muzzle', calibers: ['5.45'], noiseMul: 0.36, suppressed: true, recoilMul: 0.88, ergo: 0.98 } },
+  { id: 'sup_556', name: '5.56 suppressor', short: 'SUP 556', category: 'mod', w: 2, h: 1, weight: 0.4, value: 39000, rarity: 4,
+    mod: { slot: 'muzzle', calibers: ['5.56'], noiseMul: 0.36, suppressed: true, recoilMul: 0.88, ergo: 0.98 } },
+  { id: 'sup_762', name: '7.62x39 suppressor', short: 'SUP 762', category: 'mod', w: 2, h: 1, weight: 0.5, value: 36000, rarity: 3,
+    mod: { slot: 'muzzle', calibers: ['7.62x39'], noiseMul: 0.38, suppressed: true, recoilMul: 0.86, ergo: 0.98 } },
+  { id: 'sup_54r', name: '7.62x54R suppressor', short: 'SUP 54R', category: 'mod', w: 3, h: 1, weight: 0.6, value: 62000, rarity: 4,
+    mod: { slot: 'muzzle', ids: ['svd', 'mosin', 'sv98'], noiseMul: 0.4, suppressed: true, recoilMul: 0.85, ergo: 0.97 } },
+  { id: 'brake', name: 'Muzzle brake', short: 'BRAKE', category: 'mod', w: 1, h: 1, weight: 0.15, value: 9000, rarity: 2,
+    mod: { slot: 'muzzle', calibers: ['5.45', '5.56', '7.62x39', '7.62x54'], classes: ['rifle', 'lmg', 'marksman'], recoilMul: 0.7, noiseMul: 1.12 } },
+  { id: 'red_dot', name: 'Red dot sight', short: 'RDS', category: 'mod', w: 1, h: 1, weight: 0.1, value: 12000, rarity: 2,
+    mod: { slot: 'scope', classes: ['pistol', 'smg', 'rifle', 'shotgun', 'lmg'], aimSpreadMul: 0.82, zoom: 1.06 } },
+  { id: 'holo', name: 'Holographic sight', short: 'HOLO', category: 'mod', w: 1, h: 1, weight: 0.3, value: 26000, rarity: 3,
+    mod: { slot: 'scope', classes: ['smg', 'rifle', 'shotgun', 'lmg'], aimSpreadMul: 0.76, zoom: 1.1 } },
+  { id: 'scope_4x', name: '4x combat scope', short: '4X', category: 'mod', w: 2, h: 1, weight: 0.5, value: 48000, rarity: 4,
+    mod: { slot: 'scope', classes: ['rifle', 'marksman', 'lmg'], aimSpreadMul: 0.55, zoom: 1.4, ergo: 0.98 } },
+  { id: 'scope_8x', name: '8x sniper scope', short: '8X', category: 'mod', w: 2, h: 1, weight: 0.8, value: 85000, rarity: 5,
+    mod: { slot: 'scope', classes: ['marksman'], aimSpreadMul: 0.4, zoom: 1.75, ergo: 0.96 } },
+  { id: 'fgrip', name: 'Vertical foregrip', short: 'GRIP', category: 'mod', w: 1, h: 1, weight: 0.1, value: 8000, rarity: 2,
+    mod: { slot: 'grip', classes: ['smg', 'rifle', 'lmg', 'shotgun'], recoilMul: 0.78, spreadMul: 0.93 } },
+  { id: 'stock_tac', name: 'Tactical stock', short: 'STOCK', category: 'mod', w: 2, h: 1, weight: 0.4, value: 15000, rarity: 2,
+    mod: { slot: 'stock', classes: ['smg', 'rifle', 'lmg', 'marksman', 'shotgun'], recoilMul: 0.8, spreadMul: 0.95 } },
+  { id: 'tac_light', name: 'Tactical flashlight', short: 'LIGHT', category: 'mod', w: 1, h: 1, weight: 0.1, value: 7000, rarity: 1,
+    mod: { slot: 'light', classes: ['pistol', 'smg', 'rifle', 'shotgun', 'lmg'], light: true } },
+  { id: 'mag_ak45', name: 'AK 5.45 45-round mag', short: 'MAG 45', category: 'mod', w: 1, h: 2, weight: 0.3, value: 14000, rarity: 3,
+    mod: { slot: 'mag', ids: ['aks74u', 'ak74m', 'rpk16'], magSize: 45, reloadMul: 1.12, ergo: 0.98 } },
+  { id: 'mag_rpk95', name: 'RPK 95-round drum', short: 'DRUM 95', category: 'mod', w: 2, h: 2, weight: 1.1, value: 46000, rarity: 4,
+    mod: { slot: 'mag', ids: ['ak74m', 'rpk16'], magSize: 95, reloadMul: 1.5, ergo: 0.95 } },
+  { id: 'mag_akm40', name: 'AKM 40-round mag', short: 'MAG 40', category: 'mod', w: 1, h: 2, weight: 0.35, value: 15000, rarity: 3,
+    mod: { slot: 'mag', ids: ['akm'], magSize: 40, reloadMul: 1.12, ergo: 0.98 } },
+  { id: 'mag_stanag60', name: 'STANAG 60-round mag', short: 'MAG 60', category: 'mod', w: 1, h: 2, weight: 0.4, value: 32000, rarity: 4,
+    mod: { slot: 'mag', ids: ['m4a1', 'hk416'], magSize: 60, reloadMul: 1.25, ergo: 0.97 } },
+  { id: 'mag_9_33', name: '9x19 33-round mag', short: 'MAG 33', category: 'mod', w: 1, h: 2, weight: 0.2, value: 11000, rarity: 3,
+    mod: { slot: 'mag', ids: ['glock17', 'vector', 'mp443'], magSize: 33, reloadMul: 1.1 } },
+  { id: 'mag_sks20', name: 'SKS 20-round mag', short: 'MAG 20', category: 'mod', w: 1, h: 1, weight: 0.2, value: 9000, rarity: 2,
+    mod: { slot: 'mag', ids: ['sks', 'vepr'], magSize: 20, reloadMul: 0.85 } },
+  { id: 'mag_saiga20', name: 'Saiga-12 20-round drum', short: 'DRUM 20', category: 'mod', w: 2, h: 2, weight: 1.2, value: 38000, rarity: 4,
+    mod: { slot: 'mag', ids: ['saiga12'], magSize: 20, reloadMul: 1.4, ergo: 0.95 } },
 
   // ── Melee ────────────────────────────────────────────────
   { id: 'knife', name: 'Kitchen knife', short: 'KNIFE', category: 'melee', w: 1, h: 2, weight: 0.2, value: 3000, rarity: 1,

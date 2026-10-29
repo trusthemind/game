@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { create } from 'zustand';
+import { useModder, WeaponModder } from './WeaponModder';
 import {
   footprint,
   getDef,
@@ -187,7 +188,8 @@ export function ItemTile({ item, cell, hidden, src, style, fit }: TileProps) {
       onDoubleClick={() => host.onDoubleClick?.(item, src)}
       onContextMenu={(e) => {
         e.preventDefault();
-        const actions = host.menu?.(item, src) ?? [];
+        const actions = [...(host.menu?.(item, src) ?? [])];
+        if (getDef(item.def).weapon) actions.unshift({ label: 'Modify…', run: () => useModder.getState().open(src) });
         if (actions.length) useMenu.getState().open(actions, e.clientX, e.clientY);
       }}
     >
@@ -418,6 +420,7 @@ export function InventoryRoot({ host, version, children }: { host: InvHost; vers
       <DragLayer />
       <ItemTooltip />
       <ContextMenu />
+      <WeaponModder />
     </InvContext.Provider>
   );
 }
