@@ -82,6 +82,16 @@ export function RaidEnd() {
             )}
           </div>
         )}
+        {(summary.taskNotes ?? []).length > 0 && (
+          <div className="end-loot">
+            <div className="dim small">Task progress</div>
+            {summary.taskNotes.map((n) => (
+              <div key={n} className="small good">
+                {n}
+              </div>
+            ))}
+          </div>
+        )}
         {!survived && (
           <div className="end-loot">
             <div className="dim small">

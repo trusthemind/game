@@ -136,6 +136,10 @@ export interface RaidResult {
   graveVisited: boolean;
   /** Uids of items picked up during the raid that the player carried out. */
   loot?: string[];
+  mapId?: string;
+  killLog?: { archetype: string; bossId?: string }[];
+  lootedKinds?: string[];
+  visited?: ('heli' | 'airdrop')[];
   valueIn: number;
   valueOut: number;
   xp: number;
@@ -211,6 +215,12 @@ export class Raid {
   private accumulator = 0;
   private valueIn: number;
   private killsBy: Record<string, number> = {};
+  /** What the player killed (for tasks). */
+  private readonly killLog: { archetype: string; bossId?: string }[] = [];
+  /** Container kinds the player opened (each container counted once). */
+  private readonly looted = new Map<number, string>();
+  /** Event sites the player reached. */
+  private readonly visited = new Set<'heli' | 'airdrop'>();
   private metNpcs = new Set<string>();
   private deadNpcs = new Set<string>();
   private scratch: Actor[] = [];
@@ -422,6 +432,7 @@ export class Raid {
         this.emit({ t: 'msg', text: 'Airdrop inbound — green smoke marks the drop zone (see map)', tone: 'info' });
       }
     }
+    for (const ev of this.mapEvents) if (Math.hypot(ev.x - this.player.pos.x, ev.y - this.player.pos.y) < 9) this.visited.add(ev.kind);
     for (const ev of this.mapEvents) {
       if (ev.kind !== 'airdrop' || ev.landed || this.time - ev.at < AIRDROP_FALL) continue;
       ev.landed = true;
@@ -954,7 +965,8 @@ export class Raid {
       killer.kills++;
       if (killer === this.player) {
         this.killsBy[a.archetype] = (this.killsBy[a.archetype] ?? 0) + 1;
-        this.emit({ t: 'msg', text: `Killed ${a.name}`, tone: 'good' });
+        this.killLog.push({ archetype: a.archetype, ...(a.bossId ? { bossId: a.bossId } : {}) });
+        this.emit({ t: 'msg', text: a.bossId ? `${a.name} is down!` : `Killed ${a.name}`, tone: 'good' });
       }
     }
     if (a.npcId) {
@@ -1303,6 +1315,7 @@ export class Raid {
       const c = this.container(target.id);
       if (!c) return false;
       this.ensureGenerated(c);
+      this.looted.set(c.id, c.kind);
       // Opening makes a little noise (drawers creak, zombies hear it).
       this.makeNoise(c.x + 0.5, c.y + 0.5, 3, this.player.id, 'step');
     } else if (!this.corpse(target.id)) return false;
@@ -1440,6 +1453,10 @@ export class Raid {
       valueOut,
       xp,
       companion: comp?.npcId ? { npcId: comp.npcId, alive: comp.alive, eq: comp.alive ? comp.eq : null } : null,
+      mapId: this.map.mapId,
+      killLog: [...this.killLog],
+      lootedKinds: [...this.looted.values()],
+      visited: [...this.visited],
       metNpcs: [...this.metNpcs],
       deadNpcs: [...this.deadNpcs],
     };

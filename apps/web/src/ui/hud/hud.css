@@ -85,3 +85,9 @@
 
 .world-menu { min-width: 190px; }
 .ctx-title { font-family: var(--font-head); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); padding: 4px 10px 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+
+.hud-tasks { margin: 6px 0 4px; display: flex; flex-direction: column; gap: 2px; color: #e9d9a8; opacity: .9; }
+
+.first-hints { position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); padding: 10px 14px; z-index: 30; pointer-events: none; max-width: 92vw; }
+.first-hints .hint-grid { display: grid; grid-template-columns: repeat(3, auto); gap: 4px 18px; margin-top: 6px; }
+@media (max-width: 800px) { .first-hints .hint-grid { grid-template-columns: 1fr; } }

@@ -1,5 +1,10 @@
 import {
   Tile,
+  TASKS,
+  levelFromXp,
+  objectiveProgress,
+  objectiveTarget,
+  taskUnlocked,
   effectiveWeapon,
   BODY_PARTS,
   inPain,
@@ -41,6 +46,24 @@ export interface SessionOptions {
 }
 
 /** Builds the raid's starting state from the persistent profile: gear, companion, possible NPC encounters. */
+/** One line per unfinished objective that this raid can advance (kills, extracts, loot, sites). */
+function trackedTasks(profile: Profile, mapId: string): string[] {
+  const level = levelFromXp(profile.xp).level;
+  const out: string[] = [];
+  for (const t of TASKS) {
+    const st = profile.tasks?.[t.id];
+    if (st?.claimed || !taskUnlocked(profile, t, level)) continue;
+    t.objectives.forEach((o, i) => {
+      if (o.kind === 'handover') return;
+      if ((o.kind === 'kill' || o.kind === 'extract') && o.map && o.map !== mapId) return;
+      const v = objectiveProgress(o, st?.progress[i] ?? 0);
+      const max = objectiveTarget(o);
+      if (v < max) out.push(`${o.text} ${v}/${max}`);
+    });
+  }
+  return out.slice(0, 4);
+}
+
 export function raidFromProfile(profile: Profile, seed: number, mapId: MapId = 'outskirts', timeOfDay?: 'day' | 'dusk' | 'night'): Raid {
   const rng = new Rng(seed ^ 0xabcdef);
   const encounters: RaidNpcSpawn[] = [];
@@ -85,6 +108,8 @@ export class GameSession {
   private lastInv = -1;
   private onResize = () => this.renderer.resize();
   private menuActions: (() => void)[] = [];
+  /** Open task objectives that can progress on this map (snapshot at deploy). */
+  private trackedTasks: string[] = [];
   /** Click-to-walk (from the context menu): path target, how close is close enough, and what to do there. */
   private autoWalk: { x: number; y: number; range: number; then: (() => void) | null; path: { x: number; y: number }[]; repath: number; t: number } | null = null;
 
@@ -96,6 +121,7 @@ export class GameSession {
     audio.setVolume(opts.profile.settings.volume ?? 0.7);
     audio.unlock();
     audio.startAmbience(this.raid.timeOfDay, this.raid.rain);
+    this.trackedTasks = trackedTasks(opts.profile, this.raid.map.mapId);
     window.addEventListener('pointerdown', this.onGesture);
     window.addEventListener('keydown', this.onGesture);
   }
@@ -484,6 +510,7 @@ export class GameSession {
       timeLeft: Math.max(0, raid.timeLimit - raid.time),
       extract: raid.extractProgress,
       extractName: ex?.name ?? '',
+      tasks: this.trackedTasks,
       extractions: [
         ...raid.map.extractions.map((e) => ({ name: e.name, dist: Math.hypot(e.x - p.pos.x, e.y - p.pos.y), angle: Math.atan2(e.y - p.pos.y, e.x - p.pos.x), kind: 'exit' as const })),
         ...raid.corpses

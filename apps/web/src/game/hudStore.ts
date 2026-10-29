@@ -25,6 +25,7 @@ export interface HudState {
   timeLeft: number;
   extract: number;
   extractName: string;
+  tasks: string[];
   extractions: { name: string; dist: number; angle: number; kind: 'exit' | 'grave' | 'event' }[];
   interact: Interactable | null;
   crouch: boolean;

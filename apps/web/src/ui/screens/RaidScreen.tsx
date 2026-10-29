@@ -117,6 +117,45 @@ function finishRaid(result: RaidResult) {
   useApp.getState().finishRaid(result, summary!);
 }
 
+/** Key hints for the very first raid; fades out after a minute or on H. */
+function FirstRaidHints() {
+  const first = useProfile((s) => (s.profile?.stats.raids ?? 1) === 0);
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    if (!first) return;
+    const t = setTimeout(() => setOn(false), 60_000);
+    const k = (e: KeyboardEvent) => e.code === 'KeyH' && setOn((v) => !v);
+    window.addEventListener('keydown', k);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('keydown', k);
+    };
+  }, [first]);
+  if (!first || !on) return null;
+  return (
+    <div className="first-hints panel-lite fade-in">
+      <div className="h small">First raid · H to hide</div>
+      <div className="hint-grid small">
+        {[
+          ['WASD', 'move'],
+          ['Shift', 'sprint'],
+          ['C', 'crouch (quieter, harder to spot)'],
+          ['Hold RMB', 'aim — much more accurate'],
+          ['LMB', 'fire · R reload · 1/2/3 weapons'],
+          ['E', 'search / loot / climb windows'],
+          ['Quick RMB', 'actions on anything you click'],
+          ['Tab', 'inventory · Q heal · V eat/drink'],
+          ['M', 'map — find a green exit and stay in it'],
+        ].map(([k, v]) => (
+          <div key={k}>
+            <span className="kbd">{k}</span> {v}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RaidOverlays({ session }: { session: GameSession }) {
   const overlay = useRaidUi((s) => s.overlay);
   const showPerf = useRaidUi((s) => s.showPerf);
@@ -125,6 +164,7 @@ function RaidOverlays({ session }: { session: GameSession }) {
       <Hud session={session} />
       <Crosshair hidden={!!overlay} />
       <WorldMenu session={session} />
+      <FirstRaidHints />
       {showPerf && <PerfOverlay />}
       {(overlay === 'inventory' || overlay === 'loot') && <InventoryOverlay session={session} />}
       {overlay === 'dialogue' && <RaidDialogue session={session} />}

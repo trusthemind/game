@@ -5,6 +5,7 @@ import { Rng } from './core/rng';
 import { INITIAL_AFFINITY, NPCS } from './dialogue/npcs';
 import { newRelationship, type Relationship } from './dialogue/types';
 import type { Difficulty, Grave, RaidResult } from './sim/raid';
+import { applyRaidToTasks, type TaskState } from './tasks';
 
 export const PROFILE_VERSION = 3;
 
@@ -58,6 +59,8 @@ export interface Profile {
   look: PlayerLook;
   /** Your body + gear from the last death, waiting on that map for one recovery raid (Easy/Normal). */
   grave: Grave | null;
+  /** Task progress by task id. */
+  tasks: Record<string, TaskState>;
 }
 
 export function createProfile(name = 'Survivor', id = randomId(), look: PlayerLook = DEFAULT_LOOK): Profile {
@@ -85,6 +88,7 @@ export function createProfile(name = 'Survivor', id = randomId(), look: PlayerLo
     settings: { quality: 'auto', showPerf: false, volume: 0.7, difficulty: 'normal' },
     look: { ...look },
     grave: null,
+    tasks: {},
   };
 }
 
@@ -160,6 +164,8 @@ export interface RaidSummary {
   moneyFromItems: number;
   /** Loot moved from your gear into the stash (stash full → it stays on your gear). */
   toStash: ItemInstance[];
+  /** Task progress made this raid. */
+  taskNotes: string[];
 }
 
 /** Fold a finished raid back into the persistent profile. */
@@ -220,12 +226,15 @@ export function applyRaidResult(profile: Profile, result: RaidResult): RaidSumma
       for (const p of [...g.items]) {
         if (!loot.has(p.item.uid)) continue;
         removeItem(g, p.item.uid);
+        // Carried out alive: it counts as found in raid (task hand-ins need that).
+        p.item.fir = true;
         if (addItem(profile.stash, p.item)) toStash.push(p.item);
         else g.items.push(p); // stash full: keep it where it was
       }
   }
+  const taskNotes = applyRaidToTasks(profile, result, levelFromXp(profile.xp).level);
   profile.updatedAt = Date.now();
-  return { xpGained: result.xp, levelBefore, levelAfter: levelFromXp(profile.xp).level, moneyFromItems, toStash };
+  return { xpGained: result.xp, levelBefore, levelAfter: levelFromXp(profile.xp).level, moneyFromItems, toStash, taskNotes };
 }
 
 /** True when the player has no weapon at all anywhere — they get a free survivor kit (every 10 min) to avoid a soft-lock. */

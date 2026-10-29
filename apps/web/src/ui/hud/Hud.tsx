@@ -20,6 +20,15 @@ export function Hud({ session }: { session: GameSession }) {
           {TOD[hud.timeOfDay]}
           {hud.rain ? ' · Rain' : ''} · Kills {hud.kills}
         </div>
+        {hud.tasks.length > 0 && (
+          <div className="hud-tasks">
+            {hud.tasks.map((t) => (
+              <div key={t} className="small">
+                ◆ {t}
+              </div>
+            ))}
+          </div>
+        )}
         <div className="exits">
           {hud.extractions.map((e) => (
             <div key={e.name} className={`exit ${e.kind}`}>
