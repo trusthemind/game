@@ -42,6 +42,7 @@ export function gridFromEquipment(eq: Equipment | null, part: string): GridConta
   if (part === 'pockets') return eq.pockets;
   if (part === 'rig') return eq.slots.rig?.grid ?? null;
   if (part === 'backpack') return eq.slots.backpack?.grid ?? null;
+  if (part === 'secure') return eq.slots.secure?.grid ?? null;
   return null;
 }
 

@@ -8,6 +8,7 @@ export type Category =
   | 'helmet'
   | 'rig'
   | 'backpack'
+  | 'secure'
   | 'med'
   | 'food'
   | 'drink'
@@ -151,6 +152,10 @@ const defs: ItemDef[] = [
   { id: 'r_mbss', name: 'Belt-A chest rig', short: 'BELT-A', category: 'rig', w: 2, h: 2, weight: 0.6, value: 18000, rarity: 2, grid: { w: 4, h: 2 } },
   { id: 'r_alpha', name: 'Alpha tactical rig', short: 'ALPHA', category: 'rig', w: 3, h: 3, weight: 0.9, value: 46000, rarity: 3, grid: { w: 5, h: 2 } },
   { id: 'r_bank', name: 'Bankrobber rig', short: 'BANK', category: 'rig', w: 3, h: 3, weight: 1.1, value: 88000, rarity: 4, grid: { w: 6, h: 3 } },
+  // Secure containers: whatever is inside survives death. Can't hold other containers.
+  { id: 'sc_alpha', name: 'Secure container Alpha', short: 'ALPHA', category: 'secure', w: 2, h: 2, weight: 0.6, value: 45000, rarity: 3, grid: { w: 2, h: 2 } },
+  { id: 'sc_beta', name: 'Secure container Beta', short: 'BETA', category: 'secure', w: 2, h: 3, weight: 0.8, value: 160000, rarity: 4, grid: { w: 3, h: 2 } },
+  { id: 'sc_gamma', name: 'Secure container Gamma', short: 'GAMMA', category: 'secure', w: 3, h: 3, weight: 1.1, value: 520000, rarity: 5, grid: { w: 3, h: 3 } },
   { id: 'b_sling', name: 'Sling bag', short: 'SLING', category: 'backpack', w: 2, h: 2, weight: 0.5, value: 7000, rarity: 1, grid: { w: 3, h: 2 } },
   { id: 'b_daypack', name: 'Day pack', short: 'DAYPACK', category: 'backpack', w: 3, h: 3, weight: 1.0, value: 21000, rarity: 2, grid: { w: 4, h: 4 } },
   { id: 'b_pilgrim', name: 'Pilgrim tourist backpack', short: 'PILGRIM', category: 'backpack', w: 4, h: 4, weight: 2.0, value: 54000, rarity: 3, grid: { w: 5, h: 6 } },

@@ -31,10 +31,12 @@ export interface GridContainer {
   items: Placed[];
   /** The stash is the only grid that may hold rigs/backpacks that still have things inside. */
   stash?: boolean;
+  /** Secure container grid: no containers inside it. */
+  secure?: boolean;
 }
 
-export type Slot = 'primary' | 'secondary' | 'melee' | 'helmet' | 'armor' | 'rig' | 'backpack';
-export const SLOTS: readonly Slot[] = ['primary', 'secondary', 'melee', 'helmet', 'armor', 'rig', 'backpack'];
+export type Slot = 'primary' | 'secondary' | 'melee' | 'helmet' | 'armor' | 'rig' | 'backpack' | 'secure';
+export const SLOTS: readonly Slot[] = ['primary', 'secondary', 'melee', 'helmet', 'armor', 'rig', 'backpack', 'secure'];
 
 export interface Equipment {
   slots: Record<Slot, ItemInstance | null>;
@@ -52,6 +54,7 @@ export function createItem(defId: string, opts: Partial<Omit<ItemInstance, 'def'
   const item: ItemInstance = { uid: newUid(), def: defId, stack: 1, ...opts };
   if (def.armor && item.dur === undefined) item.dur = def.armor.durability;
   if (def.grid && !item.grid) item.grid = createGrid(def.grid.w, def.grid.h);
+  if (def.category === 'secure' && item.grid) item.grid.secure = true;
   if (def.weapon && item.ammo === undefined) item.ammo = 0;
   if (def.med && item.uses === undefined) item.uses = def.med.resource || def.med.uses;
   if (def.stackMax) item.stack = Math.min(Math.max(1, item.stack), def.stackMax);
@@ -60,7 +63,7 @@ export function createItem(defId: string, opts: Partial<Omit<ItemInstance, 'def'
 
 export function createEquipment(): Equipment {
   return {
-    slots: { primary: null, secondary: null, melee: null, helmet: null, armor: null, rig: null, backpack: null },
+    slots: { primary: null, secondary: null, melee: null, helmet: null, armor: null, rig: null, backpack: null, secure: null },
     pockets: createGrid(4, 1),
   };
 }
@@ -74,6 +77,7 @@ export function canPlace(grid: GridContainer, item: ItemInstance, x: number, y: 
   const { w, h } = footprint(item, rot);
   if (x < 0 || y < 0 || x + w > grid.w || y + h > grid.h) return false;
   if (!grid.stash && item.grid && item.grid.items.length > 0) return false;
+  if (grid.secure && (item.grid || getDef(item.def).category === 'secure')) return false;
   for (const p of grid.items) {
     if (p.item.uid === ignoreUid) continue;
     const f = footprint(p.item);
@@ -154,6 +158,8 @@ export function slotAccepts(slot: Slot, def: ItemDef): boolean {
       return def.category === 'rig';
     case 'backpack':
       return def.category === 'backpack';
+    case 'secure':
+      return def.category === 'secure';
   }
 }
 
@@ -162,6 +168,7 @@ export function carryGrids(eq: Equipment): GridContainer[] {
   const out = [eq.pockets];
   if (eq.slots.rig?.grid) out.push(eq.slots.rig.grid);
   if (eq.slots.backpack?.grid) out.push(eq.slots.backpack.grid);
+  if (eq.slots.secure?.grid) out.push(eq.slots.secure.grid);
   return out;
 }
 

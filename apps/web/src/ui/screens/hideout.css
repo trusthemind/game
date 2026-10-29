@@ -86,3 +86,5 @@
 .seg { display: flex; border: 1px solid var(--line-2); border-radius: 4px; overflow: hidden; }
 .seg button { flex: 1; padding: 7px 4px; border: 0; background: transparent; cursor: pointer; font-size: 11px; text-transform: capitalize; color: var(--text-dim); }
 .seg button.on { background: rgba(214,167,74,.15); color: var(--accent-2); }
+
+.warn { color: #e0b050; }

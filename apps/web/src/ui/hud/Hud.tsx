@@ -22,7 +22,7 @@ export function Hud({ session }: { session: GameSession }) {
         </div>
         <div className="exits">
           {hud.extractions.map((e) => (
-            <div key={e.name} className="exit">
+            <div key={e.name} className={`exit ${e.kind === 'grave' ? 'grave' : ''}`}>
               <span className="arrow" style={{ transform: `rotate(${e.angle}rad)` }}>➜</span>
               <span>{e.name}</span>
               <span className="mono dim">{Math.round(e.dist)}m</span>

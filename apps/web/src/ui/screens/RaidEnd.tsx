@@ -82,6 +82,14 @@ export function RaidEnd() {
             )}
           </div>
         )}
+        {!survived && (
+          <div className="end-loot">
+            <div className="dim small">
+              Secure container kept · {result.secure?.grid?.items.length ?? 0} item{(result.secure?.grid?.items.length ?? 0) === 1 ? '' : 's'}
+            </div>
+            {profile.grave && result.deathAt && <p className="warn small">Your body is still out there. Deploy to the same map to recover your gear — one attempt.</p>}
+          </div>
+        )}
         {result.companion && (
           <p className={result.companion.alive ? 'good' : 'bad'}>
             {result.companion.alive ? 'Your companion made it out with you.' : 'Your companion did not make it.'}

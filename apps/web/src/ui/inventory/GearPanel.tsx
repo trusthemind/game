@@ -32,11 +32,17 @@ export function GearPanel({ owner, cell = 48, title, compact = false }: { owner:
             <EquipSlot owner={owner} slot="rig" w={2} h={2} cell={cell} />
             <EquipSlot owner={owner} slot="backpack" w={2} h={2} cell={cell} />
           </div>
+          {!owner.startsWith('corpse:') && (
+            <div className="row">
+              <EquipSlot owner={owner} slot="secure" w={2} h={2} cell={cell} />
+            </div>
+          )}
         </div>
         <div className="gear-grids">
           <ItemGrid gridId={`${owner}:pockets`} cell={cell} label="Pockets" />
           {eq.slots.rig && <ItemGrid gridId={`${owner}:rig`} cell={cell} label={`Rig`} />}
           {eq.slots.backpack && <ItemGrid gridId={`${owner}:backpack`} cell={cell} label="Backpack" />}
+          {eq.slots.secure && !owner.startsWith('corpse:') && <ItemGrid gridId={`${owner}:secure`} cell={cell} label="Secure container · kept on death" />}
         </div>
       </div>
     </div>

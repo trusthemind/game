@@ -281,6 +281,21 @@ export class GameRenderer {
     this.updateFog(dt);
     if (this.frameNo % 3 === 0) updateRoofs(this.roofs, raid.map, p.pos.x, p.pos.y, raid.playerFov, raid.explored, dt * 3);
 
+    // Pre-placed bodies (your grave from the last death).
+    for (const c of raid.corpses) {
+      if (c.actorId >= 0) continue;
+      const existing = this.views.get(-1000 - c.id);
+      if (existing) {
+        existing.updateCorpse(dt, raid.explored[raid.map.idx(Math.floor(c.pos.x), Math.floor(c.pos.y))] === 1);
+        continue;
+      }
+      const v = new CharacterView(this.lib, this.playerLook, this.uniforms, this.preset.shadows);
+      v.syncGear(c.eq, c.eq.slots.primary ? 'primary' : 'secondary');
+      v.toCorpse(c, true);
+      this.views.set(-1000 - c.id, v);
+      this.scene.add(v.root);
+    }
+
     // Actors.
     for (const a of raid.actors) {
       let v = this.views.get(a.id);

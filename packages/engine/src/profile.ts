@@ -4,9 +4,9 @@ import { getDef } from './items/defs';
 import { Rng } from './core/rng';
 import { INITIAL_AFFINITY, NPCS } from './dialogue/npcs';
 import { newRelationship, type Relationship } from './dialogue/types';
-import type { RaidResult } from './sim/raid';
+import type { Difficulty, Grave, RaidResult } from './sim/raid';
 
-export const PROFILE_VERSION = 2;
+export const PROFILE_VERSION = 3;
 
 export interface ProfileStats {
   raids: number;
@@ -22,6 +22,7 @@ export interface Settings {
   quality: 'auto' | 'low' | 'medium' | 'high';
   showPerf: boolean;
   volume: number;
+  difficulty: Difficulty;
 }
 
 /** Player character look (rendering only; persisted so you see the same survivor everywhere). */
@@ -55,6 +56,8 @@ export interface Profile {
   lastFreeKit: number;
   settings: Settings;
   look: PlayerLook;
+  /** Your body + gear from the last death, waiting on that map for one recovery raid (Easy/Normal). */
+  grave: Grave | null;
 }
 
 export function createProfile(name = 'Survivor', id = randomId(), look: PlayerLook = DEFAULT_LOOK): Profile {
@@ -79,8 +82,9 @@ export function createProfile(name = 'Survivor', id = randomId(), look: PlayerLo
     companion: null,
     companionEq: {},
     lastFreeKit: 0,
-    settings: { quality: 'auto', showPerf: false, volume: 0.7 },
+    settings: { quality: 'auto', showPerf: false, volume: 0.7, difficulty: 'normal' },
     look: { ...look },
+    grave: null,
   };
 }
 
@@ -99,7 +103,19 @@ export function migrateProfile(raw: unknown): Profile {
     out.version = 2;
   }
   for (const id of Object.keys(NPCS)) out.npcs[id] ??= { ...newRelationship(), affinity: INITIAL_AFFINITY[id] ?? 0 };
-  out.settings ??= { quality: 'auto', showPerf: false, volume: 0.7 };
+  out.settings ??= { quality: 'auto', showPerf: false, volume: 0.7, difficulty: 'normal' };
+  if (out.version < 3) {
+    // v2 → v3: secure container slot, difficulty, death grave.
+    out.equipment.slots.secure ??= null;
+    for (const eq of Object.values(out.companionEq ?? {})) eq.slots.secure ??= null;
+    const hasSecure = !!out.equipment.slots.secure || out.stash.items.some((p) => getDef(p.item.def).category === 'secure');
+    if (!hasSecure) out.equipment.slots.secure = createItem('sc_alpha');
+    out.settings.difficulty ??= 'normal';
+    out.grave ??= null;
+    out.version = 3;
+  }
+  out.settings.difficulty ??= 'normal';
+  out.grave ??= null;
   out.rev ??= 0;
   out.look ??= { ...DEFAULT_LOOK };
   return out;
@@ -162,6 +178,11 @@ export function applyRaidResult(profile: Profile, result: RaidResult): RaidSumma
     else profile.stats.mia++;
     profile.equipment = createEquipment();
   }
+  // The secure container always comes home, with whatever is inside.
+  if (result.secure) profile.equipment.slots.secure = result.secure;
+  // Recovery grave: one attempt. Visiting the map uses it up; a new death replaces it.
+  if (result.graveVisited) profile.grave = null;
+  if (result.deathAt && (profile.settings.difficulty ?? 'normal') !== 'hard') profile.grave = { ...result.deathAt };
   profile.xp += result.xp;
   if (result.companion) {
     const rel = profile.npcs[result.companion.npcId];

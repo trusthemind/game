@@ -147,6 +147,7 @@ export function starterKit(): Equipment {
   eq.slots.secondary = createItem('pm', { ammo: 8, ammoType: 'a_9x18' });
   eq.slots.melee = createItem('knife');
   eq.slots.rig = createItem('r_scav');
+  eq.slots.secure = createItem('sc_alpha');
   addItem(eq.slots.rig.grid!, createItem('a_9x18', { stack: 40 }));
   addItem(eq.pockets, createItem('bandage'));
   addItem(eq.pockets, createItem('ai2'));

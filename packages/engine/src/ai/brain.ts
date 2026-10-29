@@ -45,7 +45,8 @@ export class BotBrain {
   lastSeenAt = -999;
   investigatePos: Vec2 | null = null;
 
-  readonly skill: number;
+  skill: number;
+  private reactMul = 1;
   readonly courage: number;
   private thinkT: number;
   private home: Vec2 | null = null;
@@ -93,6 +94,12 @@ export class BotBrain {
       this.thinkT = interval;
     }
     this.act(raid, a, dt);
+  }
+
+  /** Difficulty: slower/faster reactions and an accuracy offset. */
+  tune(reactMul: number, skillAdd: number): void {
+    this.reactMul = reactMul;
+    this.skill = Math.max(0.05, Math.min(0.95, this.skill + skillAdd));
   }
 
   onDamaged(raid: Raid, a: Actor, attacker: Actor): void {
@@ -159,7 +166,7 @@ export class BotBrain {
         this.detect += dt * (0.3 + near * near * 3.2) * (this.alerted ? 1.8 : 1);
       }
       if (already || this.detect >= 1) {
-        if (!already) this.reactT = (0.55 + this.rng.range(0, 0.6)) * (1.5 - this.skill);
+        if (!already) this.reactT = (0.55 + this.rng.range(0, 0.6)) * (1.5 - this.skill) * this.reactMul;
         this.targetId = best.id;
         this.targetVisible = true;
         this.lastKnown = { ...best.pos };

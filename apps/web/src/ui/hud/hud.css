@@ -77,3 +77,6 @@
 .reserve-line { display: flex; gap: 6px; align-items: baseline; }
 .reserve-line .mono { font-size: 15px; color: var(--text); }
 .hint { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+
+.exit.grave { color: #e0b050; }
+.exit.grave .arrow { color: #e0b050; }

@@ -51,7 +51,17 @@ export function raidFromProfile(profile: Profile, seed: number, mapId: MapId = '
   const compId = profile.companion;
   const compRel = compId ? profile.npcs[compId] : undefined;
   const companion = compId && compRel && !compRel.dead ? { npcId: compId, name: NPCS[compId]?.name ?? compId, eq: structuredClone(companionLoadout(profile, compId)) } : null;
-  return new Raid({ seed, mapId, timeOfDay, playerEq: structuredClone(profile.equipment), playerName: profile.name, companion, encounters });
+  return new Raid({
+    seed,
+    mapId,
+    timeOfDay,
+    playerEq: structuredClone(profile.equipment),
+    playerName: profile.name,
+    companion,
+    encounters,
+    difficulty: profile.settings.difficulty ?? 'normal',
+    grave: profile.grave ? structuredClone(profile.grave) : null,
+  });
 }
 
 /**
@@ -369,7 +379,12 @@ export class GameSession {
       timeLeft: Math.max(0, raid.timeLimit - raid.time),
       extract: raid.extractProgress,
       extractName: ex?.name ?? '',
-      extractions: raid.map.extractions.map((e) => ({ name: e.name, dist: Math.hypot(e.x - p.pos.x, e.y - p.pos.y), angle: Math.atan2(e.y - p.pos.y, e.x - p.pos.x) })),
+      extractions: [
+        ...raid.map.extractions.map((e) => ({ name: e.name, dist: Math.hypot(e.x - p.pos.x, e.y - p.pos.y), angle: Math.atan2(e.y - p.pos.y, e.x - p.pos.x), kind: 'exit' as const })),
+        ...raid.corpses
+          .filter((c) => c.actorId < 0)
+          .map((c) => ({ name: 'Your body', dist: Math.hypot(c.pos.x - p.pos.x, c.pos.y - p.pos.y), angle: Math.atan2(c.pos.y - p.pos.y, c.pos.x - p.pos.x), kind: 'grave' as const })),
+      ],
       interact: this.interact,
       crouch: p.crouching,
       flashlight: p.flashlight,

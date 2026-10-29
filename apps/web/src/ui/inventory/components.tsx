@@ -273,6 +273,7 @@ const SLOT_LABEL: Record<Slot, string> = {
   armor: 'Body armor',
   rig: 'Tactical rig',
   backpack: 'Backpack',
+  secure: 'Secure',
 };
 
 export function EquipSlot({ owner, slot, w = 2, h = 2, cell = 52 }: { owner: string; slot: Slot; w?: number; h?: number; cell?: number }) {

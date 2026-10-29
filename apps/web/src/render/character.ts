@@ -755,7 +755,8 @@ export class CharacterView {
     return this.held.localToWorld(new THREE.Vector3(0, 0, this.heldLen / 2));
   }
 
-  toCorpse(c: Corpse): void {
+  /** `settled`: skip the fall (bodies that were already lying there when the raid started). */
+  toCorpse(c: Corpse, settled = false): void {
     if (this.dead) return;
     this.dead = true;
     this.root.position.set(c.pos.x, 0, c.pos.y);
@@ -766,6 +767,11 @@ export class CharacterView {
     this.lower = null;
     this.lowerName = '';
     this.playOneShot('Death01', 'full', 1.1);
+    const fall = this.oneShot as THREE.AnimationAction | null;
+    if (settled && fall) {
+      fall.time = fall.getClip().duration;
+      this.mixer.update(0.2);
+    }
     this.oneShotT = Infinity;
     for (const m of this.bodyMeshes) m.material = bodyMaterial(this.look, this.u, true);
     if (this.held && this.heldKind === 'gun') {

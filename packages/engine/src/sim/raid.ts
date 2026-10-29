@@ -85,13 +85,37 @@ export interface RaidOptions {
   timeOfDay?: TimeOfDay;
   /** Pre-generated map (lets the client reuse a cached map for the same seed). */
   map?: GameMap;
+  difficulty?: Difficulty;
+  /** Your body from the last death on this map (Normal/Easy): loot it back once. */
+  grave?: Grave | null;
 }
+
+export type Difficulty = 'easy' | 'normal' | 'hard';
+export interface Grave {
+  mapId: string;
+  x: number;
+  y: number;
+  eq: Equipment;
+}
+
+/** Enemy toughness / damage / reaction-time multipliers and accuracy offset per difficulty. */
+export const DIFFICULTY: Record<Difficulty, { botHp: number; botDamage: number; react: number; skill: number; grave: boolean; label: string; blurb: string }> = {
+  easy: { botHp: 0.8, botDamage: 0.6, react: 1.45, skill: -0.1, grave: true, label: 'Easy', blurb: 'Weaker, slower enemies. Your body (with your gear) waits for you after death.' },
+  normal: { botHp: 1, botDamage: 1, react: 1, skill: 0, grave: true, label: 'Normal', blurb: 'Fair fights. After death your body stays on that map for one recovery raid.' },
+  hard: { botHp: 1.15, botDamage: 1.3, react: 0.8, skill: 0.08, grave: false, label: 'Hard', blurb: 'Tarkov rules: tougher enemies, die and everything you carried is gone.' },
+};
 
 export interface RaidResult {
   status: RaidStatus;
   duration: number;
   kills: Record<string, number>;
   playerEq: Equipment | null;
+  /** The secure container comes home no matter what. */
+  secure: ItemInstance | null;
+  /** Where you died (for the recovery grave). */
+  deathAt: { mapId: string; x: number; y: number; eq: Equipment } | null;
+  /** True when this raid's map had your grave (the recovery attempt is used up). */
+  graveVisited: boolean;
   /** Uids of items picked up during the raid that the player carried out. */
   loot?: string[];
   valueIn: number;
@@ -143,6 +167,8 @@ export class Raid {
 
   time = 0;
   readonly timeLimit: number;
+  readonly difficulty: Difficulty;
+  private readonly hadGrave: boolean;
   /** Uids the player brought in — anything else carried out is loot. */
   private readonly startUids = new Set<string>();
   status: RaidStatus = 'active';
@@ -190,6 +216,13 @@ export class Raid {
     this.player.flashlight = this.timeOfDay !== 'day';
     this.player.facing = Math.atan2(this.map.height / 2 - sp.y, this.map.width / 2 - sp.x);
     this.valueIn = equipmentValue(opts.playerEq);
+    this.difficulty = opts.difficulty ?? 'normal';
+    this.hadGrave = !!opts.grave && opts.grave.mapId === this.map.mapId;
+    if (this.hadGrave) {
+      const g = opts.grave!;
+      this.corpses.push({ id: this.nextCorpseId++, actorId: -1, name: 'Your body', faction: 'player', pos: { x: g.x, y: g.y }, facing: 0, eq: g.eq });
+      this.emit({ t: 'msg', text: 'Your body is still out here — check the map', tone: 'info' });
+    }
     for (const it of allItems(opts.playerEq)) this.startUids.add(it.uid);
 
     if (opts.companion) {
@@ -279,13 +312,15 @@ export class Raid {
       archetype: arch,
       x,
       y,
-      hp: st.hp,
+      hp: st.hp * (arch === 'infected' ? 1 : DIFFICULTY[this.difficulty].botHp),
       speed: st.speed * rng.range(0.94, 1.06),
       eq: generateLoadout(arch, rng.fork(`l${this.nextId}`), tier),
     });
     if (arch === 'infected') a.natural = { damage: 13, cooldown: 1.05, reach: 0.65, bleedChance: 0.35 };
     const role: BrainRole = arch === 'infected' ? 'infected' : arch === 'boss' || arch === 'guard' ? 'guard' : 'bot';
     a.brain = new BotBrain(role, rng.fork(`b${a.id}`), leader);
+    const diff = DIFFICULTY[this.difficulty];
+    a.brain.tune(diff.react, diff.skill);
     a.facing = rng.range(-Math.PI, Math.PI);
     return a;
   }
@@ -749,6 +784,7 @@ export class Raid {
     y: number,
   ): void {
     if (!target.alive) return;
+    if (target === this.player && attacker.brain && !attacker.companion) res = { ...res, damage: res.damage * DIFFICULTY[this.difficulty].botDamage };
     const armor = armorFor(zone, target.eq.slots);
     if (armor && res.armorDamage > 0) armor.dur = Math.max(0, (armor.dur ?? 0) - res.armorDamage);
     target.lastHitAt = this.time;
@@ -1179,6 +1215,10 @@ export class Raid {
       duration: this.time,
       kills,
       playerEq: survived ? this.player.eq : null,
+      secure: this.player.eq.slots.secure ?? null,
+      deathAt:
+        this.status === 'dead' ? { mapId: this.map.mapId, x: this.player.pos.x, y: this.player.pos.y, eq: { ...this.player.eq, slots: { ...this.player.eq.slots, secure: null } } } : null,
+      graveVisited: this.hadGrave,
       loot: survived ? allItems(this.player.eq).filter((it) => !this.startUids.has(it.uid)).map((it) => it.uid) : [],
       valueIn: this.valueIn,
       valueOut,

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   buy,
+  DIFFICULTY,
   buyPrice,
   canClaimFreeKit,
   equipmentValue,
@@ -497,12 +498,31 @@ function DeployModal({ onClose }: { onClose(): void }) {
               </div>
             </div>
             <div>
+              <div className="dim small">Difficulty</div>
+              <div className="seg">
+                {(['easy', 'normal', 'hard'] as const).map((d) => (
+                  <button key={d} className={(profile.settings.difficulty ?? 'normal') === d ? 'on' : ''} onClick={() => useProfile.getState().mutate((p) => (p.settings.difficulty = d))}>
+                    {DIFFICULTY[d].label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
               <div className="dim small">Zone seed</div>
               <input className="input mono" value={seed} onChange={(e) => setSeed(Number(e.target.value.replace(/\D/g, '')) || 0)} />
             </div>
           </div>
           {!armed && <p className="bad small">You have no firearm equipped. A knife won't stop a raider.</p>}
-          <p className="dim small">Find an extraction point and stay inside it to leave. Die or run out of time and everything you carry is lost.</p>
+          {profile.grave && (
+            <p className="warn small">
+              Your body (with {fmt(equipmentValue(profile.grave.eq))} ₵ of gear) is lying in <b>{MAP_PRESETS[profile.grave.mapId as MapId]?.name ?? profile.grave.mapId}</b>. Deploy
+              there to recover it — one try only.
+            </p>
+          )}
+          <p className="dim small">
+            {DIFFICULTY[profile.settings.difficulty ?? 'normal'].blurb} Find an extraction point and stay inside it to leave. Items in your secure container always come
+            home.
+          </p>
           <button
             className="btn primary"
             onClick={() => {
