@@ -55,7 +55,7 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
         if (p && !hair.has(p.name)) hair.set(p.name, sm);
       });
       const clips = new Map<string, THREE.AnimationClip>();
-      for (const c of character.animations) clips.set(c.name, c);
+      for (const c of character.animations) clips.set(c.name, stripRootMotion(c));
       for (const g of [weapons, melee, props, nature, mods])
         g.scene.traverse((o) => {
           if ((o as THREE.Mesh).isMesh) o.castShadow = true;
@@ -66,4 +66,28 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
   );
   pending.catch(() => (pending = null));
   return pending;
+}
+
+/**
+ * Root-motion clips (`*_RM`) move the hips forward on their own; the sim already moves the actor. Keep the
+ * vertical hump of the pelvis (local Z is up on this rig) but remove the net climb, so a window vault
+ * goes up and over and lands back on the ground.
+ */
+function stripRootMotion(clip: THREE.AnimationClip): THREE.AnimationClip {
+  if (!clip.name.endsWith('_RM')) return clip;
+  for (const t of clip.tracks) {
+    if (t.name !== 'pelvis.position') continue;
+    const v = t.values;
+    const n = v.length / 3;
+    const x0 = v[0]!;
+    const y0 = v[1]!;
+    const z0 = v[2]!;
+    const rise = v[v.length - 1]! - z0;
+    for (let i = 0; i < n; i++) {
+      v[i * 3] = x0;
+      v[i * 3 + 1] = y0;
+      v[i * 3 + 2] -= rise * (i / Math.max(1, n - 1));
+    }
+  }
+  return clip;
 }

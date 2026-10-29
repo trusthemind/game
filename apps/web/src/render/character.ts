@@ -803,6 +803,11 @@ export class CharacterView {
     this.playOneShot('Consume', 'upper', 1.2);
   }
 
+  /** Climbing through a window. */
+  vaulting(): void {
+    this.playOneShot('ClimbUp_1m_RM', 'full', 1.25);
+  }
+
   /** Rummaging through a container or body. */
   searching(): void {
     this.playOneShot('PickUp_Table', 'upper', 1.1);

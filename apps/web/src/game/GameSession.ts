@@ -84,6 +84,9 @@ export class GameSession {
   private ended = false;
   private lastInv = -1;
   private onResize = () => this.renderer.resize();
+  private menuActions: (() => void)[] = [];
+  /** Click-to-walk (from the context menu): path target, how close is close enough, and what to do there. */
+  private autoWalk: { x: number; y: number; range: number; then: (() => void) | null; path: { x: number; y: number }[]; repath: number; t: number } | null = null;
 
   constructor(private opts: SessionOptions) {
     this.raid = raidFromProfile(opts.profile, opts.seed, opts.mapId, opts.timeOfDay);
@@ -135,6 +138,14 @@ export class GameSession {
         case 'impact':
           audio.impact(e.x, e.y, e.material);
           break;
+        case 'glass':
+          audio.glass(e.x, e.y);
+          break;
+        case 'vault': {
+          const a = raid.actorById(e.actor);
+          if (a) audio.step(a.id, 'wood', a.pos.x, a.pos.y, 1.2, a.id === pid);
+          break;
+        }
         case 'used':
           if (e.actor === pid) audio.meds();
           break;
@@ -173,11 +184,14 @@ export class GameSession {
       this.input.wheel = 0;
     }
 
+    for (const c of this.input.contextClicks.splice(0)) if (!ui.overlay && raid.status === 'active') this.openWorldMenu(c);
+
     const intent = this.input.poll();
     const aim = this.renderer.screenToWorld(this.input.mouseNdc.x, this.input.mouseNdc.y);
     intent.aimX = aim.x;
     intent.aimY = aim.y;
-    if (ui.overlay) intent.fire = intent.firePressed = false;
+    if (ui.overlay || ui.worldMenu) intent.fire = intent.firePressed = false;
+    this.steerAutoWalk(intent, dt, !!ui.overlay);
 
     const t0 = performance.now();
     if (!this.paused) raid.advance(dt, intent);
@@ -332,7 +346,96 @@ export class GameSession {
         npc.vel.x = npc.vel.y = this.raid.player.vel.x = this.raid.player.vel.y = 0;
       }
       useRaidUi.setState({ overlay: 'dialogue', dialogueActor: target.id });
+    } else if (target.kind === 'window') {
+      this.raid.vault(this.raid.player, target.id);
     }
+  }
+
+  // ── Right-click world menu & click-to-walk ─────────────────────────────────
+
+  private openWorldMenu(c: { x: number; y: number; ndcX: number; ndcY: number }): void {
+    const raid = this.raid;
+    const p = raid.player;
+    const w = this.renderer.screenToWorld(c.ndcX, c.ndcY);
+    const opts: { label: string; run: () => void }[] = [];
+    let title = 'Here';
+    const go = (x: number, y: number, range: number, then: (() => void) | null) => {
+      if (Math.hypot(x - p.pos.x, y - p.pos.y) <= range) then?.();
+      else this.autoWalk = { x, y, range, then, path: [], repath: 0, t: 0 };
+    };
+    if (Math.hypot(w.x - p.pos.x, w.y - p.pos.y) < 0.7) {
+      title = 'You';
+      opts.push({ label: 'Treat wounds (Q)', run: () => this.input.queueAction('heal') });
+      opts.push({ label: 'Eat or drink (V)', run: () => this.input.queueAction('eat') });
+      opts.push({ label: 'Open inventory', run: () => this.openOverlay('inventory') });
+      opts.push({ label: p.flashlight ? 'Flashlight off' : 'Flashlight on', run: () => (p.flashlight = !p.flashlight) });
+      opts.push({ label: p.crouching ? 'Stand up' : 'Crouch', run: () => this.input.toggleCrouch() });
+    } else {
+      const near = raid.interactablesAt(w.x, w.y, 1.1);
+      const t = near[0];
+      if (t) {
+        title = t.label;
+        const r = 1.5;
+        if (t.kind === 'container') opts.push({ label: t.searched ? 'Open' : 'Search', run: () => go(t.x, t.y, r, () => this.interactWith(t)) });
+        if (t.kind === 'corpse') opts.push({ label: 'Loot body', run: () => go(t.x, t.y, r, () => this.interactWith(t)) });
+        if (t.kind === 'npc') opts.push({ label: `Talk to ${t.label}`, run: () => go(t.x, t.y, 2, () => this.interactWith(t)) });
+        if (t.kind === 'window') {
+          opts.push({ label: 'Climb through', run: () => go(t.x, t.y, 1.25, () => raid.vault(p, t.id)) });
+          if (!t.broken) opts.push({ label: 'Smash the glass', run: () => go(t.x, t.y, 1.4, () => raid.breakGlass(t.id, p)) });
+        }
+        if (t.kind === 'extract') opts.push({ label: `Walk to ${t.label}`, run: () => go(t.x, t.y, 1, null) });
+      }
+      if (raid.map.isWalkable(Math.floor(w.x), Math.floor(w.y))) opts.push({ label: 'Walk here', run: () => go(w.x, w.y, 0.4, null) });
+    }
+    if (!opts.length) return;
+    this.menuActions = opts.map((o) => o.run);
+    useRaidUi.setState({ worldMenu: { x: c.x, y: c.y, title, options: opts.map((o) => o.label) } });
+  }
+
+  pickWorldMenu(i: number | null): void {
+    const run = i === null ? null : this.menuActions[i];
+    useRaidUi.setState({ worldMenu: null });
+    this.menuActions = [];
+    run?.();
+  }
+
+  private steerAutoWalk(intent: { moveX: number; moveY: number; sprint: boolean }, dt: number, blocked: boolean): void {
+    const w = this.autoWalk;
+    if (!w) return;
+    const p = this.raid.player;
+    // Any movement key (or dying, or taking too long) cancels it.
+    if (this.input.moving || !p.alive || (w.t += dt) > 30) {
+      this.autoWalk = null;
+      return;
+    }
+    if (blocked) return;
+    if (Math.hypot(w.x - p.pos.x, w.y - p.pos.y) <= w.range) {
+      this.autoWalk = null;
+      w.then?.();
+      return;
+    }
+    w.repath -= dt;
+    if (w.repath <= 0 || !w.path.length) {
+      w.repath = 1;
+      // Copy: the pathfinder caches and shares its arrays.
+      w.path = [...(this.raid.pathfinder.find(Math.floor(p.pos.x), Math.floor(p.pos.y), Math.floor(w.x), Math.floor(w.y)) ?? [])];
+      if (!w.path.length && Math.hypot(w.x - p.pos.x, w.y - p.pos.y) > 1.5) {
+        this.autoWalk = null;
+        useRaidUi.getState().pushMessage("Can't find a way there", 'bad');
+        return;
+      }
+    }
+    let next = w.path[0] ?? { x: w.x, y: w.y };
+    if (Math.hypot(next.x - p.pos.x, next.y - p.pos.y) < 0.35 && w.path.length) {
+      w.path.shift();
+      next = w.path[0] ?? { x: w.x, y: w.y };
+    }
+    const dx = next.x - p.pos.x;
+    const dy = next.y - p.pos.y;
+    const l = Math.hypot(dx, dy) || 1;
+    intent.moveX = dx / l;
+    intent.moveY = dy / l;
+    intent.sprint = false;
   }
 
   openOverlay(o: 'inventory' | 'pause' | 'map'): void {

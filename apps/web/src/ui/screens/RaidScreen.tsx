@@ -8,6 +8,7 @@ import { api } from '../../state/api';
 import { detectQuality, type QualityLevel } from '../../render/quality';
 import { loadAssets } from '../../render/assets';
 import { Hud } from '../hud/Hud';
+import { WorldMenu } from '../hud/WorldMenu';
 import { Minimap } from '../hud/Minimap';
 import { DialogueBox } from '../components/DialogueBox';
 import { raidDialogueHost } from '../dialogueHosts';
@@ -123,6 +124,7 @@ function RaidOverlays({ session }: { session: GameSession }) {
     <>
       <Hud session={session} />
       <Crosshair hidden={!!overlay} />
+      <WorldMenu session={session} />
       {showPerf && <PerfOverlay />}
       {(overlay === 'inventory' || overlay === 'loot') && <InventoryOverlay session={session} />}
       {overlay === 'dialogue' && <RaidDialogue session={session} />}

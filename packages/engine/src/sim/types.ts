@@ -70,6 +70,10 @@ export interface Actor {
   sprinting: boolean;
   /** Ran out of stamina: no sprinting until it recovers. */
   winded: boolean;
+  /** Climbing through a window: seconds left and the path. */
+  vaultT: number;
+  vaultFrom: Vec2 | null;
+  vaultTo: Vec2 | null;
   /** Currently aiming (player holds aim, or recently fired). */
   aiming: boolean;
   flashlight: boolean;
@@ -121,7 +125,9 @@ export type RaidEvent =
   | { t: 'used'; actor: number; item: string }
   | { t: 'msg'; text: string; tone?: 'info' | 'good' | 'bad' }
   | { t: 'extracted' }
-  | { t: 'died' };
+  | { t: 'died' }
+  | { t: 'vault'; actor: number }
+  | { t: 'glass'; x: number; y: number; idx: number };
 
 export function hostile(a: Faction, b: Faction): boolean {
   if (a === b) return false;

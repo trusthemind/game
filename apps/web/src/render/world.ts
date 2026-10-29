@@ -47,6 +47,8 @@ export interface WorldMeshes {
   containers: THREE.InstancedMesh;
   containerIndex: Map<number, number>;
   extractionBeams: THREE.Mesh[];
+  /** Hide the pane of a smashed window (map tile index). */
+  breakGlass(idx: number): void;
   materials: THREE.Material[];
   dispose(): void;
 }
@@ -146,7 +148,9 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
   const boxes: Box[] = [];
   type Piece = { x0: number; z0: number; x1: number; z1: number; y0: number; y1: number; b: number };
   const wallPieces: Piece[] = [];
-  const glassPieces: { x: number; z: number; horiz: boolean }[] = [];
+  const glassPieces: { x: number; z: number; horiz: boolean; idx: number }[] = [];
+  let glassMesh: THREE.InstancedMesh | null = null;
+  const glassIndex = new Map<number, number>();
   const pushPieces = (x: number, y: number, y0: number, y1: number) => {
     const b = map.buildingAt[map.idx(x, y)]!;
     for (const [bx0, by0, bx1, by1] of solidBoxes(map, x, y, boxes)) wallPieces.push({ x0: bx0, z0: by0, x1: bx1, z1: by1, y0, y1, b });
@@ -155,7 +159,7 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
   for (const [x, y, horiz] of windows) {
     pushPieces(x, y, 0, 0.85);
     pushPieces(x, y, WALL_H - 0.35, WALL_H);
-    glassPieces.push({ x: x + 0.5, z: y + 0.5, horiz });
+    glassPieces.push({ x: x + 0.5, z: y + 0.5, horiz, idx: map.idx(x, y) });
   }
   // Walls are static: one merged mesh with world-scaled UVs (no stretched texture) and per-building vertex colour.
   const wallMat = mat(new THREE.MeshStandardMaterial({ map: getTexture('plaster'), roughness: 0.95, vertexColors: true }), 'wall');
@@ -213,8 +217,10 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
       q.setFromAxisAngle(v.set(0, 1, 0), gp.horiz ? 0 : Math.PI / 2);
       m4.compose(v.set(gp.x, 1.3, gp.z), q, sc.set(1, 1, 1));
       glass.setMatrixAt(i, m4);
+      glassIndex.set(gp.idx, i);
     });
     group.add(glass);
+    glassMesh = glass;
   }
 
   // ── Fences.
@@ -351,6 +357,12 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
     containerIndex,
     extractionBeams,
     materials,
+    breakGlass(idx) {
+      const i = glassIndex.get(idx);
+      if (!glassMesh || i === undefined) return;
+      glassMesh.setMatrixAt(i, m4.makeScale(0, 0, 0));
+      glassMesh.instanceMatrix.needsUpdate = true;
+    },
     dispose() {
       for (const g of geometries) g.dispose();
       for (const m of materials) m.dispose();

@@ -48,6 +48,13 @@ export class Input {
   private aimDown = false;
   private crouch = false;
   private disposers: (() => void)[] = [];
+  private rmb: { t: number; x: number; y: number } | null = null;
+  /** Quick right clicks since last frame (screen + NDC coordinates). */
+  contextClicks: { x: number; y: number; ndcX: number; ndcY: number }[] = [];
+  /** True while any movement key is held (cancels auto-walk). */
+  get moving(): boolean {
+    return ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].some((k) => this.keys.has(k));
+  }
 
   constructor(private el: HTMLElement) {
     const on = <K extends keyof WindowEventMap>(t: K, fn: (e: WindowEventMap[K]) => void, opts?: AddEventListenerOptions) => {
@@ -76,7 +83,10 @@ export class Input {
     });
     const down = (e: MouseEvent) => {
       if (!this.enabled) return;
-      if (e.button === 2) this.aimDown = true;
+      if (e.button === 2) {
+        this.aimDown = true;
+        this.rmb = { t: performance.now(), x: e.clientX, y: e.clientY };
+      }
       if (e.button !== 0) return;
       this.mouseDown = true;
       this.intent.firePressed = true;
@@ -85,7 +95,16 @@ export class Input {
     this.disposers.push(() => el.removeEventListener('mousedown', down));
     on('mouseup', (e) => {
       if (e.button === 0) this.mouseDown = false;
-      if (e.button === 2) this.aimDown = false;
+      if (e.button === 2) {
+        this.aimDown = false;
+        // A quick right click (not a hold-to-aim) opens the world context menu.
+        const r = this.rmb;
+        this.rmb = null;
+        if (r && performance.now() - r.t < 230 && Math.hypot(e.clientX - r.x, e.clientY - r.y) < 8) {
+          const rect = this.el.getBoundingClientRect();
+          this.contextClicks.push({ x: e.clientX, y: e.clientY, ndcX: ((e.clientX - rect.left) / rect.width) * 2 - 1, ndcY: -((e.clientY - rect.top) / rect.height) * 2 + 1 });
+        }
+      }
     });
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -116,6 +135,11 @@ export class Input {
     // Hold right mouse (or ctrl+click on a trackpad) to aim.
     it.aim = this.aimDown || k.has('ControlLeft') || k.has('AltLeft');
     return it;
+  }
+
+  /** Queue an action as if its key had been pressed (context menu). */
+  queueAction(a: Action): void {
+    this.queue.push(a);
   }
 
   toggleCrouch(): void {

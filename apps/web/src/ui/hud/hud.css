@@ -82,3 +82,6 @@
 .exit.grave .arrow { color: #e0b050; }
 .exit.event { color: #ff9a5a; }
 .exit.event .arrow { color: #ff9a5a; }
+
+.world-menu { min-width: 190px; }
+.ctx-title { font-family: var(--font-head); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); padding: 4px 10px 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }

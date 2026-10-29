@@ -49,6 +49,8 @@ interface RaidUiState {
   showPerf: boolean;
   perf: { fps: number; ms: number; p99: number; sim: number; render: number; calls: number; tris: number; scale: number; actors: number; pathHit: number } | null;
   messages: { id: number; text: string; tone?: 'info' | 'good' | 'bad' }[];
+  /** Right-click world menu (screen position + option labels; the session holds the callbacks). */
+  worldMenu: { x: number; y: number; title: string; options: string[] } | null;
   setHud(h: HudState): void;
   setOverlay(o: Overlay): void;
   bumpInv(): void;
@@ -66,6 +68,7 @@ export const useRaidUi = create<RaidUiState>((set) => ({
   showPerf: false,
   perf: null,
   messages: [],
+  worldMenu: null,
   setHud: (hud) => set({ hud }),
   setOverlay: (overlay) => set({ overlay }),
   bumpInv: () => set((s) => ({ invVersion: s.invVersion + 1 })),

@@ -257,6 +257,13 @@ export class GameRenderer {
           break;
         case 'used':
           break;
+        case 'vault':
+          this.views.get(e.actor)?.vaulting();
+          break;
+        case 'glass':
+          this.world.breakGlass(e.idx);
+          this.effects.burst(e.x, e.y, 18, 'spark');
+          break;
         case 'impact':
           this.effects.burst(e.x, e.y, 6, 'spark');
           this.effects.burst(e.x, e.y, 4, 'dust');

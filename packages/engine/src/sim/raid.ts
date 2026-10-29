@@ -149,10 +149,12 @@ export type Interactable =
   | { kind: 'container'; id: number; label: string; x: number; y: number; searched: boolean }
   | { kind: 'corpse'; id: number; label: string; x: number; y: number }
   | { kind: 'npc'; id: number; npcId: string; label: string; x: number; y: number }
-  | { kind: 'extract'; id: number; label: string; x: number; y: number };
+  | { kind: 'extract'; id: number; label: string; x: number; y: number }
+  | { kind: 'window'; id: number; label: string; x: number; y: number; broken: boolean };
 
 const FIXED_DT = 1 / 60;
-const INTERACT_RANGE = 1.7;
+export const INTERACT_RANGE = 1.7;
+export const VAULT_TIME = 0.95;
 const EXTRACT_TIME = 6;
 
 const ARCH_STATS: Record<BotArchetype, { hp: number; speed: number; faction: Faction; names: string[] }> = {
@@ -204,6 +206,8 @@ export class Raid {
   private nextId = 1;
   private nextCorpseId = 1;
   private nextEventId = 1;
+  /** Window tiles whose glass has been smashed. */
+  readonly brokenGlass = new Set<number>();
   private accumulator = 0;
   private valueIn: number;
   private killsBy: Record<string, number> = {};
@@ -313,6 +317,9 @@ export class Raid {
       crouching: false,
       sprinting: false,
       winded: false,
+      vaultT: 0,
+      vaultFrom: null,
+      vaultTo: null,
       flashlight: false,
       lastHitAt: -999,
       lastAttacker: null,
@@ -538,6 +545,16 @@ export class Raid {
 
   private updateActor(a: Actor, dt: number): void {
     const it = a.intent;
+    if (a.vaultT > 0 && a.vaultFrom && a.vaultTo) {
+      a.vaultT = Math.max(0, a.vaultT - dt);
+      const t = 1 - a.vaultT / VAULT_TIME;
+      const e = t * t * (3 - 2 * t);
+      a.pos.x = a.vaultFrom.x + (a.vaultTo.x - a.vaultFrom.x) * e;
+      a.pos.y = a.vaultFrom.y + (a.vaultTo.y - a.vaultFrom.y) * e;
+      a.vel.x = a.vel.y = 0;
+      if (a.vaultT <= 0) a.vaultFrom = a.vaultTo = null;
+      return;
+    }
 
     // Status effects: bleeding, regeneration, painkillers.
     if (tickHealth(a.health, dt) > 0 || a.health.regenT > 0) this.syncHealth(a);
@@ -805,6 +822,7 @@ export class Raid {
       this.applyHit(best, a, res, zone, false, ex, ey);
     } else if (blocked) {
       const tile = this.map.get(Math.floor(ex + dx * 0.08), Math.floor(ey + dy * 0.08));
+      if (tile === Tile.Window) this.breakGlass(this.map.idx(Math.floor(ex + dx * 0.08), Math.floor(ey + dy * 0.08)), a);
       const material = tile === Tile.Window ? 'glass' : tile === Tile.Tree || tile === Tile.Wood ? 'wood' : tile === Tile.Car || tile === Tile.Fence ? 'metal' : 'ground';
       this.emit({ t: 'impact', x: ex, y: ey, material });
       this.makeNoise(ex, ey, 3, a.id, 'impact');
@@ -1168,7 +1186,101 @@ export class Raid {
         best = { kind: 'npc', id: a.id, npcId: a.npcId, label: `Talk to ${a.name}`, x: a.pos.x, y: a.pos.y };
       }
     }
+    return best ?? this.windowNear(this.player);
+  }
+
+  /** Everything you could interact with around a world point (for the right-click menu), nearest first. */
+  interactablesAt(x: number, y: number, r = 1.2): Interactable[] {
+    const out: { d: number; it: Interactable }[] = [];
+    for (const c of this.map.containers) {
+      const d = Math.hypot(c.x + 0.5 - x, c.y + 0.5 - y);
+      if (d < r) out.push({ d, it: { kind: 'container', id: c.id, label: CONTAINERS[c.kind].label, x: c.x + 0.5, y: c.y + 0.5, searched: c.searched } });
+    }
+    for (const c of this.corpses) {
+      const d = Math.hypot(c.pos.x - x, c.pos.y - y);
+      if (d < r) out.push({ d, it: { kind: 'corpse', id: c.id, label: c.name, x: c.pos.x, y: c.pos.y } });
+    }
+    for (const a of this.actors) {
+      if (!a.alive || !a.npcId) continue;
+      const d = Math.hypot(a.pos.x - x, a.pos.y - y);
+      if (d < r) out.push({ d, it: { kind: 'npc', id: a.id, npcId: a.npcId, label: a.name, x: a.pos.x, y: a.pos.y } });
+    }
+    for (let ty = Math.floor(y - r); ty <= Math.floor(y + r); ty++)
+      for (let tx = Math.floor(x - r); tx <= Math.floor(x + r); tx++) {
+        if (this.map.get(tx, ty) !== Tile.Window) continue;
+        const d = Math.hypot(tx + 0.5 - x, ty + 0.5 - y);
+        const idx = this.map.idx(tx, ty);
+        if (d < r) out.push({ d, it: { kind: 'window', id: idx, label: 'Window', x: tx + 0.5, y: ty + 0.5, broken: this.brokenGlass.has(idx) } });
+      }
+    for (const e of this.map.extractions) {
+      const d = Math.hypot(e.x - x, e.y - y);
+      if (d < e.radius + 0.5) out.push({ d: d + 1, it: { kind: 'extract', id: e.id, label: e.name, x: e.x, y: e.y } });
+    }
+    return out.sort((a, b) => a.d - b.d).map((o) => o.it);
+  }
+
+  // ── Windows ─────────────────────────────────────────────────────────────────
+
+  /** Window tile the actor can climb through right now (adjacent, facing roughly towards it, room behind). */
+  windowNear(a: Actor): Interactable | null {
+    const tx = Math.floor(a.pos.x);
+    const ty = Math.floor(a.pos.y);
+    let best: Interactable | null = null;
+    let bestScore = -Infinity;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const wx = tx + dx;
+      const wy = ty + dy;
+      if (this.map.get(wx, wy) !== Tile.Window || !this.map.isWalkable(wx + dx, wy + dy)) continue;
+      const d = Math.hypot(wx + 0.5 - a.pos.x, wy + 0.5 - a.pos.y);
+      if (d > 1.25) continue;
+      const score = Math.cos(Math.atan2(dy, dx) - a.facing) - d;
+      if (score > bestScore) {
+        bestScore = score;
+        const idx = this.map.idx(wx, wy);
+        best = { kind: 'window', id: idx, label: this.brokenGlass.has(idx) ? 'Climb through window' : 'Climb through window (glass)', x: wx + 0.5, y: wy + 0.5, broken: this.brokenGlass.has(idx) };
+      }
+    }
     return best;
+  }
+
+  /** Smash the glass of a window tile (loud). */
+  breakGlass(idx: number, by: Actor): void {
+    if (this.brokenGlass.has(idx)) return;
+    this.brokenGlass.add(idx);
+    const x = (idx % this.map.width) + 0.5;
+    const y = Math.floor(idx / this.map.width) + 0.5;
+    this.emit({ t: 'glass', x, y, idx });
+    this.makeNoise(x, y, 16, by.id, 'impact');
+  }
+
+  /** Start climbing through the window `idx` (must be adjacent). Unbroken glass gets smashed and may cut you. */
+  vault(a: Actor, idx: number): boolean {
+    if (a.vaultT > 0 || a.useT > 0) return false;
+    const wx = idx % this.map.width;
+    const wy = Math.floor(idx / this.map.width);
+    if (this.map.get(wx, wy) !== Tile.Window) return false;
+    const dx = Math.sign(wx + 0.5 - a.pos.x);
+    const dy = Math.sign(wy + 0.5 - a.pos.y);
+    const horiz = Math.abs(wx + 0.5 - a.pos.x) > Math.abs(wy + 0.5 - a.pos.y);
+    const to = horiz ? { x: wx + 0.5 + dx, y: wy + 0.5 } : { x: wx + 0.5, y: wy + 0.5 + dy };
+    if (!this.map.isWalkable(Math.floor(to.x), Math.floor(to.y))) return false;
+    if (Math.hypot(wx + 0.5 - a.pos.x, wy + 0.5 - a.pos.y) > 1.4) return false;
+    if (!this.brokenGlass.has(idx)) {
+      this.breakGlass(idx, a);
+      if (this.rng.chance(0.35)) {
+        const arm = this.rng.chance(0.5) ? 'leftArm' : 'rightArm';
+        a.health.parts[arm].light = true;
+        if (a === this.player) this.emit({ t: 'msg', text: 'Cut yourself on the glass', tone: 'bad' });
+      }
+    }
+    a.vaultT = VAULT_TIME;
+    a.vaultFrom = { ...a.pos };
+    a.vaultTo = to;
+    a.facing = Math.atan2(to.y - a.pos.y, to.x - a.pos.x);
+    a.reloadT = 0;
+    this.emit({ t: 'vault', actor: a.id });
+    this.makeNoise(a.pos.x, a.pos.y, 5, a.id, 'step');
+    return true;
   }
 
   container(id: number): LootContainer | null {

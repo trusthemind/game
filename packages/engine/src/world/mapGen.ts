@@ -534,10 +534,11 @@ function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, 
   return b;
 }
 
+/** A straight stretch of exterior wall with open ground on both sides (so a window can be climbed through). */
 function isStraightWall(map: GameMap, x: number, y: number, horizontal: boolean): boolean {
   return horizontal
-    ? map.get(x - 1, y) === Tile.Wall && map.get(x + 1, y) === Tile.Wall && !map.isSolid(x, y - 1) !== !map.isSolid(x, y + 1)
-    : map.get(x, y - 1) === Tile.Wall && map.get(x, y + 1) === Tile.Wall && !map.isSolid(x - 1, y) !== !map.isSolid(x + 1, y);
+    ? map.get(x - 1, y) === Tile.Wall && map.get(x + 1, y) === Tile.Wall && !map.isSolid(x, y - 1) && !map.isSolid(x, y + 1)
+    : map.get(x, y - 1) === Tile.Wall && map.get(x, y + 1) === Tile.Wall && !map.isSolid(x - 1, y) && !map.isSolid(x + 1, y);
 }
 
 function splitRooms(map: GameMap, r: Rect, rng: Rng, out: Rect[], min: number, floor: Tile): void {
