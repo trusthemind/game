@@ -16,10 +16,11 @@ export function MainMenu() {
       <Ash />
       <div className="menu-inner fade-in">
         <div className="title">
+          <div className="region">ZAVADSK OBLAST · EXCLUSION ZONE · 2031</div>
           <div className="h logo">
             ASH<span>FALL</span>
           </div>
-          <div className="subtitle h">Extraction · Survival · Loot</div>
+          <div className="subtitle h">Get in. Get loot. Get out.</div>
         </div>
         <div className="menu-actions">
           {profile && !naming && (
@@ -88,7 +89,7 @@ function Ash() {
     const c = ref.current!;
     const g = c.getContext('2d')!;
     let raf = 0;
-    const parts = Array.from({ length: 140 }, () => ({ x: Math.random(), y: Math.random(), r: Math.random() * 2 + 0.4, v: Math.random() * 0.02 + 0.006, d: Math.random() * 6 }));
+    const parts = Array.from({ length: 50 }, () => ({ x: Math.random(), y: Math.random(), r: Math.random() * 2 + 0.4, v: Math.random() * 0.02 + 0.006, d: Math.random() * 6 }));
     const resize = () => {
       c.width = window.innerWidth * devicePixelRatio;
       c.height = window.innerHeight * devicePixelRatio;
@@ -108,8 +109,8 @@ function Ash() {
           p.y = -0.02;
           p.x = Math.random();
         }
-        g.globalAlpha = 0.25 + (p.r / 2.4) * 0.4;
-        g.fillStyle = p.r > 1.9 ? '#d6a74a' : '#a8a89c';
+        g.globalAlpha = 0.15 + (p.r / 2.4) * 0.3;
+        g.fillStyle = '#b4b6ac';
         g.beginPath();
         g.arc(p.x * c.width, p.y * c.height, p.r * devicePixelRatio, 0, Math.PI * 2);
         g.fill();

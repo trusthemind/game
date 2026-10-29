@@ -7,8 +7,10 @@ import {
   createItem,
   createProfile,
   farmReady,
+  itemNeeds,
   RECIPES,
   STATIONS,
+  TASKS,
   stashCount,
   startCraft,
   stationLevel,
@@ -86,5 +88,22 @@ describe('hideout', () => {
     const base = traderDiscount(p);
     p.hideout.levels.intel = 2;
     expect(traderDiscount(p)).toBeCloseTo(base + 0.1, 5);
+  });
+
+  it('lists what an item is still needed for', () => {
+    const p = createProfile('T');
+    const wires = itemNeeds(p, 'wires');
+    // A task hand-over (found in raid only) and several level-1 stations.
+    expect(wires.some((n) => n.label.startsWith('Task') && n.fir && n.count === 2)).toBe(true);
+    expect(wires.some((n) => n.label === 'Stash L1' && !n.fir)).toBe(true);
+    expect(wires.some((n) => n.label.startsWith('Craft'))).toBe(false);
+    // Once a task is claimed it stops asking.
+    const task = TASKS.find((t) => t.objectives.some((o) => o.kind === 'handover' && o.item === 'wires'))!;
+    p.tasks[task.id] = { progress: task.objectives.map(() => 0), claimed: true };
+    expect(itemNeeds(p, 'wires').some((n) => n.label.startsWith('Task'))).toBe(false);
+    // Crafts show up only for built stations.
+    p.hideout.levels.workbench = 1;
+    expect(itemNeeds(p, 'bolts').some((n) => n.label.startsWith('Craft'))).toBe(true);
+    expect(itemNeeds(p, 'pm')).toEqual([]);
   });
 });

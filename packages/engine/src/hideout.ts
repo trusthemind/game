@@ -1,6 +1,7 @@
 import { addItem, createItem, removeItem, type GridContainer } from './items/inventory';
 import { getDef } from './items/defs';
 import type { Profile } from './profile';
+import { TASKS } from './tasks';
 
 /**
  * The base between raids (Tarkov hideout / Duckov bunker): stations you build with loot and credits.
@@ -217,3 +218,38 @@ export function collectFarm(p: Profile, now = Date.now()): number {
 
 /** Trader price cut from the intelligence center. */
 export const intelDiscount = (p: Profile) => stationLevel(p, 'intel') * 0.05;
+
+export interface ItemNeed {
+  /** Where it's needed, e.g. "Task · Wired" or "Workbench L2". */
+  label: string;
+  count: number;
+  /** Tasks only take found-in-raid items. */
+  fir: boolean;
+}
+
+/**
+ * Everything still waiting for this item: open task hand-overs, the next level of each station and the
+ * crafts you can run. Shown in the item inspector so loot decisions mean something.
+ */
+export function itemNeeds(p: Profile, id: string): ItemNeed[] {
+  const out: ItemNeed[] = [];
+  for (const t of TASKS) {
+    const st = p.tasks?.[t.id];
+    if (st?.claimed) continue;
+    t.objectives.forEach((o, i) => {
+      if (o.kind !== 'handover' || o.item !== id) return;
+      const left = o.count - (st?.progress[i] ?? 0);
+      if (left > 0) out.push({ label: `Task · ${t.title}`, count: left, fir: true });
+    });
+  }
+  for (const s of STATIONS) {
+    const lvl = s.levels[stationLevel(p, s.id)];
+    const n = lvl?.items.find(([it]) => it === id)?.[1];
+    if (n) out.push({ label: `${s.name} L${stationLevel(p, s.id) + 1}`, count: n, fir: false });
+  }
+  for (const r of RECIPES) {
+    const n = r.inputs.find(([it]) => it === id)?.[1];
+    if (n && stationLevel(p, r.station) >= r.level) out.push({ label: `Craft · ${getDef(r.output[0]).name}`, count: n, fir: false });
+  }
+  return out;
+}

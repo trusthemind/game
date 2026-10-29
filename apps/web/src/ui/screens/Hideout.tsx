@@ -22,6 +22,7 @@ import { useProfile } from '../../state/profileStore';
 import { api } from '../../state/api';
 import { DropZoneBox, InventoryRoot, ItemGrid } from '../inventory/components';
 import { GearPanel } from '../inventory/GearPanel';
+import { ItemInspector } from '../inventory/ItemInspector';
 import { makeProfileHost } from '../inventory/hosts';
 import { CategoryIcon } from '../inventory/icons';
 import { DialogueBox } from '../components/DialogueBox';
@@ -149,6 +150,7 @@ function GearTab() {
           <ItemGrid gridId="stash" cell={50} maxHeight={window.innerHeight - 190} />
         </div>
       </section>
+      <ItemInspector />
     </div>
   );
 }

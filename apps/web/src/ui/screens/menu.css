@@ -1,17 +1,20 @@
-.menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: flex-start; padding: 0 9vw;
-  background:
-    radial-gradient(900px 500px at 75% 60%, rgba(214,120,40,.18), transparent 70%),
-    radial-gradient(700px 400px at 80% 70%, rgba(120,40,20,.25), transparent 70%),
-    linear-gradient(180deg, #0b0d0c 0%, #141210 60%, #1c140e 100%);
-}
+.menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: flex-start; padding: 0 9vw; overflow: hidden; background: #0b0d0c; }
+/* A real frame from the game (rain over Zavadsk Outskirts), drifting slowly. */
+.menu::before { content: ''; position: absolute; inset: -4%; background: url('/menu-bg.webp') center / cover no-repeat;
+  filter: saturate(.85) brightness(1.05); animation: drift 60s ease-in-out infinite alternate; }
 .menu::after { content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: repeating-linear-gradient(0deg, rgba(255,255,255,.012) 0 1px, transparent 1px 3px); }
+  background:
+    linear-gradient(90deg, rgba(8,10,9,.96) 0%, rgba(8,10,9,.88) 28%, rgba(8,10,9,.3) 62%, rgba(8,10,9,.05) 100%),
+    radial-gradient(120% 90% at 70% 50%, transparent 55%, rgba(0,0,0,.6) 100%); }
+@keyframes drift { from { transform: scale(1) translate(0, 0); } to { transform: scale(1.06) translate(-1.5%, 1%); } }
+@media (prefers-reduced-motion: reduce) { .menu::before { animation: none; } }
 .ash { position: absolute; inset: 0; width: 100%; height: 100%; }
 .skyline { position: absolute; left: 0; right: 0; bottom: 0; height: 38vh; opacity: .9; }
 .menu-inner { position: relative; z-index: 2; display: flex; flex-direction: column; gap: 44px; max-width: 520px; }
-.logo { font-size: clamp(64px, 10vw, 128px); font-weight: 700; letter-spacing: .14em; line-height: .9; color: #e8e4d8; text-shadow: 0 0 60px rgba(214,167,74,.25); }
+.logo { font-size: clamp(64px, 10vw, 128px); font-weight: 700; letter-spacing: .1em; line-height: .9; color: #e8e4d8; text-shadow: 0 2px 0 rgba(0,0,0,.6); }
 .logo span { color: var(--accent); }
-.subtitle { margin-top: 14px; color: var(--text-dim); letter-spacing: .45em; font-size: 13px; }
+.subtitle { margin-top: 16px; color: var(--text-dim); letter-spacing: .2em; font-size: 13px; }
+.region { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); letter-spacing: .08em; margin-bottom: 14px; }
 .menu-actions { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
 .big-btn { padding: 14px 22px; font-size: 15px; justify-content: flex-start; }
 .name-form { display: flex; gap: 8px; flex-wrap: wrap; }

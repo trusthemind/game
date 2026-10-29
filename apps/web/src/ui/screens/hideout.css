@@ -128,3 +128,14 @@
 .recipe.locked { opacity: .5; }
 .craft-job { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; padding: 6px 8px; background: rgba(214,167,74,.07); border-radius: 3px; }
 .craft-job .bar { grid-column: 1 / -1; height: 4px; }
+
+.inspector { flex: 1 1 260px; min-width: 240px; max-width: 360px; align-self: stretch; max-height: 100%; overflow: auto; }
+.inspector-empty { margin: 0; line-height: 1.5; }
+.inspector-art { display: flex; align-items: center; justify-content: center; height: 170px; margin: 14px 14px 0; border-bottom: 2px solid;
+  background: repeating-linear-gradient(135deg, rgba(255,255,255,.018) 0 6px, transparent 6px 12px), #0f1110; }
+.inspector-art .item-img { filter: drop-shadow(0 6px 10px rgba(0,0,0,.6)); }
+.inspector-name { font-family: var(--font-head); font-weight: 600; font-size: 17px; display: flex; gap: 8px; align-items: center; }
+.inspector-cat { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; margin-top: 2px; }
+.inspector-sub { font-family: var(--font-head); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--accent); margin-bottom: 4px; }
+.inspector-needs .tooltip-row span { display: flex; gap: 6px; align-items: center; }
+@media (max-width: 1280px) { .inspector { display: none; } }

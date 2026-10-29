@@ -32,8 +32,13 @@ const useTip = create<{ item: ItemInstance | null; x: number; y: number; set(i: 
   item: null,
   x: 0,
   y: 0,
-  set: (item, x = 0, y = 0) => set({ item, x, y }),
+  set: (item, x = 0, y = 0) => {
+    set({ item, x, y });
+    if (item && useInspect.getState().item !== item) useInspect.setState({ item });
+  },
 }));
+/** Last item the pointer rested on (stays after the pointer leaves), for the inspector panel. */
+export const useInspect = create<{ item: ItemInstance | null }>(() => ({ item: null }));
 const useMenu = create<{ actions: MenuAction[]; x: number; y: number; open(a: MenuAction[], x: number, y: number): void; close(): void }>((set) => ({
   actions: [],
   x: 0,
@@ -44,10 +49,8 @@ const useMenu = create<{ actions: MenuAction[]; x: number; y: number; open(a: Me
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 
-export function ItemTooltip() {
-  const { item, x, y } = useTip();
-  const dragging = useDrag((s) => !!s.drag);
-  if (!item || dragging) return null;
+/** Stat rows for an item (tooltip and inspector). */
+export function itemLines(item: ItemInstance): [string, string][] {
   const d = getDef(item.def);
   const lines: [string, string][] = [];
   if (d.weapon) {
@@ -67,6 +70,15 @@ export function ItemTooltip() {
   }
   if (d.food) lines.push(['Energy', `${d.food.energy > 0 ? '+' : ''}${d.food.energy}`], ['Hydration', `${d.food.hydration > 0 ? '+' : ''}${d.food.hydration}`]);
   lines.push(['Weight', `${itemWeight(item).toFixed(2)} kg`], ['Value', `${fmt(itemValue(item))} ₵`]);
+  return lines;
+}
+
+export function ItemTooltip() {
+  const { item, x, y } = useTip();
+  const dragging = useDrag((s) => !!s.drag);
+  if (!item || dragging) return null;
+  const d = getDef(item.def);
+  const lines = itemLines(item);
   const left = Math.min(x + 16, window.innerWidth - 260);
   const top = Math.min(y + 16, window.innerHeight - 40 - lines.length * 20);
   return createPortal(
