@@ -355,7 +355,9 @@ export class AudioEngine {
     const s = this.spatial(null, null, 0, 0);
     if (!s) return;
     if (kind === 'click') this.tone(s.input, s.t, 'sine', 1300, 1100, 0.03, 0.06);
-    else if (kind === 'move') this.play(s.input, s.t, { set: 'items', gain: 0.25, rate: 1.2, jitter: 0.1 }) || this.noiseBurst(s.input, s.t, 0.05, 0.12, 'lowpass', 900, 0.6);
+    else if (kind === 'move') {
+      if (!this.play(s.input, s.t, { set: 'items', gain: 0.25, rate: 1.2, jitter: 0.1 })) this.noiseBurst(s.input, s.t, 0.05, 0.12, 'lowpass', 900, 0.6);
+    }
     else if (kind === 'equip') this.play(s.input, s.t, { set: 'gear', gain: 0.4, jitter: 0.1 });
     else this.tone(s.input, s.t, 'square', 180, 140, 0.08, 0.05);
   }
