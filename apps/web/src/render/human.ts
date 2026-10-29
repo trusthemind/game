@@ -30,6 +30,7 @@ export function cloneHuman(lib: AssetLibrary, sex: 'm' | 'f'): HumanParts | null
 /** Re-skin a hair/beard mesh onto the body's skeleton (matched by bone name) and mount it next to the body. */
 export function attachSkinned(src: THREE.SkinnedMesh, body: THREE.SkinnedMesh, material?: THREE.Material): THREE.SkinnedMesh {
   const m = new THREE.SkinnedMesh(src.geometry, material ?? src.material);
+  m.name = src.name;
   // GLTFLoader de-duplicates node names across a file (several hairstyles share one skeleton layout), so
   // "Head" may come through as "Head_3": fall back to the name without the numeric suffix.
   const find = (name: string) => body.skeleton.getBoneByName(name) ?? body.skeleton.getBoneByName(name.replace(/_\d+$/, '')) ?? body.skeleton.bones[0]!;

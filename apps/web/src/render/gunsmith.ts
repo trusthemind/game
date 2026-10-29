@@ -3,7 +3,7 @@ import { getDef, type ItemInstance, type ModSlot } from '@ashfall/engine';
 import type { AssetLibrary } from './assets';
 
 /** Which attachment model represents each mod item. */
-const MOD_MODEL: Record<string, { model: string; scale?: number }> = {
+export const MOD_MODEL: Record<string, { model: string; scale?: number }> = {
   sup_9: { model: 'sup_short' },
   sup_545: { model: 'sup_mid' },
   sup_556: { model: 'sup_mid' },

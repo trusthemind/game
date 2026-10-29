@@ -98,3 +98,7 @@
 @media (max-width: 720px) {
   .modder-body, .modder-slots { grid-template-columns: 1fr; }
 }
+
+.char-preview { flex: 1 1 auto; width: 100%; min-height: 260px; display: block; cursor: grab; border-radius: 4px;
+  background: radial-gradient(60% 50% at 50% 60%, rgba(214,167,74,.07), transparent 70%); }
+.char-preview:active { cursor: grabbing; }

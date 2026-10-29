@@ -502,6 +502,43 @@ async function buildHumans() {
   fs.rmSync(tmp);
 }
 
+// ── Outfits: Quaternius Modular Character Outfits (CC0), same skeleton as the base characters ─────────
+// One document, one named root per outfit ("m_ranger", "f_peasant"…). Meshes keep their pack names
+// (Male_Ranger_Body, …_Legs, …_Feet_Boots, …_Head_Hood) so the game can mix and match pieces.
+async function buildOutfits() {
+  console.log('outfits:');
+  const dir = find(path.join(SRC, 'outfits'), 'Male_Ranger.gltf');
+  if (!dir) return console.warn('  ! outfits missing');
+  const outDir = path.dirname(dir);
+  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
+  const { mergeDocuments, unpartition } = await import('@gltf-transform/functions');
+  const base = new (await import('@gltf-transform/core')).Document();
+  base.createBuffer();
+  for (const [file, name] of [['Male_Ranger', 'm_ranger'], ['Female_Ranger', 'f_ranger'], ['Male_Peasant', 'm_peasant'], ['Female_Peasant', 'f_peasant']]) {
+    const d = await io.read(path.join(outDir, `${file}.gltf`));
+    for (const sc of d.getRoot().listScenes()) for (const n of sc.listChildren()) n.setName(name);
+    mergeDocuments(base, d);
+  }
+  const scenes = base.getRoot().listScenes();
+  const main = scenes[0];
+  for (const sc of scenes.slice(1)) {
+    for (const n of sc.listChildren()) main.addChild(n);
+    sc.dispose();
+  }
+  base.getRoot().setDefaultScene(main);
+  // Colour only: the game re-tints cloth per character, and normal/ORM maps barely read from above.
+  for (const m of base.getRoot().listMaterials()) {
+    m.setNormalTexture(null);
+    m.setMetallicRoughnessTexture(null);
+    m.setOcclusionTexture(null);
+  }
+  await base.transform(unpartition(), dedup(), prune(), textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024], quality: 80 }));
+  const tmp = path.join(OUT, 'outfits.raw.glb');
+  await io.write(tmp, base);
+  await optimise(tmp, path.join(OUT, 'outfits.glb'), { skinned: true });
+  fs.rmSync(tmp);
+}
+
 // ONLY=character,weapons… rebuilds a subset.
 const only = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
 const want = (k) => !only || only.has(k);
@@ -513,5 +550,6 @@ if (want('mods')) await buildSet('mods', MODS, [path.join(SRC, 'guns')]);
 if (want('props')) await buildSet('props', PROPS, [path.join(SRC, 'survival')]);
 if (want('nature')) await buildNature();
 if (want('furniture')) await buildFurniture();
+if (want('outfits')) await buildOutfits();
 // CREDITS.txt in apps/web/public/models is maintained by hand (several packs, several licences).
 console.log('done');

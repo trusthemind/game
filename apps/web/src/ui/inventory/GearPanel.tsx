@@ -1,9 +1,9 @@
-import { useContext } from 'react';
+import { useContext, type ReactNode } from 'react';
 import { equipmentValue, equipmentWeight } from '@ashfall/engine';
 import { EquipSlot, InvContext, ItemGrid } from './components';
 
 /** Tarkov-style character panel: equipment slots on the left, carried containers on the right. */
-export function GearPanel({ owner, cell = 48, title, compact = false }: { owner: string; cell?: number; title?: string; compact?: boolean }) {
+export function GearPanel({ owner, cell = 48, title, compact = false, preview }: { owner: string; cell?: number; title?: string; compact?: boolean; preview?: ReactNode }) {
   const ctx = useContext(InvContext)!;
   const eq = ctx.host.resolver.equipment(owner);
   if (!eq) return null;
@@ -43,6 +43,7 @@ export function GearPanel({ owner, cell = 48, title, compact = false }: { owner:
           {eq.slots.rig && <ItemGrid gridId={`${owner}:rig`} cell={cell} label={`Rig`} />}
           {eq.slots.backpack && <ItemGrid gridId={`${owner}:backpack`} cell={cell} label="Backpack" />}
           {eq.slots.secure && !owner.startsWith('corpse:') && <ItemGrid gridId={`${owner}:secure`} cell={cell} label="Secure container · kept on death" />}
+          {preview}
         </div>
       </div>
     </div>

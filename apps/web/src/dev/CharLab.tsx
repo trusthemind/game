@@ -56,6 +56,20 @@ export function CharLab() {
       { look: lookFor(14, 'scav'), eq: [], active: 'melee', speed: 0 },
       { look: lookFor(15, 'scav'), eq: [], active: 'melee', speed: 1.4 },
     ];
+    if (view === 'gear') {
+      // Close-up of worn kit: every helmet / armour / rig / backpack on someone.
+      cast.length = 0;
+      const kits = [
+        ['ak74m:primary', 'paca:armor', 'ssh68:helmet', 'r_scav:rig', 'b_sling:backpack'],
+        ['m4a1:primary', 'trooper:armor', 'zsh:helmet', 'r_alpha:rig', 'b_pilgrim:backpack'],
+        ['pkm:primary', 'slick6:armor', 'altyn:helmet', 'b_attack:backpack'],
+        ['akm:primary', '6b23:armor', 'r_bank:rig', 'b_daypack:backpack'],
+        ['svd:primary', 'gzhel:armor', 'r_mbss:rig'],
+      ];
+      kits.forEach((eq, i) => cast.push({ look: lookFor(i + 3, i % 2 ? 'raider' : 'scav'), eq, active: 'primary', speed: 0 }));
+      cam.position.set(0, 1.9, 5.2);
+      cam.lookAt(0, 1.2, 0);
+    }
     if (view === 'guns') {
       const ids = ALL_ITEMS.filter((d) => d.weapon).map((d) => d.id);
       cast.length = 0;
@@ -150,9 +164,9 @@ export function CharLab() {
         }
         const v = new CharacterView(lib, c.look, u, true);
         const a = {
-          pos: { x: (i - (cast.length - 1) / 2) * (view === 'guns' ? 1.05 : 1.35), y: 0 },
+          pos: { x: (i - (cast.length - 1) / 2) * (view === 'guns' || view === 'gear' ? 1.05 : 1.35), y: 0 },
           vel: { x: 0, y: c.speed },
-          facing: view === 'guns' ? 0 : Math.PI / 2,
+          facing: view === 'guns' ? 0 : view === 'gear' ? Math.PI / 2 + [-0.7, 0.7, 2.6, -0.4, 3.4][i % 5]! : Math.PI / 2,
           crouching: !!c.crouch,
           sprinting: false,
           eq,
@@ -162,7 +176,7 @@ export function CharLab() {
         scene.add(v.root);
         views.push({ v, a });
       });
-      for (const id of view === 'guns' || view === 'rack' ? [] : ['lena', 'mykola', 'vera']) {
+      for (const id of view === 'guns' || view === 'rack' || view === 'gear' ? [] : ['lena', 'mykola', 'vera']) {
         const img = document.createElement('img');
         img.src = renderPortrait(lib, lookFor(0, 'npc', id), 512);
         img.style.cssText = 'position:fixed;top:12px;width:300px;height:300px;border:1px solid #555;left:' + (12 + ['lena', 'mykola', 'vera'].indexOf(id) * 310) + 'px';

@@ -17,7 +17,8 @@
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .col { display: flex; flex-direction: column; min-height: 0; }
-.gear-tab, .trader-tab { display: flex; gap: 18px; align-items: flex-start; height: 100%; }
+.gear-tab, .trader-tab { display: flex; gap: 14px; align-items: flex-start; height: 100%; min-width: 0; }
+.gear-tab > .panel:first-child { flex: 0 1 auto; min-width: 0; overflow-x: auto; }
 .stash-col { flex: 0 0 auto; }
 .free-kit { margin-top: 16px; padding: 12px; border: 1px dashed var(--accent); border-radius: 4px; display: flex; gap: 12px; align-items: center; }
 .free-kit p { margin: 0; color: var(--text-dim); }
@@ -30,9 +31,9 @@
 .chip { padding: 4px 10px; border-radius: 20px; border: 1px solid var(--line-2); background: transparent; cursor: pointer; font-size: 11.5px; text-transform: capitalize; color: var(--text-dim); }
 .chip.on { border-color: var(--accent); color: var(--accent-2); background: rgba(214,167,74,.08); }
 .catalog { overflow: auto; padding: 10px 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 8px; }
-.offer { display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: rgba(255,255,255,.015); }
+.offer { display: grid; grid-template-columns: 86px 1fr auto; gap: 12px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: rgba(255,255,255,.015); }
 .offer.locked { opacity: .5; }
-.offer-icon { width: 44px; height: 44px; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: rgba(230,232,224,.6); background: var(--rc, #2e322f); }
+.offer-icon { width: 86px; height: 58px; overflow: hidden; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: rgba(230,232,224,.6); background: var(--rc, #2e322f); }
 .offer.r1 { --rc: #2e322f; } .offer.r2 { --rc: #2c4130; } .offer.r3 { --rc: #263b54; } .offer.r4 { --rc: #432b55; } .offer.r5 { --rc: #5e4a1c; }
 .offer-name { font-weight: 500; }
 .drop-zone.sell { margin-bottom: 12px; }
@@ -129,7 +130,10 @@
 .craft-job { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; padding: 6px 8px; background: rgba(214,167,74,.07); border-radius: 3px; }
 .craft-job .bar { grid-column: 1 / -1; height: 4px; }
 
-.inspector { flex: 1 1 260px; min-width: 240px; max-width: 360px; align-self: stretch; max-height: 100%; overflow: auto; }
+.side-col { flex: 1 1 260px; min-width: 200px; max-width: 360px; align-self: stretch; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.survivor-panel { flex: 0 0 auto; }
+.survivor-panel .char-preview { height: 330px; min-height: 0; }
+.inspector { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .inspector-empty { margin: 0; line-height: 1.5; }
 .inspector-art { display: flex; align-items: center; justify-content: center; height: 170px; margin: 14px 14px 0; border-bottom: 2px solid;
   background: repeating-linear-gradient(135deg, rgba(255,255,255,.018) 0 6px, transparent 6px 12px), #0f1110; }
@@ -138,4 +142,7 @@
 .inspector-cat { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; margin-top: 2px; }
 .inspector-sub { font-family: var(--font-head); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--accent); margin-bottom: 4px; }
 .inspector-needs .tooltip-row span { display: flex; gap: 6px; align-items: center; }
-@media (max-width: 1280px) { .inspector { display: none; } }
+@media (max-width: 1280px) { .side-col { display: none; } }
+
+.offer-icon .item-img { object-fit: contain; }
+.offer-icon .item-img { filter: drop-shadow(0 3px 4px rgba(0,0,0,.5)); }

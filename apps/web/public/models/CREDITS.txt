@@ -5,6 +5,8 @@ Universal Base Characters [Standard] — Quaternius (CC0 1.0) — https://quater
   human_m.glb, human_f.glb, hair.glb (bodies with modelled faces/eyes, hairstyles, beard, eyebrows)
 Universal Animation Library 2 [Standard] — Quaternius (CC0 1.0) — https://opengameart.org/content/universal-animation-library-2
   merged into character.glb / character_f.glb
+Modular Character Outfits - Fantasy [Standard] — Quaternius (CC0 1.0) — https://quaternius.itch.io/modular-character-outfits-fantasy
+  outfits.glb (ranger and peasant clothing, re-dyed per character; fantasy extras left out)
 Furniture Pack — Quaternius (CC0 1.0) — https://quaternius.com — furniture.glb (beds, sofas, shelves, wardrobes, tables, chairs, lamps)
 Ultimate Gun Pack accessories — Quaternius (CC0 1.0) — mods.glb (suppressors, scopes, grip, stock, flashlight)
 

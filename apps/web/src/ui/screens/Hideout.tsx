@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   buy,
+  createItem,
+  type ItemInstance,
   DIFFICULTY,
   buyPrice,
   canClaimFreeKit,
@@ -23,8 +25,9 @@ import { api } from '../../state/api';
 import { DropZoneBox, InventoryRoot, ItemGrid } from '../inventory/components';
 import { GearPanel } from '../inventory/GearPanel';
 import { ItemInspector } from '../inventory/ItemInspector';
+import { CharacterPreview } from '../components/CharacterPreview';
 import { makeProfileHost } from '../inventory/hosts';
-import { CategoryIcon } from '../inventory/icons';
+import { ItemArt } from '../inventory/ItemArt';
 import { DialogueBox } from '../components/DialogueBox';
 import { hideoutDialogueHost } from '../dialogueHosts';
 import { SyncBadge } from '../components/SyncBadge';
@@ -120,7 +123,7 @@ function GearTab() {
           <span className="dim">At risk: {fmt(equipmentValue(profile.equipment))} ₵</span>
         </div>
         <div className="pad">
-          <GearPanel owner="player" cell={50} />
+          <GearPanel owner="player" cell={44} />
           {freeKit && (
             <div className="free-kit">
               <p>Out of guns and money? Mykola can spare a survivor kit.</p>
@@ -147,12 +150,29 @@ function GearTab() {
           </span>
         </div>
         <div className="pad">
-          <ItemGrid gridId="stash" cell={50} maxHeight={window.innerHeight - 190} />
+          <ItemGrid gridId="stash" cell={48} maxHeight={window.innerHeight - 190} />
         </div>
       </section>
-      <ItemInspector />
+      <div className="side-col">
+        <section className="panel col survivor-panel">
+          <div className="panel-title">
+            <span>Survivor</span>
+            <span className="dim">drag to turn</span>
+          </div>
+          <CharacterPreview />
+        </section>
+        <ItemInspector />
+      </div>
     </div>
   );
+}
+
+/** One display instance per item kind for catalogue pictures. */
+const samples = new Map<string, ItemInstance>();
+function sampleItem(id: string): ItemInstance {
+  let it = samples.get(id);
+  if (!it) samples.set(id, (it = createItem(id)));
+  return it;
 }
 
 const CATS: (Category | 'all')[] = ['all', 'weapon', 'melee', 'ammo', 'armor', 'helmet', 'rig', 'backpack', 'med', 'food', 'drink'];
@@ -194,7 +214,7 @@ function TraderTab() {
             return (
               <div key={def.id} className={`offer r${def.rarity} ${locked ? 'locked' : ''}`}>
                 <div className="offer-icon">
-                  <CategoryIcon category={def.category} size={26} />
+                  <ItemArt item={sampleItem(def.id)} w={86} h={58} />
                 </div>
                 <div className="offer-info">
                   <div className="offer-name">

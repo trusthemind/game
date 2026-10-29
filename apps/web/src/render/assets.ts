@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /**
  * Loads the CC0 model packs once per session (see tools/assets/build.mjs) and hands out clones.
@@ -22,6 +23,8 @@ export interface AssetLibrary {
   mods: Map<string, THREE.Object3D>;
   props: Map<string, THREE.Object3D>;
   nature: Map<string, THREE.Object3D>;
+  /** Clothing on the shared skeleton: outfit name ("m_ranger", "f_peasant"…) → its skinned pieces. */
+  outfits: Map<string, THREE.SkinnedMesh[]>;
   /** Room furniture (beds, sofas, shelves…), front facing +Z, standing on y=0. */
   furniture: Map<string, THREE.Object3D>;
 }
@@ -45,8 +48,8 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
     for (const c of g.scene.children) m.set(c.name, c);
     return m;
   };
-  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature'), load('mods'), load('human_m').catch(() => null), load('human_f').catch(() => null), load('hair').catch(() => null), load('furniture').catch(() => null)]).then(
-    ([character, characterF, weapons, melee, props, nature, mods, humanM, humanF, hairDoc, furniture]) => {
+  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature'), load('mods'), load('human_m').catch(() => null), load('human_f').catch(() => null), load('hair').catch(() => null), load('furniture').catch(() => null), load('outfits').catch(() => null)]).then(
+    ([character, characterF, weapons, melee, props, nature, mods, humanM, humanF, hairDoc, furniture, outfitDoc]) => {
       const hair = new Map<string, THREE.SkinnedMesh>();
       hairDoc?.scene.traverse((o) => {
         const sm = o as THREE.SkinnedMesh;
@@ -56,13 +59,28 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
         while (p && p.parent && p.parent !== hairDoc.scene) p = p.parent;
         if (p && !hair.has(p.name)) hair.set(p.name, sm);
       });
+      const outfits = new Map<string, THREE.SkinnedMesh[]>();
+      for (const root of outfitDoc?.scene.children ?? []) {
+        const list: THREE.SkinnedMesh[] = [];
+        root.traverse((o) => {
+          if ((o as THREE.SkinnedMesh).isSkinnedMesh) list.push(o as THREE.SkinnedMesh);
+        });
+        outfits.set(root.name, list);
+      }
       const clips = new Map<string, THREE.AnimationClip>();
       for (const c of character.animations) clips.set(c.name, stripRootMotion(c));
       for (const g of [weapons, melee, props, nature, mods])
         g.scene.traverse((o) => {
           if ((o as THREE.Mesh).isMesh) o.castShadow = true;
         });
-      ready = { character, characterF, humanM, humanF, hair, clips, weapons: byName(weapons), melee: byName(melee), mods: byName(mods), props: byName(props), nature: byName(nature), furniture: furniture ? byName(furniture) : new Map() };
+      // The packs are flat-shaded low-poly, so every facet shows. Smooth across shallow angles (rounded
+      // barrels, grips, pouches) and keep real edges sharp.
+      for (const g of [weapons, melee, props, mods, furniture])
+        g?.scene.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh && !(m as THREE.SkinnedMesh).isSkinnedMesh) m.geometry = toCreasedNormals(m.geometry, (40 * Math.PI) / 180);
+        });
+      ready = { character, characterF, humanM, humanF, hair, clips, weapons: byName(weapons), melee: byName(melee), mods: byName(mods), props: byName(props), nature: byName(nature), furniture: furniture ? byName(furniture) : new Map(), outfits };
       return ready;
     },
   );
