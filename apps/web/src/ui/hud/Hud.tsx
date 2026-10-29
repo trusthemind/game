@@ -69,7 +69,7 @@ export function Hud({ session }: { session: GameSession }) {
           </div>
         </div>
         <div className="mini-bars">
-          <Mini label="STA" v={hud.stamina} color="#d9d3a0" />
+          <Mini label={hud.winded ? "WINDED" : "STA"} v={hud.stamina} color={hud.winded ? "#c8553d" : "#d9d3a0"} />
           <Mini label="ENG" v={hud.energy} color="#d69a4a" />
           <Mini label="H2O" v={hud.hydration} color="#6aa7d6" />
         </div>

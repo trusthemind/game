@@ -252,6 +252,7 @@ export class Raid {
       aiming: false,
       crouching: false,
       sprinting: false,
+      winded: false,
       flashlight: false,
       lastHitAt: -999,
       lastAttacker: null,
@@ -439,9 +440,12 @@ export class Raid {
     }
     const moving = ml > 0.05;
     a.crouching = it.crouch;
-    a.sprinting = it.sprint && moving && !a.crouching && a.stamina > 1 && a.useT <= 0 && canSprint(a.health);
+    // Winded: once stamina hits zero you can't sprint again until it recovers to 30 (no sprint/walk flicker).
+    if (a.stamina <= 0) a.winded = true;
+    else if (a.winded && a.stamina >= 30) a.winded = false;
+    a.sprinting = it.sprint && moving && !a.crouching && !a.winded && a.useT <= 0 && canSprint(a.health);
     if (a.sprinting) a.stamina = Math.max(0, a.stamina - 13 * dt);
-    else a.stamina = Math.min(100, a.stamina + (moving ? 6 : 11) * dt);
+    else a.stamina = Math.min(100, a.stamina + (moving ? 6 : 11) * (a.winded ? 0.8 : 1) * dt);
 
     if (((this.time * 60) | 0) % 30 === a.id % 30) this.recomputeSpeed(a);
     let speed = a.baseSpeed * a.speedMul;
@@ -655,7 +659,9 @@ export class Raid {
       const res = resolveBulletHit(this.rng, damage * falloff, ammoType, zone, armorFor(zone, best.eq.slots));
       this.applyHit(best, a, res, zone, false, ex, ey);
     } else if (blocked) {
-      this.emit({ t: 'impact', x: ex, y: ey });
+      const tile = this.map.get(Math.floor(ex + dx * 0.08), Math.floor(ey + dy * 0.08));
+      const material = tile === Tile.Window ? 'glass' : tile === Tile.Tree || tile === Tile.Wood ? 'wood' : tile === Tile.Car || tile === Tile.Fence ? 'metal' : 'ground';
+      this.emit({ t: 'impact', x: ex, y: ey, material });
       this.makeNoise(ex, ey, 3, a.id, 'impact');
     }
   }

@@ -68,6 +68,8 @@ export interface Actor {
   usePart: BodyPart | null;
   crouching: boolean;
   sprinting: boolean;
+  /** Ran out of stamina: no sprinting until it recovers. */
+  winded: boolean;
   /** Currently aiming (player holds aim, or recently fired). */
   aiming: boolean;
   flashlight: boolean;
@@ -106,10 +108,10 @@ export interface Noise {
 }
 
 export type RaidEvent =
-  | { t: 'shot'; actor: number; fx: number; fy: number; tx: number; ty: number; weapon: string; hit: boolean }
+  | { t: 'shot'; actor: number; fx: number; fy: number; tx: number; ty: number; weapon: string; hit: boolean; suppressed?: boolean }
   | { t: 'swing'; actor: number; x: number; y: number; facing: number; weapon: string }
   | { t: 'hit'; target: number; attacker: number; x: number; y: number; zone: HitZone; damage: number; penetrated: boolean; melee: boolean }
-  | { t: 'impact'; x: number; y: number }
+  | { t: 'impact'; x: number; y: number; material: 'wood' | 'metal' | 'ground' | 'glass' }
   | { t: 'death'; actor: number; killer: number | null; name: string; faction: Faction }
   | { t: 'reload'; actor: number }
   | { t: 'step'; actor: number; x: number; y: number; tile: number; indoor: boolean; loud: number }

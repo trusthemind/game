@@ -1,0 +1,18 @@
+All sounds in this folder are cut/processed from CC0 (public domain) recordings.
+Rebuild with: SND_SRC=<extracted packs> python3 tools/sounds/build.py
+
+- The Free Firearm Sound Library (Prepared) — Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney
+  https://opengameart.org/content/the-free-firearm-sound-library  (CC0)
+- Different steps on wood, stone, leaves, gravel and mud — https://opengameart.org/content/different-steps-on-wood-stone-leaves-gravel-and-mud (CC0)
+- Fantozzi's footsteps (grass/sand & stone) — https://opengameart.org/content/fantozzis-footsteps-grasssand-stone (CC0)
+- 42 snow and gravel footsteps — https://opengameart.org/content/42-snow-and-gravel-footsteps (CC0)
+- Footsteps leather, cloth, armor — https://opengameart.org/content/footsteps-leather-cloth-armor (CC0)
+- Gun reload sounds — https://opengameart.org/content/gun-reload-sounds (CC0)
+- 2 gun reloads — https://opengameart.org/content/2-gun-reloads (CC0)
+- Handgun reload sound effect — https://opengameart.org/content/handgun-reload-sound-effect (CC0)
+- Equipment clicks II — https://opengameart.org/content/equipment-clicks-ii (CC0)
+- 100 CC0 SFX #2 — https://opengameart.org/content/100-cc0-sfx-2 (CC0)
+- Park ambiences — https://opengameart.org/content/park-ambiences (CC0)
+- Amb rain loop 1 — https://opengameart.org/content/amb-rain-loop-1 (CC0)
+- Mild wind background noise — https://opengameart.org/content/mild-wind-background-noise (CC0)
+- Zombie moans — https://opengameart.org/content/zombie-moans (CC0)

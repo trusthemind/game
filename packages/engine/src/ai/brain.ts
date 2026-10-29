@@ -116,7 +116,7 @@ export class BotBrain {
     // Human-scale eyesight: ~22 m spotting range in daylight, much less at dusk/night. A calm bot watches a
     // ~90° cone and only half-notices things at the edge of it; once alerted it scans wider and further.
     const base = this.role === 'infected' ? 11 : raid.timeOfDay === 'night' ? 13 : raid.timeOfDay === 'dusk' ? 17 : 22;
-    const viewRange = base * (this.alerted ? 1.3 : 1);
+    const viewRange = base * (this.alerted ? 1.15 : 1);
     const coneHalf = this.alerted ? 1.2 : 0.8;
     tmp.length = 0;
     raid.queryActors(a.pos.x, a.pos.y, viewRange * 1.3, tmp);
@@ -395,7 +395,8 @@ export class BotBrain {
     this.aimErrT -= dt;
     if (this.aimErrT <= 0) {
       this.aimErrT = this.rng.range(0.25, 0.6);
-      const mag = (1.3 - this.skill) * (0.55 + d * 0.05) * (raid.timeOfDay === 'night' && !t.flashlight ? 1.5 : 1) * (t.crouching ? 1.2 : 1);
+      // Grows quickly with distance: bots are dangerous up close, mostly suppressive further out.
+      const mag = (1.35 - this.skill) * (0.5 + d * 0.085) * (raid.timeOfDay === 'night' && !t.flashlight ? 1.5 : 1) * (t.crouching ? 1.2 : 1);
       this.aimErr = { x: this.rng.range(-mag, mag), y: this.rng.range(-mag, mag) };
     }
     const lead = this.skill * 0.12;
@@ -415,8 +416,10 @@ export class BotBrain {
     }
 
     const wd = getDef(w.def).weapon!;
-    const preferred = wd.pellets ? 5 : wd.range >= 55 ? 22 : wd.auto ? 13 : 11;
-    if (!this.targetVisible || d > wd.range * 0.85) {
+    const preferred = wd.pellets ? 5 : wd.range >= 55 ? 16 : wd.auto ? 11 : 10;
+    // Engagement distance is about what fits on the player's screen: no sniping from off-camera.
+    const maxEngage = Math.min(wd.range * 0.7, wd.pellets ? 12 : wd.range >= 55 ? 24 : 19);
+    if (!this.targetVisible || d > maxEngage) {
       if (this.lastKnown) this.moveTo(raid, a, this.lastKnown, d > 20);
     } else {
       // Strafe/keep distance. Better fighters move more.
@@ -444,7 +447,7 @@ export class BotBrain {
 
     // Trigger discipline.
     const aimed = Math.abs(angleDiff(a.facing, angleTo(a.pos, { x: aimX, y: aimY }))) < 0.18;
-    if (!this.targetVisible || this.reactT > 0 || !aimed || this.allyInLine(raid, a, t, d)) return;
+    if (!this.targetVisible || d > maxEngage || this.reactT > 0 || !aimed || this.allyInLine(raid, a, t, d)) return;
     if (wd.auto) {
       if (this.pauseT > 0) {
         this.pauseT -= dt;
@@ -452,11 +455,11 @@ export class BotBrain {
       }
       this.burstT += dt;
       a.intent.fire = true;
-      if (this.burstT > (d > 15 ? 0.2 : 0.38)) {
+      if (this.burstT > (d > 12 ? 0.16 : 0.32)) {
         this.burstT = 0;
-        this.pauseT = this.rng.range(0.45, 1.0);
+        this.pauseT = this.rng.range(0.6, 1.3);
       }
-    } else if (a.fireCd <= 0 && this.rng.chance(0.16)) {
+    } else if (a.fireCd <= 0 && this.rng.chance(0.11)) {
       a.intent.fire = true;
       a.intent.firePressed = true;
     }

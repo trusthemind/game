@@ -11,6 +11,7 @@ export interface HudState {
   maxHp: number;
   bleed: boolean;
   stamina: number;
+  winded: boolean;
   energy: number;
   hydration: number;
   weapon: string;

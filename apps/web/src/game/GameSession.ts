@@ -25,7 +25,7 @@ import type { QualityLevel } from '../render/quality';
 import { Input } from '../input/Input';
 import { PerfMonitor } from '../perf/PerfMonitor';
 import { useRaidUi, type HudState } from './hudStore';
-import { audio, gunClass } from '../audio/AudioEngine';
+import { audio } from '../audio/AudioEngine';
 
 export interface SessionOptions {
   canvas: HTMLCanvasElement;
@@ -93,21 +93,25 @@ export class GameSession {
   private playSounds(events: ReturnType<Raid['drainEvents']>, dt: number): void {
     const raid = this.raid;
     const pid = raid.player.id;
-    audio.setListener(raid.player.pos.x, raid.player.pos.y);
+    audio.setListener(raid.player.pos.x, raid.player.pos.y, raid.map.isIndoors(Math.floor(raid.player.pos.x), Math.floor(raid.player.pos.y)));
     for (const e of events) {
       switch (e.t) {
         case 'shot':
-          audio.shot(gunClass(e.weapon), e.fx, e.fy, e.actor === pid);
+          audio.shot(e.weapon, e.fx, e.fy, e.actor === pid, !!e.suppressed);
           if (e.hit) audio.hit(e.tx, e.ty, false, false);
           break;
         case 'step': {
           const t = e.tile;
-          const surface = t === Tile.Wood ? 'wood' : t === Tile.Road || t === Tile.Concrete ? 'hard' : t === Tile.Dirt ? 'dirt' : 'grass';
+          const d = raid.map.districtOf(Math.floor(e.x), Math.floor(e.y));
+          const surface = t === Tile.Wood ? 'wood' : t === Tile.Road || t === Tile.Concrete ? 'stone' : t === Tile.Dirt ? (raid.rain ? 'mud' : 'gravel') : d === 'forest' ? 'leaves' : 'grass';
           audio.step(e.actor, surface, e.x, e.y, e.loud, e.actor === pid);
           break;
         }
         case 'reload':
-          if (raid.actorById(e.actor)) audio.reload(raid.actorById(e.actor)!.pos.x, raid.actorById(e.actor)!.pos.y, e.actor === pid);
+          {
+            const a = raid.actorById(e.actor);
+            if (a) audio.reload(raid.weaponItem(a)?.def ?? '', a.pos.x, a.pos.y, e.actor === pid);
+          }
           break;
         case 'swing':
           audio.swing(e.x, e.y, e.actor === pid);
@@ -117,7 +121,7 @@ export class GameSession {
           else if (e.melee) audio.hit(e.x, e.y, false, e.target === pid);
           break;
         case 'impact':
-          audio.impact(e.x, e.y);
+          audio.impact(e.x, e.y, e.material);
           break;
         case 'used':
           if (e.actor === pid) audio.meds();
@@ -298,6 +302,7 @@ export class GameSession {
     if (!target) return;
     if (target.kind === 'container' || target.kind === 'corpse') {
       if (this.raid.openLoot({ kind: target.kind, id: target.id })) {
+        audio.search(target.x, target.y);
         useRaidUi.setState({ overlay: 'loot', loot: { kind: target.kind, id: target.id } });
       }
     } else if (target.kind === 'npc') {
@@ -348,6 +353,7 @@ export class GameSession {
       maxHp: p.maxHp,
       bleed: p.bleed > 0,
       stamina: p.stamina,
+      winded: p.winded,
       energy: p.energy,
       hydration: p.hydration,
       weapon: held ? getDef(held.def).name : 'Fists',

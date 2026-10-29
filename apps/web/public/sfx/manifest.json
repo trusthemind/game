@@ -1,0 +1,177 @@
+{
+ "shot_pistol": [
+  "shot_pistol_0.mp3",
+  "shot_pistol_1.mp3",
+  "shot_pistol_2.mp3"
+ ],
+ "shot_pistol_heavy": [
+  "shot_pistol_heavy_0.mp3",
+  "shot_pistol_heavy_1.mp3"
+ ],
+ "shot_rifle": [
+  "shot_rifle_0.mp3",
+  "shot_rifle_1.mp3",
+  "shot_rifle_2.mp3"
+ ],
+ "shot_carbine": [
+  "shot_carbine_0.mp3",
+  "shot_carbine_1.mp3",
+  "shot_carbine_2.mp3"
+ ],
+ "shot_smg": [
+  "shot_smg_0.mp3",
+  "shot_smg_1.mp3",
+  "shot_smg_2.mp3"
+ ],
+ "shot_semi": [
+  "shot_semi_0.mp3",
+  "shot_semi_1.mp3",
+  "shot_semi_2.mp3"
+ ],
+ "shot_shotgun": [
+  "shot_shotgun_0.mp3",
+  "shot_shotgun_1.mp3",
+  "shot_shotgun_2.mp3"
+ ],
+ "shot_sniper": [
+  "shot_sniper_0.mp3",
+  "shot_sniper_1.mp3",
+  "shot_sniper_2.mp3"
+ ],
+ "step_grass": [
+  "step_grass_0.mp3",
+  "step_grass_1.mp3",
+  "step_grass_2.mp3",
+  "step_grass_3.mp3",
+  "step_grass_4.mp3",
+  "step_grass_5.mp3"
+ ],
+ "step_leaves": [
+  "step_leaves_0.mp3",
+  "step_leaves_1.mp3"
+ ],
+ "step_stone": [
+  "step_stone_0.mp3",
+  "step_stone_1.mp3",
+  "step_stone_2.mp3",
+  "step_stone_3.mp3",
+  "step_stone_4.mp3",
+  "step_stone_5.mp3"
+ ],
+ "step_wood": [
+  "step_wood_0.mp3",
+  "step_wood_1.mp3",
+  "step_wood_2.mp3",
+  "step_wood_3.mp3",
+  "step_wood_4.mp3",
+  "step_wood_5.mp3"
+ ],
+ "step_gravel": [
+  "step_gravel_0.mp3",
+  "step_gravel_1.mp3",
+  "step_gravel_2.mp3",
+  "step_gravel_3.mp3",
+  "step_gravel_4.mp3"
+ ],
+ "step_mud": [
+  "step_mud_0.mp3",
+  "step_mud_1.mp3",
+  "step_mud_2.mp3",
+  "step_mud_3.mp3"
+ ],
+ "cloth": [
+  "cloth_0.mp3",
+  "cloth_1.mp3",
+  "cloth_2.mp3",
+  "cloth_3.mp3"
+ ],
+ "gear": [
+  "gear_0.mp3",
+  "gear_1.mp3",
+  "gear_2.mp3",
+  "gear_3.mp3"
+ ],
+ "reload_rifle": [
+  "reload_rifle_0.mp3",
+  "reload_rifle_1.mp3",
+  "reload_rifle_2.mp3"
+ ],
+ "reload_pistol": [
+  "reload_pistol_0.mp3",
+  "reload_pistol_1.mp3"
+ ],
+ "pump": [
+  "pump_0.mp3"
+ ],
+ "shell_insert": [],
+ "click": [
+  "click_0.mp3"
+ ],
+ "impact_hit": [
+  "impact_hit_0.mp3",
+  "impact_hit_1.mp3",
+  "impact_hit_2.mp3",
+  "impact_hit_3.mp3",
+  "impact_hit_4.mp3",
+  "impact_hit_5.mp3",
+  "impact_hit_6.mp3",
+  "impact_hit_7.mp3"
+ ],
+ "impact_metal": [
+  "impact_metal_0.mp3",
+  "impact_metal_1.mp3",
+  "impact_metal_2.mp3",
+  "impact_metal_3.mp3"
+ ],
+ "impact_wood": [
+  "impact_wood_0.mp3",
+  "impact_wood_1.mp3",
+  "impact_wood_2.mp3",
+  "impact_wood_3.mp3",
+  "impact_wood_4.mp3"
+ ],
+ "glass": [
+  "glass_0.mp3",
+  "glass_1.mp3",
+  "glass_2.mp3",
+  "glass_3.mp3",
+  "glass_4.mp3",
+  "glass_5.mp3"
+ ],
+ "door": [
+  "door_0.mp3",
+  "door_1.mp3",
+  "door_2.mp3",
+  "door_3.mp3",
+  "door_4.mp3"
+ ],
+ "items": [
+  "items_0.mp3",
+  "items_1.mp3"
+ ],
+ "zipper": [
+  "zipper_0.mp3",
+  "zipper_1.mp3",
+  "zipper_2.mp3",
+  "zipper_3.mp3"
+ ],
+ "thunder": [
+  "thunder_0.mp3"
+ ],
+ "moan": [
+  "moan_0.mp3",
+  "moan_1.mp3"
+ ],
+ "amb_birds": [
+  "amb_birds.mp3"
+ ],
+ "amb_wind": [
+  "amb_wind.mp3"
+ ],
+ "amb_rain": [
+  "amb_rain.mp3"
+ ],
+ "amb_river": [
+  "amb_river.mp3"
+ ]
+}

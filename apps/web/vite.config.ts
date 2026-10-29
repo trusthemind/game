@@ -26,7 +26,7 @@ export default defineConfig({
         icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,woff2,glb}'],
+        globPatterns: ['**/*.{js,css,html,svg,woff2,glb,mp3,json,webp,png}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         // New SW takes over immediately so players get fresh builds without a second reload.
         clientsClaim: true,
