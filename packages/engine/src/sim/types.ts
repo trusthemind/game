@@ -79,6 +79,8 @@ export interface Actor {
   flashlight: boolean;
   lastHitAt: number;
   lastAttacker: number | null;
+  /** Raid time of the last shot fired or hit taken (auto-heal waits for a lull). */
+  combatAt: number;
   kills: number;
   stepT: number;
   intent: ActorIntent;

@@ -43,15 +43,20 @@ export interface Health {
   regenT: number;
   /** No bleeding / fractures (infected). */
   immune: boolean;
+  /**
+   * Infected only: a shared damage pool. Any hit anywhere drains it, so a zombie drops after a couple of
+   * pistol rounds to the body (or one to the head) instead of soaking a magazine in its limbs.
+   */
+  pool?: number;
 }
 
-export function createHealth(scale = 1, immune = false): Health {
+export function createHealth(scale = 1, immune = false, pool?: number): Health {
   const parts = {} as Record<BodyPart, PartState>;
   for (const p of BODY_PARTS) {
     const max = Math.round(PART_MAX[p] * scale);
     parts[p] = { hp: max, max, light: false, heavy: false, fracture: false };
   }
-  return { parts, painkiller: 0, regen: 0, regenT: 0, immune };
+  return { parts, painkiller: 0, regen: 0, regenT: 0, immune, pool };
 }
 
 export const isLimb = (p: BodyPart) => p === 'leftArm' || p === 'rightArm' || p === 'leftLeg' || p === 'rightLeg';
@@ -70,7 +75,7 @@ export function totalMax(h: Health): number {
 }
 
 export function isDead(h: Health): boolean {
-  return h.parts.head.hp <= 0 || h.parts.thorax.hp <= 0;
+  return h.parts.head.hp <= 0 || h.parts.thorax.hp <= 0 || (h.pool !== undefined && h.pool <= 0);
 }
 
 export function blacked(h: Health, p: BodyPart): boolean {
@@ -105,6 +110,7 @@ export interface DamageOpts {
  */
 export function damagePart(h: Health, part: BodyPart, dmg: number, rng: Rng | null, o: DamageOpts = {}): boolean {
   if (dmg <= 0) return isDead(h);
+  if (h.pool !== undefined) h.pool -= dmg;
   const s = h.parts[part];
   if (s.hp <= 0 && !isVital(part)) {
     spread(h, part, dmg * 0.7);

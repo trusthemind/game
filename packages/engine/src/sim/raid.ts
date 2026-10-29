@@ -71,6 +71,8 @@ export interface RaidNpcSpawn {
   /** Building kinds the NPC likes to hang out in. */
   prefers: string[];
   eq: Equipment;
+  /** Found bleeding and hurt (Olena); others are just out of ammo / food. */
+  wounded?: boolean;
 }
 
 export interface RaidOptions {
@@ -92,6 +94,8 @@ export interface RaidOptions {
   difficulty?: Difficulty;
   /** Your body from the last death on this map (Normal/Easy): loot it back once. */
   grave?: Grave | null;
+  /** Patch up bleeds and fractures automatically once there's a lull in the fighting (default on). */
+  autoHeal?: boolean;
 }
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
@@ -190,6 +194,7 @@ export class Raid {
   private fovKey = -1;
 
   time = 0;
+  autoHeal = true;
   readonly timeLimit: number;
   readonly difficulty: Difficulty;
   /** Named bosses on this map this raid. */
@@ -287,6 +292,7 @@ export class Raid {
     }
 
     for (const enc of opts.encounters ?? []) this.spawnEncounter(enc);
+    this.autoHeal = opts.autoHeal ?? true;
     this.setupEvents(opts.events ?? true);
     this.hash.rebuild(this.liveActors());
     this.updateFov(true);
@@ -296,7 +302,8 @@ export class Raid {
 
   private spawnActor(o: { name: string; faction: Faction; archetype: Actor['archetype']; x: number; y: number; hp: number; speed: number; eq: Equipment }): Actor {
     // `hp` is a toughness factor relative to a human (100 → the standard 440-HP Tarkov body).
-    const health = createHealth(o.hp / 100, o.archetype === 'infected');
+    // Infected: 70 hp → a 48-point pool, two 9x18 rounds to the body.
+    const health = createHealth(o.hp / 100, o.archetype === 'infected', o.archetype === 'infected' ? o.hp * 0.68 : undefined);
     const a: Actor = {
       id: this.nextId++,
       name: o.name,
@@ -333,6 +340,7 @@ export class Raid {
       flashlight: false,
       lastHitAt: -999,
       lastAttacker: null,
+      combatAt: -99,
       kills: 0,
       stepT: 0,
       intent: emptyIntent(),
@@ -478,10 +486,12 @@ export class Raid {
     if (!this.map.isWalkable(tile.x, tile.y)) return;
     const a = this.spawnActor({ name: enc.name, faction: 'npc', archetype: 'npc', x: tile.x + 0.5, y: tile.y + 0.5, hp: 100, speed: 2.8, eq: enc.eq });
     a.npcId = enc.npcId;
-    // Wounded — the player finds them in trouble.
-    a.health.parts.leftLeg.hp = 18;
-    a.health.parts.leftLeg.light = true;
-    a.health.parts.stomach.hp = 40;
+    if (enc.wounded) {
+      // Wounded — the player finds them in trouble.
+      a.health.parts.leftLeg.hp = 18;
+      a.health.parts.leftLeg.light = true;
+      a.health.parts.stomach.hp = 40;
+    } else a.health.parts.stomach.hp = 55;
     this.syncHealth(a);
     a.brain = new BotBrain('npc', rng, null);
   }
@@ -644,6 +654,13 @@ export class Raid {
     }
 
     // Item use (meds / food).
+    if (a === this.player && this.autoHeal && !it.use && a.useT <= 0 && a.reloadT <= 0 && !a.sprinting && this.time - a.combatAt > 3) {
+      const med = this.autoMed(a);
+      if (med) {
+        this.startUse(a, med.uid, null);
+        if (a.useT > 0) this.emit({ t: 'msg', text: `Auto-treating: ${getDef(med.def).name}` });
+      }
+    }
     if (it.use && a.useT <= 0 && a.reloadT <= 0) this.startUse(a, it.use, it.useOn ?? null);
     if (a.useT > 0) {
       a.useT -= dt;
@@ -775,8 +792,9 @@ export class Raid {
     const def = effectiveWeapon(w);
     if (!def.auto && !it.firePressed) return;
     if ((w.ammo ?? 0) <= 0) {
-      if (it.firePressed && a === this.player) this.emit({ t: 'msg', text: 'Out of ammo — press R to reload' });
       a.fireCd = 0.25;
+      // Pulling the trigger on an empty gun reloads it (if you carry rounds for it).
+      if (it.firePressed) this.startReload(a);
       return;
     }
     this.fireGun(a, w);
@@ -784,6 +802,7 @@ export class Raid {
 
   private fireGun(a: Actor, w: ItemInstance): void {
     const def = effectiveWeapon(w);
+    a.combatAt = this.time;
     a.fireCd = 60 / def.rpm;
     w.ammo = (w.ammo ?? 1) - 1;
     const moving = Math.hypot(a.vel.x, a.vel.y) > 0.6;
@@ -878,6 +897,7 @@ export class Raid {
   }
 
   private melee(a: Actor): void {
+    a.combatAt = this.time;
     const st = this.meleeStats(a);
     if (a.stamina < st.stamina * 0.5) return;
     a.fireCd = st.cooldown;
@@ -924,6 +944,7 @@ export class Raid {
     if (armor && res.armorDamage > 0) armor.dur = Math.max(0, (armor.dur ?? 0) - res.armorDamage);
     target.lastHitAt = this.time;
     target.lastAttacker = attacker.id;
+    target.combatAt = this.time;
     this.emit({ t: 'hit', target: target.id, attacker: attacker.id, x, y, zone, damage: res.damage, penetrated: res.penetrated, melee });
     if (target.brain) target.brain.onDamaged(this, target, attacker);
     const died = damagePart(target.health, zone, res.damage, this.rng, {
@@ -1108,6 +1129,30 @@ export class Raid {
         if (m.surgery) s += 30;
         // Use time only breaks ties — any med that has something to do beats doing nothing.
         s -= m.useTime * 0.1;
+        if (s > score) {
+          score = s;
+          best = p.item;
+        }
+      }
+    return best;
+  }
+
+  /** Med for auto-heal: only bleeds and fractures (topping up HP is a choice you make with Q). */
+  autoMed(a: Actor): ItemInstance | null {
+    const h = a.health;
+    const b = bleeding(h);
+    const fracture = BODY_PARTS.some((p) => h.parts[p].fracture);
+    if (!b.light && !b.heavy && !fracture) return null;
+    let best: ItemInstance | null = null;
+    let score = 0;
+    for (const g of carryGrids(a.eq))
+      for (const p of g.items) {
+        const m = getDef(p.item.def).med;
+        if (!m || m.surgery) continue;
+        // Prefer the cheapest thing that does the job: a bandage before a Grizzly.
+        let s = (b.heavy && m.stopsHeavy ? 100 : 0) + (b.light && m.stopsLight ? 50 : 0) + (fracture && m.fixesFracture ? 40 : 0);
+        if (!s || !treatmentTarget(h, m)) continue;
+        s -= m.useTime * 0.5 + getDef(p.item.def).value / 5000;
         if (s > score) {
           score = s;
           best = p.item;

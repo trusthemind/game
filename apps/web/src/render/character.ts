@@ -88,6 +88,9 @@ const NPC_LOOKS: Record<string, Appearance> = {
   lena: { sex: 'f', skin: 0xf1c8a8, hair: 'ponytail', hairColor: 0x7c3b21, beard: false, top: 0xd8dcd4, topStyle: 'coat', pants: 0x2f4f5a, boots: 0x2a2420, gloves: null, eyes: 0x4f6a3a, age: 0 },
   mykola: { sex: 'm', skin: 0xe3b08e, hair: 'short', hairColor: 0x8c8a86, beard: true, top: 0xb5622e, topStyle: 'jacket', pants: 0x3a4558, boots: 0x3b2f24, gloves: 0x5a4632, eyes: 0x3a5a7a, age: 2 },
   vera: { sex: 'f', skin: 0xe3b08e, hair: 'bob', hairColor: 0x1c1612, beard: false, top: 0x4a2f55, topStyle: 'coat', pants: 0x1f1f22, boots: 0x1e1e1e, gloves: null, eyes: 0x2a1d14, age: 1 },
+  taras: { sex: 'm', skin: 0xd9a582, hair: 'buzz', hairColor: 0x3a2a1c, beard: false, top: 0x55603e, topStyle: 'jacket', pants: 0x4a5236, boots: 0x2a2620, gloves: 0x3a3a2e, eyes: 0x5a6a7a, age: 1, scars: true },
+  yaryna: { sex: 'f', skin: 0xf3d0b4, hair: 'bun', hairColor: 0x2a1a12, beard: false, top: 0x6a5a8a, topStyle: 'hoodie', pants: 0x2a3040, boots: 0x3a2a2a, gloves: null, eyes: 0x3a2a1a, age: 0 },
+  ostap: { sex: 'm', skin: 0xc68a62, hair: 'short', hairColor: 0xb8b4ac, beard: true, top: 0x5a4632, topStyle: 'coat', pants: 0x3a3428, boots: 0x2e2418, gloves: 0x4a3828, eyes: 0x4a3a2a, age: 2 },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

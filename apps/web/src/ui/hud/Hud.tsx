@@ -110,7 +110,7 @@ export function Hud({ session }: { session: GameSession }) {
               </span>
               {hud.ammoType && <span className="tag">{hud.ammoType}</span>}
             </div>
-            {hud.ammo === 0 && hud.reserve > 0 && <div className="hint">Press R to reload</div>}
+            {hud.ammo === 0 && hud.reserve > 0 && <div className="hint">Click or R to reload</div>}
             {hud.ammo === 0 && hud.reserve === 0 && <div className="hint bad">Out of ammo — switch weapon (1/2/3)</div>}
           </div>
         ) : (

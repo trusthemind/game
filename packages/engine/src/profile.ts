@@ -25,6 +25,8 @@ export interface Settings {
   showPerf: boolean;
   volume: number;
   difficulty: Difficulty;
+  /** Bandage bleeds / splint fractures automatically when the shooting stops. */
+  autoHeal: boolean;
 }
 
 /** Player character look (rendering only; persisted so you see the same survivor everywhere). */
@@ -88,7 +90,7 @@ export function createProfile(name = 'Survivor', id = randomId(), look: PlayerLo
     companion: null,
     companionEq: {},
     lastFreeKit: 0,
-    settings: { quality: 'auto', showPerf: false, volume: 0.7, difficulty: 'normal' },
+    settings: { quality: 'auto', showPerf: false, volume: 0.7, difficulty: 'normal', autoHeal: true },
     look: { ...look },
     grave: null,
     tasks: {},
@@ -111,7 +113,8 @@ export function migrateProfile(raw: unknown): Profile {
     out.version = 2;
   }
   for (const id of Object.keys(NPCS)) out.npcs[id] ??= { ...newRelationship(), affinity: INITIAL_AFFINITY[id] ?? 0 };
-  out.settings ??= { quality: 'auto', showPerf: false, volume: 0.7, difficulty: 'normal' };
+  out.settings ??= { quality: 'auto', showPerf: false, volume: 0.7, difficulty: 'normal', autoHeal: true };
+  out.settings.autoHeal ??= true;
   if (out.version < 3) {
     // v2 → v3: secure container slot, difficulty, death grave.
     out.equipment.slots.secure ??= null;
@@ -146,18 +149,36 @@ export function companionLoadout(profile: Profile, npcId: string): Equipment {
   const existing = profile.companionEq[npcId];
   if (existing && (existing.slots.primary || existing.slots.secondary)) return existing;
   const eq = generateLoadout('raider', new Rng(`${profile.id}:${npcId}:${profile.stats.raids}`), 0);
-  // Companions start a little lighter than raiders.
+  // Companions start a little lighter than raiders, each with their own kind of gun.
   eq.slots.backpack = null;
+  const sig = COMPANION_GUN[npcId];
+  if (sig) {
+    const [gun, ammo, spare] = sig;
+    eq.slots.primary = createItem(gun, { ammo: getDef(gun).weapon!.magSize, ammoType: ammo });
+    const rounds = createItem(ammo, { stack: spare });
+    if (!(eq.slots.rig?.grid && addItem(eq.slots.rig.grid, rounds))) addItem(eq.pockets, rounds);
+  }
   if (npcId === 'lena') for (let i = 0; i < 2; i++) addItem(eq.pockets, createItem('bandage'));
   profile.companionEq[npcId] = eq;
   return eq;
 }
 
-/** Encounter NPC gear: a pistol and not much else. */
+/** Signature gun per companion: [weapon, ammo, spare rounds]. */
+const COMPANION_GUN: Record<string, [string, string, number]> = {
+  taras: ['mosin', 'a_54r', 30],
+  yaryna: ['pp19', 'a_9x19', 90],
+  ostap: ['mp133', 'a_12buck', 24],
+  mykola: ['akm', 'a_762ps', 90],
+};
+
+/** Encounter NPC gear: whatever they were left with when you find them (not much). */
 export function encounterLoadout(npcId: string): Equipment {
   const eq = createEquipment();
-  eq.slots.secondary = createItem('pm', { ammo: 3, ammoType: 'a_9x18' });
+  if (npcId === 'taras') eq.slots.primary = createItem('mosin', { ammo: 0, ammoType: 'a_54r' });
+  else if (npcId === 'ostap') eq.slots.primary = createItem('toz', { ammo: 2, ammoType: 'a_12buck' });
+  else eq.slots.secondary = createItem('pm', { ammo: 3, ammoType: 'a_9x18' });
   if (npcId === 'lena') addItem(eq.pockets, createItem('roubles', { stack: 6000 }));
+  if (npcId === 'yaryna') addItem(eq.pockets, createItem('flash'));
   return eq;
 }
 

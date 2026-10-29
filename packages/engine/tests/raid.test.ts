@@ -57,4 +57,32 @@ describe('raid simulation', () => {
     for (let i = 0; i < 10; i++) r.tick(1 / 60, emptyIntent());
     expect(r.weaponItem(r.player)?.ammo).toBe(before - 1);
   });
+
+  it('pulling the trigger on an empty gun reloads it', () => {
+    const r = newRaid();
+    for (const a of r.actors) if (a !== r.player) a.alive = false;
+    r.tick(1 / 60, { ...emptyIntent(), switchTo: 'secondary' });
+    for (let i = 0; i < 60; i++) r.tick(1 / 60, emptyIntent());
+    const gun = r.weaponItem(r.player)!;
+    expect(gun).toBeTruthy();
+    gun.ammo = 0;
+    r.tick(1 / 60, { ...emptyIntent(), fire: true, firePressed: true });
+    expect(r.player.reloadT).toBeGreaterThan(0);
+    for (let i = 0; i < 60 * 4; i++) r.tick(1 / 60, emptyIntent());
+    expect(gun.ammo).toBeGreaterThan(0);
+  });
+
+  it('auto-treats a bleed once the fighting stops, and only with auto-heal on', () => {
+    for (const on of [true, false]) {
+      const r = new Raid({ seed: 7, playerEq: starterKit(), mapId: 'testsite', timeOfDay: 'day', autoHeal: on });
+      for (const a of r.actors) if (a !== r.player) a.alive = false;
+      r.player.health.parts.leftArm.light = true;
+      r.player.combatAt = r.time;
+      // Still "in combat" for 3 s.
+      for (let i = 0; i < 60 * 2; i++) r.tick(1 / 60, emptyIntent());
+      expect(r.player.useT).toBe(0);
+      for (let i = 0; i < 60 * 12; i++) r.tick(1 / 60, emptyIntent());
+      expect(r.player.health.parts.leftArm.light).toBe(!on);
+    }
+  });
 });

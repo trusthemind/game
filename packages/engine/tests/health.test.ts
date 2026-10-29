@@ -168,4 +168,16 @@ describe('quick heal (Q)', () => {
     expect(r.bestMed(r.player)).toBeNull();
     expect(r.medHint(r.player)).toMatch(/No meds/);
   });
+
+  it('infected drop after two pistol rounds anywhere, one to the head', () => {
+    const legs = createHealth(0.7, true, 70 * 0.68);
+    expect(damagePart(legs, 'leftLeg', 28, null)).toBe(false);
+    expect(damagePart(legs, 'rightArm', 28, null)).toBe(true);
+    const head = createHealth(0.7, true, 70 * 0.68);
+    expect(damagePart(head, 'head', 28, null)).toBe(true);
+    // People keep the per-limb model.
+    const human = createHealth();
+    damagePart(human, 'leftLeg', 28, null);
+    expect(damagePart(human, 'rightArm', 28, null)).toBe(false);
+  });
 });

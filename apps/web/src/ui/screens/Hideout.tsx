@@ -252,7 +252,7 @@ function SurvivorsTab() {
         const rel = profile.npcs[npc.id]!;
         const here = npcAtHideout(npc, rel);
         const stage = stageOf(rel);
-        const quests = Object.entries({ q_tools_active: 'Find a toolset for Mykola', q_batt_active: 'Find a car battery', q_salewa_active: 'Bring Olena a Salewa kit', q_intel_active: 'Bring Vera the intelligence folder' }).filter(([f]) => rel.flags.includes(f));
+        const quests = Object.entries({ q_tools_active: 'Find a toolset for Mykola', q_batt_active: 'Find a car battery', q_salewa_active: 'Bring Olena a Salewa kit', q_intel_active: 'Bring Vera the intelligence folder', q_scope_active: 'Find Taras a 4x scope', q_gpu_active: 'Find Yaryna a graphics card', q_stew_active: 'Bring Ostap two cans of beef stew' }).filter(([f]) => rel.flags.includes(f));
         if (!here && !rel.met && !rel.dead) {
           return (
             <div key={npc.id} className="npc-card unknown panel">
@@ -409,6 +409,10 @@ function StatsTab() {
                 useProfile.getState().mutate((d) => (d.settings.volume = v));
               }}
             />
+          </label>
+          <label className="row">
+            <span>Auto-heal bleeds and fractures out of combat</span>
+            <input type="checkbox" checked={profile.settings.autoHeal ?? true} onChange={(e) => useProfile.getState().mutate((d) => (d.settings.autoHeal = e.target.checked))} />
           </label>
           <label className="row">
             <span>Performance overlay (F3)</span>

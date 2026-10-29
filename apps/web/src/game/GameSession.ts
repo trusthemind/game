@@ -70,7 +70,7 @@ export function raidFromProfile(profile: Profile, seed: number, mapId: MapId = '
   for (const npc of Object.values(NPCS)) {
     const rel = profile.npcs[npc.id];
     if (!rel || !npcEncounterEligible(npc, rel) || profile.companion === npc.id) continue;
-    if (rng.chance(rel.met ? 0.4 : 0.65)) encounters.push({ npcId: npc.id, name: npc.name, prefers: npc.prefers ?? ['house'], eq: encounterLoadout(npc.id) });
+    if (encounters.length < 3 && rng.chance(rel.met ? 0.45 : 0.7)) encounters.push({ npcId: npc.id, name: npc.name, prefers: npc.prefers ?? ['house'], eq: encounterLoadout(npc.id), wounded: npc.id === 'lena' });
   }
   const compId = profile.companion;
   const compRel = compId ? profile.npcs[compId] : undefined;
@@ -84,6 +84,7 @@ export function raidFromProfile(profile: Profile, seed: number, mapId: MapId = '
     companion,
     encounters,
     difficulty: profile.settings.difficulty ?? 'normal',
+    autoHeal: profile.settings.autoHeal ?? true,
     grave: profile.grave ? structuredClone(profile.grave) : null,
   });
 }
