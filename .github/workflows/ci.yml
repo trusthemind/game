@@ -26,7 +26,8 @@ jobs:
       - run: npm run build -w @ashfall/web
 
   server:
-    runs-on: ubuntu-latest
+    # MongoDB refuses to start on Linux 6.19+ (SERVER-121912), which ubuntu-latest is moving to.
+    runs-on: ubuntu-24.04
     services:
       mongo:
         image: mongo:8
