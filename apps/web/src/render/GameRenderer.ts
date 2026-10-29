@@ -341,7 +341,7 @@ export class GameRenderer {
       for (const c of raid.map.containers)
         if (c.searched && c.generated && !this.searched.has(c.id) && c.kind !== 'ground') {
           this.searched.add(c.id);
-          markContainerSearched(this.world.containers, this.world.containerIndex, c);
+          markContainerSearched(this.world, c);
         }
 
     // Interaction highlight.

@@ -22,6 +22,8 @@ export interface AssetLibrary {
   mods: Map<string, THREE.Object3D>;
   props: Map<string, THREE.Object3D>;
   nature: Map<string, THREE.Object3D>;
+  /** Room furniture (beds, sofas, shelves…), front facing +Z, standing on y=0. */
+  furniture: Map<string, THREE.Object3D>;
 }
 
 const BASE = `${import.meta.env.BASE_URL}models/`;
@@ -43,8 +45,8 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
     for (const c of g.scene.children) m.set(c.name, c);
     return m;
   };
-  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature'), load('mods'), load('human_m').catch(() => null), load('human_f').catch(() => null), load('hair').catch(() => null)]).then(
-    ([character, characterF, weapons, melee, props, nature, mods, humanM, humanF, hairDoc]) => {
+  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature'), load('mods'), load('human_m').catch(() => null), load('human_f').catch(() => null), load('hair').catch(() => null), load('furniture').catch(() => null)]).then(
+    ([character, characterF, weapons, melee, props, nature, mods, humanM, humanF, hairDoc, furniture]) => {
       const hair = new Map<string, THREE.SkinnedMesh>();
       hairDoc?.scene.traverse((o) => {
         const sm = o as THREE.SkinnedMesh;
@@ -60,7 +62,7 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
         g.scene.traverse((o) => {
           if ((o as THREE.Mesh).isMesh) o.castShadow = true;
         });
-      ready = { character, characterF, humanM, humanF, hair, clips, weapons: byName(weapons), melee: byName(melee), mods: byName(mods), props: byName(props), nature: byName(nature) };
+      ready = { character, characterF, humanM, humanF, hair, clips, weapons: byName(weapons), melee: byName(melee), mods: byName(mods), props: byName(props), nature: byName(nature), furniture: furniture ? byName(furniture) : new Map() };
       return ready;
     },
   );

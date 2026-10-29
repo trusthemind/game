@@ -19,6 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
@@ -234,6 +235,113 @@ async function buildSet(name, table, dirs) {
   await exportGlb(scene, path.join(OUT, `${name}.glb`));
 }
 
+// ── Furniture ────────────────────────────────────────────────────────────────
+// Quaternius Furniture Pack (CC0). Upright, centred on X/Z, standing on y=0, back to −Z / front to +Z.
+// [file, axis to size ('h' height | 'w' width across the front | 'd' depth), metres, extra yaw]
+const FURNITURE = {
+  bed: ['Bed.fbx', 'd', 1.95, -Math.PI / 2],
+  bed_double: ['BedKing.fbx', 'd', 2.0, -Math.PI / 2],
+  bookcase: ['BookCaseBooks.fbx', 'h', 1.85, Math.PI / 2],
+  bookcase_empty: ['BookCase.fbx', 'h', 1.85, Math.PI / 2],
+  shelf_large: ['BookCaseLargeBooks.fbx', 'h', 1.9, Math.PI / 2],
+  chair: ['Chair.fbx', 'h', 0.95, -Math.PI / 2],
+  armchair: ['ChairCushioned.fbx', 'h', 1.0, -Math.PI / 2],
+  closet: ['Closet.fbx', 'h', 1.95, Math.PI / 2],
+  dresser: ['Closet2.fbx', 'h', 1.1, Math.PI / 2],
+  coffee_table: ['CoffeeTable.fbx', 'w', 1.0, Math.PI / 2],
+  lamp: ['Lamp.fbx', 'h', 1.55, 0],
+  plant: ['Plant.fbx', 'h', 0.7, 0],
+  sofa: ['SofaDouble.fbx', 'w', 1.85, -Math.PI / 2],
+    stool: ['Stool.fbx', 'h', 0.55, 0],
+  table: ['Table.fbx', 'w', 1.35, 0],
+  vase: ['Vase.fbx', 'h', 0.45, 0],
+};
+// The FBX materials carry names but no colours; paint them by name in a muted, lived-in palette.
+const FURNITURE_PAINT = [
+  [/^DarkWood/, 0x3f2a1d],
+  [/^Wood/, 0x7a5233],
+  [/^DarkBrown/, 0x33251b],
+  [/^White/, 0xd9d3c4],
+  [/^Sheets/, 0x5d6b78],
+  [/^Sofa\.00[2-4]/, 0x5b4a3c],
+  [/^Sofa/, 0x7d2f2a],
+  [/^Cover2/, 0x2f4a5c],
+  [/^Cover3/, 0x5a6b39],
+  [/^Cover4/, 0x8a6a2c],
+  [/^Pages/, 0xd8cfb4],
+  [/^Red/, 0x7a2a24],
+  [/^Metal/, 0x4a4b4d],
+  [/^Top/, 0xcfc2a0],
+  [/^Green/, 0x4b6b35],
+  [/^Vase/, 0x8c5a3f],
+];
+
+async function buildFurniture() {
+  console.log('furniture:');
+  const scene = new THREE.Scene();
+  for (const [id, [file, axis, metres, yaw]] of Object.entries(FURNITURE)) {
+    const src = find(path.join(SRC, 'furniture'), file);
+    if (!src) {
+      console.warn(`  ! missing ${file}`);
+      continue;
+    }
+    const obj = loadFbx(src);
+    obj.traverse((o) => {
+      if (!o.isMesh) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        const hit = FURNITURE_PAINT.find(([re]) => re.test(m.name));
+        if (hit) m.color.setHex(hit[1]);
+        m.roughness = /Metal/.test(m.name) ? 0.5 : 0.85;
+      }
+    });
+    const wrapper = new THREE.Group();
+    wrapper.add(obj);
+    wrapper.rotation.y = yaw;
+    wrapper.updateMatrixWorld(true);
+    let box = new THREE.Box3().setFromObject(wrapper);
+    const size = box.getSize(new THREE.Vector3());
+    wrapper.scale.setScalar(metres / (axis === 'h' ? size.y : axis === 'd' ? size.z : size.x));
+    wrapper.updateMatrixWorld(true);
+    box = new THREE.Box3().setFromObject(wrapper);
+    const c = box.getCenter(new THREE.Vector3());
+    wrapper.position.set(-c.x, -box.min.y, -c.z);
+    // These FBXs are dozens of tiny meshes (every book is its own object). Bake transforms and merge
+    // into one mesh per material so the game instances 2–6 meshes per model, not 60.
+    wrapper.updateMatrixWorld(true);
+    const byMat = new Map();
+    wrapper.traverse((o) => {
+      if (!o.isMesh) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      const src = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      const groups = src.groups.length ? src.groups : [{ start: 0, count: src.attributes.position.count, materialIndex: 0 }];
+      for (const gr of groups) {
+        const m = mats[gr.materialIndex ?? 0];
+        const part = new THREE.BufferGeometry();
+        for (const a of ['position', 'normal']) {
+          const attr = src.attributes[a];
+          part.setAttribute(a, new THREE.BufferAttribute(attr.array.slice(gr.start * 3, (gr.start + gr.count) * 3), 3));
+        }
+        part.applyMatrix4(o.matrixWorld);
+        let e = byMat.get(m.name);
+        if (!e) byMat.set(m.name, (e = { m, parts: [] }));
+        e.parts.push(part);
+      }
+    });
+    const g = new THREE.Group();
+    g.name = id;
+    let tris = 0;
+    for (const { m, parts } of byMat.values()) {
+      const merged = mergeGeometries(parts);
+      tris += merged.attributes.position.count / 3;
+      g.add(new THREE.Mesh(merged, m));
+    }
+    scene.add(g);
+    const s = new THREE.Box3().setFromObject(g).getSize(new THREE.Vector3());
+    console.log(`  ${id.padEnd(15)} ${s.x.toFixed(2)} × ${s.z.toFixed(2)} × ${s.y.toFixed(2)} m, ${byMat.size} meshes, ${tris} tris`);
+  }
+  await exportGlb(scene, path.join(OUT, 'furniture.glb'));
+}
+
 // ── Character (mannequin + animations) ───────────────────────────────────────
 // UAL2 (glTF, Unreal-style skeleton) is the base: male mannequin + 43 clips (climb, loot, consume, zombie
 // locomotion, melee…). UAL1's Unreal FBX uses the identical skeleton and rest pose, so its 45 clips
@@ -404,8 +512,6 @@ if (want('melee')) await buildSet('melee', MELEE, [path.join(SRC, 'survival')]);
 if (want('mods')) await buildSet('mods', MODS, [path.join(SRC, 'guns')]);
 if (want('props')) await buildSet('props', PROPS, [path.join(SRC, 'survival')]);
 if (want('nature')) await buildNature();
-fs.writeFileSync(
-  path.join(OUT, 'CREDITS.txt'),
-  'All 3D models: Quaternius (https://quaternius.com) — CC0 1.0 Universal.\nUniversal Animation Library, Ultimate Gun Pack, Survival Pack, Stylized Nature MegaKit.\n',
-);
+if (want('furniture')) await buildFurniture();
+// CREDITS.txt in apps/web/public/models is maintained by hand (several packs, several licences).
 console.log('done');

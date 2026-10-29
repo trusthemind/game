@@ -695,8 +695,10 @@ export class Raid {
     const y1 = Math.floor(a.pos.y + r);
     for (let ty = y0; ty <= y1; ty++)
       for (let tx = x0; tx <= x1; tx++) {
-        if (!this.map.isSolid(tx, ty)) continue;
-        for (const [bx0, by0, bx1, by1] of solidBoxes(this.map, tx, ty, this.boxScratch)) {
+        const boxes = solidBoxes(this.map, tx, ty, this.boxScratch);
+        const furn = this.map.furnitureTouching(tx, ty);
+        if (furn) for (const f of furn) boxes.push(f.box);
+        for (const [bx0, by0, bx1, by1] of boxes) {
           const cx = clamp(a.pos.x, bx0, bx1);
           const cy = clamp(a.pos.y, by0, by1);
           let nx = a.pos.x - cx;

@@ -42,10 +42,15 @@ const CONTAINER_SHAPE: Record<ContainerKind, { w: number; h: number; d: number; 
   ground: { w: 0.5, h: 0.1, d: 0.5, color: 0x55503f },
 };
 
+/** Containers drawn with a furniture model instead of a box. */
+const CONTAINER_MODEL: Partial<Record<ContainerKind, string>> = { wardrobe: 'closet', drawer: 'dresser', shelf: 'bookcase_empty' };
+
 export interface WorldMeshes {
   group: THREE.Group;
   containers: THREE.InstancedMesh;
+  /** Container index −1 = drawn as a furniture model: these are its instance slots. */
   containerIndex: Map<number, number>;
+  containerModels: Map<number, [THREE.InstancedMesh, number][]>;
   extractionBeams: THREE.Mesh[];
   /** Hide the pane of a smashed window (map tile index). */
   breakGlass(idx: number): void;
@@ -327,14 +332,75 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
     group.add(body, cabin);
   }
 
-  // ── Loot containers: one instanced unit box scaled per kind; colour dims once searched.
+  // ── Loot containers: one instanced unit box scaled per kind; colour dims once searched. Wardrobes,
+  // drawers and shelves use the furniture models instead (see below).
   const contMat = mat(new THREE.MeshStandardMaterial({ roughness: 0.8 }));
   const containers = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1, 1, 1)), contMat, Math.max(1, map.containers.length + 64));
   containers.count = 0;
   const containerIndex = new Map<number, number>();
+  const containerModels = new Map<number, [THREE.InstancedMesh, number][]>();
+  const modelled = lib?.furniture.size ? map.containers.filter((c) => CONTAINER_MODEL[c.kind] && lib.furniture.has(CONTAINER_MODEL[c.kind]!)) : [];
+  for (const c of modelled) containerIndex.set(c.id, -1);
   for (const c of map.containers) addContainerInstance(containers, containerIndex, map, c);
   containers.castShadow = shadows;
   group.add(containers);
+
+  // ── Furniture (+ furniture-shaped containers): one InstancedMesh per material per model and 32×32
+  // chunk, so it culls with the camera. Models face +Z with their back at −Z.
+  if (lib && lib.furniture.size) {
+    const CHUNK = 32;
+    const buckets = new Map<string, { t: THREE.Matrix4; container?: number }[]>();
+    const up = new THREE.Vector3(0, 1, 0);
+    const place = (kind: string, x: number, y: number, dir: number, container?: number) => {
+      // rotation.y = θ turns +Z towards (sin θ, cos θ) in (x, z) = world (x, y).
+      const t = new THREE.Matrix4().compose(new THREE.Vector3(x, 0, y), new THREE.Quaternion().setFromAxisAngle(up, Math.atan2(Math.cos(dir), Math.sin(dir))), new THREE.Vector3(1, 1, 1));
+      const key = `${kind}|${Math.floor(x / CHUNK)},${Math.floor(y / CHUNK)}`;
+      let b = buckets.get(key);
+      if (!b) buckets.set(key, (b = []));
+      b.push({ t, container });
+    };
+    for (const f of map.furniture) place(f.kind, f.x, f.y, f.dir);
+    const depthOf = new Map<string, number>();
+    for (const c of modelled) {
+      const kind = CONTAINER_MODEL[c.kind]!;
+      let d = depthOf.get(kind);
+      if (d === undefined) depthOf.set(kind, (d = new THREE.Box3().setFromObject(lib.furniture.get(kind)!).getSize(new THREE.Vector3()).z));
+      // Back against the wall face (the wall pillar is 0.32 m thick, centred on its tile).
+      const off = 0.5 + 0.34 - d / 2;
+      const [dx, dy] = map.isSolid(c.x - 1, c.y) ? [-1, 0] : map.isSolid(c.x + 1, c.y) ? [1, 0] : map.isSolid(c.x, c.y - 1) ? [0, -1] : map.isSolid(c.x, c.y + 1) ? [0, 1] : [0, -1];
+      place(kind, c.x + 0.5 + dx * off, c.y + 0.5 + dy * off, Math.atan2(-dy, -dx), c.id);
+    }
+    const shared = new Map<THREE.Material, THREE.Material>();
+    for (const [key, items] of buckets) {
+      const src = lib.furniture.get(key.split('|')[0]!);
+      if (!src) continue;
+      src.updateMatrixWorld(true);
+      const hasContainers = items.some((it) => it.container !== undefined);
+      src.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        const materials = list.map((m0) => {
+          let m = shared.get(m0);
+          if (!m) shared.set(m0, (m = mat((m0 as THREE.MeshStandardMaterial).clone())));
+          return m;
+        });
+        const inst = new THREE.InstancedMesh(mesh.geometry, materials.length === 1 ? materials[0]! : materials, items.length);
+        items.forEach((it, i) => {
+          inst.setMatrixAt(i, m4.multiplyMatrices(it.t, mesh.matrixWorld));
+          if (hasContainers) inst.setColorAt(i, tmpC.setRGB(1, 1, 1));
+          if (it.container === undefined) return;
+          let slots = containerModels.get(it.container);
+          if (!slots) containerModels.set(it.container, (slots = []));
+          slots.push([inst, i]);
+        });
+        inst.castShadow = shadows;
+        inst.receiveShadow = shadows;
+        inst.computeBoundingSphere();
+        group.add(inst);
+      });
+    }
+  }
 
   // ── Extraction zones: glowing ring + soft beam (bloom picks these up).
   const extractionBeams: THREE.Mesh[] = [];
@@ -355,6 +421,7 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
     group,
     containers,
     containerIndex,
+    containerModels,
     extractionBeams,
     materials,
     breakGlass(idx) {
@@ -394,9 +461,17 @@ export function addContainerInstance(mesh: THREE.InstancedMesh, index: Map<numbe
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 }
 
-export function markContainerSearched(mesh: THREE.InstancedMesh, index: Map<number, number>, c: LootContainer): void {
+export function markContainerSearched(world: WorldMeshes, c: LootContainer): void {
+  const { containers: mesh, containerIndex: index } = world;
   const i = index.get(c.id);
   if (i === undefined) return;
+  if (i < 0) {
+    for (const [inst, k] of world.containerModels.get(c.id) ?? []) {
+      inst.setColorAt(k, tmpC.setScalar(0.5));
+      inst.instanceColor!.needsUpdate = true;
+    }
+    return;
+  }
   mesh.setColorAt(i, tmpC.setHex(CONTAINER_SHAPE[c.kind].color).multiplyScalar(0.45));
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 }

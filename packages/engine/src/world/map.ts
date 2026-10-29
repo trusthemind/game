@@ -1,5 +1,6 @@
 import { OPAQUE, SOLID, COVER, Tile } from './tiles';
 import type { GridContainer } from '../items/inventory';
+import type { Furniture } from './furniture';
 
 export type BuildingKind = 'house' | 'shop' | 'clinic' | 'warehouse' | 'military' | 'apartment' | 'barn' | 'cabin';
 
@@ -89,6 +90,10 @@ export class GameMap {
   /** District index per tile (into `districts`). */
   districtAt: Uint8Array;
   districts: { kind: District; x: number; y: number; name: string }[] = [];
+  furniture: Furniture[] = [];
+  /** Per-tile furniture id + 1 for pieces that block movement (0 = free). */
+  readonly furnitureAt: Uint16Array;
+  readonly furnitureCells = new Map<number, Furniture[]>();
 
   constructor(
     readonly width: number,
@@ -98,6 +103,7 @@ export class GameMap {
     this.tiles = new Uint8Array(width * height);
     this.buildingAt = new Uint16Array(width * height);
     this.districtAt = new Uint8Array(width * height);
+    this.furnitureAt = new Uint16Array(width * height);
   }
 
   districtOf(x: number, y: number): District | null {
@@ -135,7 +141,14 @@ export class GameMap {
   }
 
   isWalkable(x: number, y: number): boolean {
-    return this.inBounds(x, y) && SOLID[this.tiles[y * this.width + x]!] === 0;
+    if (!this.inBounds(x, y)) return false;
+    const i = y * this.width + x;
+    return SOLID[this.tiles[i]!] === 0 && this.furnitureAt[i] === 0;
+  }
+
+  /** Blocking furniture whose box reaches into this tile, for collision. */
+  furnitureTouching(x: number, y: number): readonly Furniture[] | undefined {
+    return this.furnitureCells.get(y * this.width + x);
   }
 
   isIndoors(x: number, y: number): boolean {

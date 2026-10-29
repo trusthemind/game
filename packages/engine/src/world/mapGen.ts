@@ -3,6 +3,7 @@ import { Rng } from '../core/rng';
 import { createGrid } from '../items/inventory';
 import { GameMap, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype } from './map';
 import { Tile } from './tiles';
+import { furnish } from './furniture';
 
 export type MapId = 'outskirts' | 'pinehollow' | 'portkirov' | 'testsite';
 
@@ -325,11 +326,13 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   map.containers = map.containers.filter((c) => reach[map.idx(c.x, c.y)] || neighbourReachable(map, reach, c.x, c.y));
   map.extractions = map.extractions.filter((e) => reach[map.idx(Math.floor(e.x), Math.floor(e.y))]);
 
+  furnish(map);
+
   // POIs for patrols: room centres + road crossings + district centres.
   for (const b of map.buildings) for (const r of b.rooms) map.pois.push({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
   for (const rx of roadsX) for (const ry of roadsY) map.pois.push({ x: rx + 1.5, y: ry + 1.5 });
   for (const d of map.districts) map.pois.push({ x: d.x, y: d.y });
-  map.pois = map.pois.filter((p) => map.inBounds(Math.floor(p.x), Math.floor(p.y)) && reach[map.idx(Math.floor(p.x), Math.floor(p.y))]);
+  map.pois = map.pois.filter((p) => map.isWalkable(Math.floor(p.x), Math.floor(p.y)) && reach[map.idx(Math.floor(p.x), Math.floor(p.y))]);
 
   placeBots(map, rng, reach, density);
   return map;
