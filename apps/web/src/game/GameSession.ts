@@ -1,4 +1,5 @@
 import {
+  Tile,
   BODY_PARTS,
   inPain,
   carryGrids,
@@ -12,6 +13,7 @@ import {
   Raid,
   Rng,
   type Interactable,
+  type MapId,
   type Profile,
   type RaidNpcSpawn,
   type RaidResult,
@@ -23,11 +25,14 @@ import type { QualityLevel } from '../render/quality';
 import { Input } from '../input/Input';
 import { PerfMonitor } from '../perf/PerfMonitor';
 import { useRaidUi, type HudState } from './hudStore';
+import { audio, gunClass } from '../audio/AudioEngine';
 
 export interface SessionOptions {
   canvas: HTMLCanvasElement;
   labelLayer: HTMLElement | null;
   seed: number;
+  mapId: MapId;
+  timeOfDay?: 'day' | 'dusk' | 'night';
   profile: Profile;
   quality: QualityLevel;
   assets: AssetLibrary;
@@ -35,7 +40,7 @@ export interface SessionOptions {
 }
 
 /** Builds the raid's starting state from the persistent profile: gear, companion, possible NPC encounters. */
-export function raidFromProfile(profile: Profile, seed: number): Raid {
+export function raidFromProfile(profile: Profile, seed: number, mapId: MapId = 'outskirts', timeOfDay?: 'day' | 'dusk' | 'night'): Raid {
   const rng = new Rng(seed ^ 0xabcdef);
   const encounters: RaidNpcSpawn[] = [];
   for (const npc of Object.values(NPCS)) {
@@ -46,7 +51,7 @@ export function raidFromProfile(profile: Profile, seed: number): Raid {
   const compId = profile.companion;
   const compRel = compId ? profile.npcs[compId] : undefined;
   const companion = compId && compRel && !compRel.dead ? { npcId: compId, name: NPCS[compId]?.name ?? compId, eq: structuredClone(companionLoadout(profile, compId)) } : null;
-  return new Raid({ seed, playerEq: structuredClone(profile.equipment), playerName: profile.name, companion, encounters });
+  return new Raid({ seed, mapId, timeOfDay, playerEq: structuredClone(profile.equipment), playerName: profile.name, companion, encounters });
 }
 
 /**
@@ -70,10 +75,65 @@ export class GameSession {
   private onResize = () => this.renderer.resize();
 
   constructor(private opts: SessionOptions) {
-    this.raid = raidFromProfile(opts.profile, opts.seed);
+    this.raid = raidFromProfile(opts.profile, opts.seed, opts.mapId, opts.timeOfDay);
     this.renderer = new GameRenderer(opts.canvas, this.raid, opts.quality, opts.labelLayer, opts.assets, playerAppearance(opts.profile.look));
     this.input = new Input(opts.canvas);
     window.addEventListener('resize', this.onResize);
+    audio.setVolume(opts.profile.settings.volume ?? 0.7);
+    audio.unlock();
+    audio.startAmbience(this.raid.timeOfDay, this.raid.rain);
+    window.addEventListener('pointerdown', this.onGesture);
+    window.addEventListener('keydown', this.onGesture);
+  }
+
+  /** Browsers start audio suspended until a user gesture. */
+  private onGesture = () => audio.unlock();
+  private groanT = 2;
+
+  private playSounds(events: ReturnType<Raid['drainEvents']>, dt: number): void {
+    const raid = this.raid;
+    const pid = raid.player.id;
+    audio.setListener(raid.player.pos.x, raid.player.pos.y);
+    for (const e of events) {
+      switch (e.t) {
+        case 'shot':
+          audio.shot(gunClass(e.weapon), e.fx, e.fy, e.actor === pid);
+          if (e.hit) audio.hit(e.tx, e.ty, false, false);
+          break;
+        case 'step': {
+          const t = e.tile;
+          const surface = t === Tile.Wood ? 'wood' : t === Tile.Road || t === Tile.Concrete ? 'hard' : t === Tile.Dirt ? 'dirt' : 'grass';
+          audio.step(e.actor, surface, e.x, e.y, e.loud, e.actor === pid);
+          break;
+        }
+        case 'reload':
+          if (raid.actorById(e.actor)) audio.reload(raid.actorById(e.actor)!.pos.x, raid.actorById(e.actor)!.pos.y, e.actor === pid);
+          break;
+        case 'swing':
+          audio.swing(e.x, e.y, e.actor === pid);
+          break;
+        case 'hit':
+          if (!e.penetrated && !e.melee) audio.hit(e.x, e.y, true, e.target === pid);
+          else if (e.melee) audio.hit(e.x, e.y, false, e.target === pid);
+          break;
+        case 'impact':
+          audio.impact(e.x, e.y);
+          break;
+        case 'used':
+          if (e.actor === pid) audio.meds();
+          break;
+        default:
+          break;
+      }
+    }
+    // Infected near the player groan now and then.
+    this.groanT -= dt;
+    if (this.groanT <= 0) {
+      this.groanT = 1.5 + Math.random() * 2.5;
+      const z = raid.actors.find((a) => a.alive && a.archetype === 'infected' && Math.hypot(a.pos.x - raid.player.pos.x, a.pos.y - raid.player.pos.y) < 22 && Math.random() < 0.5);
+      if (z) audio.groan(z.pos.x, z.pos.y);
+    }
+    audio.tick(dt, raid.player.hp / raid.player.maxHp);
   }
 
   start(): void {
@@ -110,6 +170,7 @@ export class GameSession {
 
     const events = raid.drainEvents();
     this.renderer.handleEvents(events);
+    this.playSounds(events, this.paused ? 0 : dt);
     for (const e of events) {
       if (e.t === 'msg') ui.pushMessage(e.text, e.tone);
       if (e.t === 'used' && e.actor === raid.player.id) ui.pushMessage(`Used ${getDef(e.item).name}`, 'good');
@@ -322,6 +383,9 @@ export class GameSession {
   dispose(): void {
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('pointerdown', this.onGesture);
+    window.removeEventListener('keydown', this.onGesture);
+    audio.stopAmbience();
     this.input.dispose();
     this.renderer.dispose();
   }

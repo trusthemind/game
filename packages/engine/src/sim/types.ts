@@ -17,6 +17,8 @@ export interface ActorIntent {
   aimY: number;
   sprint: boolean;
   crouch: boolean;
+  /** Right mouse / aim-down: face the aim point and shoot accurately. Bots always aim. */
+  aim: boolean;
   fire: boolean;
   /** Edge-triggered fire (semi-auto & melee need a fresh press). */
   firePressed: boolean;
@@ -29,7 +31,7 @@ export interface ActorIntent {
 }
 
 export const emptyIntent = (): ActorIntent => ({
-  moveX: 0, moveY: 0, aimX: 0, aimY: 0, sprint: false, crouch: false,
+  moveX: 0, moveY: 0, aimX: 0, aimY: 0, sprint: false, crouch: false, aim: false,
   fire: false, firePressed: false, reload: false, switchTo: null, use: null,
 });
 
@@ -66,6 +68,8 @@ export interface Actor {
   usePart: BodyPart | null;
   crouching: boolean;
   sprinting: boolean;
+  /** Currently aiming (player holds aim, or recently fired). */
+  aiming: boolean;
   flashlight: boolean;
   lastHitAt: number;
   lastAttacker: number | null;
@@ -108,6 +112,7 @@ export type RaidEvent =
   | { t: 'impact'; x: number; y: number }
   | { t: 'death'; actor: number; killer: number | null; name: string; faction: Faction }
   | { t: 'reload'; actor: number }
+  | { t: 'step'; actor: number; x: number; y: number; tile: number; indoor: boolean; loud: number }
   | { t: 'used'; actor: number; item: string }
   | { t: 'msg'; text: string; tone?: 'info' | 'good' | 'bad' }
   | { t: 'extracted' }

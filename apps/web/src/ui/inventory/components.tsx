@@ -15,6 +15,7 @@ import {
 import { CategoryIcon } from './icons';
 import { canDrop, splitGridId, toSource, toTarget, type DstRef, type InvHost, type MenuAction, type SrcRef } from './host';
 import { useDrag, zones } from './drag';
+import { audio } from '../../audio/AudioEngine';
 import './inventory.css';
 
 export const InvContext = createContext<{ host: InvHost; version: number } | null>(null);
@@ -359,7 +360,8 @@ export function DragLayer() {
             const t = toTarget(r, h);
             return !!s && !!t && moveItem(s, t);
           });
-      }
+        audio.ui('move');
+      } else if (d && h) audio.ui('deny');
       st.end();
     };
     const key = (e: KeyboardEvent) => {

@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import { App } from './ui/App';
+import { audio } from './audio/AudioEngine';
 import './styles/global.css';
 import './ui/screens/hideout.css';
 import './ui/components/dialogue.css';
@@ -17,6 +18,16 @@ createRoot(document.getElementById('root')!).render(
   ) : (
     <App />
   ),
+);
+
+// Button clicks get a soft UI tick; first gesture also unlocks WebAudio.
+document.addEventListener(
+  'click',
+  (e) => {
+    audio.unlock();
+    if ((e.target as HTMLElement).closest('button')) audio.ui('click');
+  },
+  true,
 );
 
 // Precached build + offline play. Skip in dev so HMR isn't fighting a service worker.

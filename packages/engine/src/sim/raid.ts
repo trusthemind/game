@@ -18,9 +18,10 @@ import { generateLoadout } from '../items/loadouts';
 import { CONTAINERS, generateLoot } from '../items/loot';
 import { computeFov } from '../world/fov';
 import type { GameMap, LootContainer, BotArchetype } from '../world/map';
-import { generateMap } from '../world/mapGen';
+import { generateMap, MAP_PRESETS, type MapId } from '../world/mapGen';
 import { Pathfinder } from '../world/pathfinding';
 import { OPAQUE, Tile } from '../world/tiles';
+import { solidBoxes, type Box } from '../world/collision';
 import { BotBrain, type BrainRole } from '../ai/brain';
 import { armorFor, gaussian, resolveBulletHit, resolveMeleeHit, ZONE_WEIGHTS } from './combat';
 import {
@@ -76,7 +77,10 @@ export interface RaidOptions {
   encounters?: RaidNpcSpawn[];
   botDensity?: number;
   mapSize?: number;
+  mapId?: MapId;
   timeLimit?: number;
+  /** Force time of day (otherwise random per seed). */
+  timeOfDay?: TimeOfDay;
   /** Pre-generated map (lets the client reuse a cached map for the same seed). */
   map?: GameMap;
 }
@@ -155,11 +159,12 @@ export class Raid {
 
   constructor(opts: RaidOptions) {
     this.rng = new Rng(opts.seed);
-    this.map = opts.map ?? generateMap(opts.seed, { size: opts.mapSize, botDensity: opts.botDensity });
+    this.map = opts.map ?? generateMap(opts.seed, { mapId: opts.mapId, size: opts.mapSize, botDensity: opts.botDensity });
     this.pathfinder = new Pathfinder(this.map);
-    this.timeLimit = opts.timeLimit ?? 25 * 60;
+    this.timeLimit = opts.timeLimit ?? (MAP_PRESETS[this.map.mapId as MapId]?.raidMinutes ?? 25) * 60;
     const envRng = this.rng.fork('env');
-    this.timeOfDay = envRng.weighted([['day', 3], ['dusk', 4], ['night', 3]] as const);
+    const rolledTod = envRng.weighted([['day', 3], ['dusk', 4], ['night', 3]] as const);
+    this.timeOfDay = opts.timeOfDay ?? rolledTod;
     this.rain = envRng.chance(0.35);
     this.playerFov = new Uint8Array(this.map.width * this.map.height);
     this.explored = new Uint8Array(this.map.width * this.map.height);
@@ -176,6 +181,7 @@ export class Raid {
       eq: opts.playerEq,
     });
     this.player.flashlight = this.timeOfDay !== 'day';
+    this.player.facing = Math.atan2(this.map.height / 2 - sp.y, this.map.width / 2 - sp.x);
     this.valueIn = equipmentValue(opts.playerEq);
 
     if (opts.companion) {
@@ -237,6 +243,7 @@ export class Raid {
       useT: 0,
       useUid: null,
       usePart: null,
+      aiming: false,
       crouching: false,
       sprinting: false,
       flashlight: false,
@@ -406,10 +413,15 @@ export class Raid {
     }
     if (a.active !== 'melee' && !a.eq.slots[a.active]) a.active = a.eq.slots.primary ? 'primary' : a.eq.slots.secondary ? 'secondary' : 'melee';
 
-    // Facing.
-    const aimAngle = angleTo(a.pos, { x: it.aimX, y: it.aimY });
-    const turnRate = a.faction === 'player' ? 40 : a.archetype === 'infected' ? 4 : 7;
-    if (Math.hypot(it.aimX - a.pos.x, it.aimY - a.pos.y) > 0.05) a.facing = turnTowards(a.facing, aimAngle, turnRate * dt);
+    // Facing (Project Zomboid style for the player): aim → face the cursor; otherwise face where you walk.
+    const aiming = !a.brain ? it.aim || it.fire || a.fireCd > -0.5 : true;
+    a.aiming = aiming;
+    const turnRate = a.faction === 'player' ? (aiming ? 40 : 14) : a.archetype === 'infected' ? 4 : 7;
+    if (aiming || a.brain) {
+      if (Math.hypot(it.aimX - a.pos.x, it.aimY - a.pos.y) > 0.05) a.facing = turnTowards(a.facing, angleTo(a.pos, { x: it.aimX, y: it.aimY }), turnRate * dt);
+    } else if (Math.hypot(it.moveX, it.moveY) > 0.1) {
+      a.facing = turnTowards(a.facing, Math.atan2(it.moveY, it.moveX), turnRate * dt);
+    }
 
     // Movement.
     let mx = it.moveX;
@@ -442,9 +454,12 @@ export class Raid {
     if (v > 0.4) {
       a.stepT -= dt * v;
       if (a.stepT <= 0) {
-        a.stepT = 1.1;
+        a.stepT = 0.75;
         const r = a.crouching ? 1.6 : a.sprinting ? 10 : 4.5;
         this.makeNoise(a.pos.x, a.pos.y, a.archetype === 'infected' ? r * 0.5 : r, a.id, 'step');
+        const tx = Math.floor(a.pos.x);
+        const ty = Math.floor(a.pos.y);
+        this.emit({ t: 'step', actor: a.id, x: a.pos.x, y: a.pos.y, tile: this.map.get(tx, ty), indoor: this.map.isIndoors(tx, ty), loud: a.crouching ? 0.35 : a.sprinting ? 1.4 : 1 });
       }
     }
 
@@ -488,6 +503,8 @@ export class Raid {
     }
   }
 
+  private boxScratch: Box[] = [];
+
   private resolveTiles(a: Actor): void {
     const r = a.radius;
     const x0 = Math.floor(a.pos.x - r);
@@ -497,30 +514,32 @@ export class Raid {
     for (let ty = y0; ty <= y1; ty++)
       for (let tx = x0; tx <= x1; tx++) {
         if (!this.map.isSolid(tx, ty)) continue;
-        const cx = clamp(a.pos.x, tx, tx + 1);
-        const cy = clamp(a.pos.y, ty, ty + 1);
-        let nx = a.pos.x - cx;
-        let ny = a.pos.y - cy;
-        const d2 = nx * nx + ny * ny;
-        if (d2 >= r * r) continue;
-        if (d2 < 1e-10) {
-          // Centre inside the tile: push out along the shortest axis.
-          const left = a.pos.x - tx;
-          const right = tx + 1 - a.pos.x;
-          const top = a.pos.y - ty;
-          const bottom = ty + 1 - a.pos.y;
-          const m = Math.min(left, right, top, bottom);
-          if (m === left) a.pos.x = tx - r;
-          else if (m === right) a.pos.x = tx + 1 + r;
-          else if (m === top) a.pos.y = ty - r;
-          else a.pos.y = ty + 1 + r;
-          continue;
+        for (const [bx0, by0, bx1, by1] of solidBoxes(this.map, tx, ty, this.boxScratch)) {
+          const cx = clamp(a.pos.x, bx0, bx1);
+          const cy = clamp(a.pos.y, by0, by1);
+          let nx = a.pos.x - cx;
+          let ny = a.pos.y - cy;
+          const d2 = nx * nx + ny * ny;
+          if (d2 >= r * r) continue;
+          if (d2 < 1e-10) {
+            // Centre inside the box: push out along the shortest axis.
+            const left = a.pos.x - bx0;
+            const right = bx1 - a.pos.x;
+            const top = a.pos.y - by0;
+            const bottom = by1 - a.pos.y;
+            const m = Math.min(left, right, top, bottom);
+            if (m === left) a.pos.x = bx0 - r;
+            else if (m === right) a.pos.x = bx1 + r;
+            else if (m === top) a.pos.y = by0 - r;
+            else a.pos.y = by1 + r;
+            continue;
+          }
+          const d = Math.sqrt(d2);
+          nx /= d;
+          ny /= d;
+          a.pos.x = cx + nx * r;
+          a.pos.y = cy + ny * r;
         }
-        const d = Math.sqrt(d2);
-        nx /= d;
-        ny /= d;
-        a.pos.x = cx + nx * r;
-        a.pos.y = cy + ny * r;
       }
   }
 
@@ -584,7 +603,9 @@ export class Raid {
     a.fireCd = 60 / def.rpm;
     w.ammo = (w.ammo ?? 1) - 1;
     const moving = Math.hypot(a.vel.x, a.vel.y) > 0.6;
-    const spread = (def.spread * (moving ? 1.8 : 1) * (a.crouching ? 0.7 : 1) + a.bloom) * aimMul(a.health);
+    // Hip fire (player not holding aim) is much less accurate.
+    const hip = !a.brain && !a.intent.aim ? 1.6 : 1;
+    const spread = (def.spread * (moving ? 1.8 : 1) * (a.crouching ? 0.7 : 1) * hip + a.bloom) * aimMul(a.health);
     a.bloom = Math.min(0.12, a.bloom + def.recoil * 0.35);
     this.makeNoise(a.pos.x, a.pos.y, def.noise, a.id, 'shot');
     const pellets = def.pellets ?? 1;

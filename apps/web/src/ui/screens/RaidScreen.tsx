@@ -25,6 +25,8 @@ export function resolveQuality(q: string): QualityLevel {
 
 export function RaidScreen() {
   const seed = useApp((s) => s.raidSeed);
+  const mapId = useApp((s) => s.raidMap);
+  const raidTime = useApp((s) => s.raidTime);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
   const [session, setSession] = useState<GameSession | null>(null);
@@ -43,6 +45,8 @@ export function RaidScreen() {
           canvas: canvasRef.current,
           labelLayer: labelsRef.current,
           seed,
+          mapId,
+          timeOfDay: raidTime === 'random' ? undefined : raidTime,
           profile: draft,
           quality: resolveQuality(profile.settings.quality),
           assets,
@@ -306,7 +310,8 @@ function PauseMenu({ session }: { session: GameSession }) {
               ['WASD', 'Move'],
               ['Shift', 'Sprint'],
               ['C', 'Crouch'],
-              ['Mouse / LMB', 'Aim / fire'],
+              ['RMB (hold) / Ctrl', 'Aim — face the cursor, accurate fire'],
+              ['LMB', 'Fire (hip fire without aiming)'],
               ['R', 'Reload'],
               ['1 2 3', 'Primary / secondary / melee'],
               ['E', 'Search · loot · talk'],

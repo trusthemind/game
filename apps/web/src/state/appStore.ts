@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { RaidResult, RaidSummary } from '@ashfall/engine';
+import type { MapId, RaidResult, RaidSummary } from '@ashfall/engine';
 
 export type Screen = 'menu' | 'hideout' | 'raid' | 'raidEnd';
 export type HideoutTab = 'gear' | 'trader' | 'survivors' | 'stats';
@@ -14,12 +14,14 @@ interface AppState {
   screen: Screen;
   tab: HideoutTab;
   raidSeed: number;
+  raidMap: MapId;
+  raidTime: 'random' | 'day' | 'dusk' | 'night';
   lastResult: { result: RaidResult; summary: RaidSummary } | null;
   toasts: Toast[];
   dialogueNpc: string | null;
   go(screen: Screen): void;
   setTab(tab: HideoutTab): void;
-  startRaid(seed?: number): void;
+  startRaid(seed?: number, mapId?: MapId, time?: AppState['raidTime']): void;
   finishRaid(result: RaidResult, summary: RaidSummary): void;
   toast(text: string, tone?: Toast['tone']): void;
   openDialogue(npcId: string | null): void;
@@ -31,12 +33,14 @@ export const useApp = create<AppState>((set) => ({
   screen: 'menu',
   tab: 'gear',
   raidSeed: 0,
+  raidMap: 'outskirts',
+  raidTime: 'random',
   lastResult: null,
   toasts: [],
   dialogueNpc: null,
   go: (screen) => set({ screen }),
   setTab: (tab) => set({ tab }),
-  startRaid: (seed) => set({ screen: 'raid', raidSeed: seed ?? Math.floor(Math.random() * 2 ** 31) }),
+  startRaid: (seed, mapId, time) => set((s) => ({ screen: 'raid', raidSeed: seed ?? Math.floor(Math.random() * 2 ** 31), raidMap: mapId ?? s.raidMap, raidTime: time ?? s.raidTime })),
   finishRaid: (result, summary) => set({ screen: 'raidEnd', lastResult: { result, summary } }),
   toast: (text, tone) => {
     const id = toastId++;

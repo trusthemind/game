@@ -1,7 +1,9 @@
 import { OPAQUE, SOLID, COVER, Tile } from './tiles';
 import type { GridContainer } from '../items/inventory';
 
-export type BuildingKind = 'house' | 'shop' | 'clinic' | 'warehouse' | 'military';
+export type BuildingKind = 'house' | 'shop' | 'clinic' | 'warehouse' | 'military' | 'apartment' | 'barn' | 'cabin';
+
+export type District = 'town' | 'industrial' | 'military' | 'forest' | 'farm' | 'docks';
 
 export interface Rect {
   x: number;
@@ -77,6 +79,11 @@ export class GameMap {
   playerSpawn = { x: 0, y: 0 };
   /** Outdoor / indoor points of interest used by patrolling AI. */
   pois: { x: number; y: number }[] = [];
+  mapId = 'custom';
+  name = 'Unknown';
+  /** District index per tile (into `districts`). */
+  districtAt: Uint8Array;
+  districts: { kind: District; x: number; y: number; name: string }[] = [];
 
   constructor(
     readonly width: number,
@@ -85,6 +92,12 @@ export class GameMap {
   ) {
     this.tiles = new Uint8Array(width * height);
     this.buildingAt = new Uint16Array(width * height);
+    this.districtAt = new Uint8Array(width * height);
+  }
+
+  districtOf(x: number, y: number): District | null {
+    if (!this.inBounds(x, y)) return null;
+    return this.districts[this.districtAt[this.idx(x, y)]!]?.kind ?? null;
   }
 
   inBounds(x: number, y: number): boolean {

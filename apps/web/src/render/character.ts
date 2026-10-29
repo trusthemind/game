@@ -654,12 +654,16 @@ export class CharacterView {
 
     const speed = Math.hypot(a.vel.x, a.vel.y);
     const zombie = !!this.look.zombie;
+    // Moving against the facing direction (aiming while backing off) plays the cycle in reverse.
+    const along = speed > 0.01 ? (a.vel.x * Math.cos(a.facing) + a.vel.y * Math.sin(a.facing)) / speed : 1;
+    const dir = along < -0.35 ? -1 : 1;
+    const sprint = !zombie && !a.crouching && (a.sprinting || speed > 4.2);
     if (speed > 0.25) {
-      if (a.crouching) this.setLower('Crouch_Fwd_Loop', speed / 1.4);
+      if (a.crouching) this.setLower('Crouch_Fwd_Loop', (dir * speed) / 1.4);
       else if (zombie) this.setLower('Walk_Loop', speed / 1.6);
-      else if (a.sprinting || speed > 4) this.setLower('Sprint_Loop', speed / 5.2);
-      else if (speed > 2.4) this.setLower('Jog_Fwd_Loop', speed / 3.4);
-      else this.setLower('Walk_Loop', speed / 1.5);
+      else if (sprint) this.setLower('Sprint_Loop', speed / 5.6, 'full');
+      else if (speed > 2.4) this.setLower('Jog_Fwd_Loop', (dir * speed) / 3.6);
+      else this.setLower('Walk_Loop', (dir * speed) / 1.5);
     } else if (a.crouching) this.setLower('Crouch_Idle_Loop', 1);
     else if (talking) this.setLower('Idle_Talking_Loop', 1, 'full');
     else this.setLower('Idle_Loop', 1);
@@ -667,8 +671,8 @@ export class CharacterView {
     this.aimT = Math.max(0, this.aimT - dt);
     const gun = this.heldKind === 'gun';
     if (zombie) this.setUpper('Pistol_Aim_Neutral'); // arms out: the classic shamble
-    else if (talking) this.setUpper(null);
-    else if (gun && (alerted || this.aimT > 0 || a.faction === 'player')) this.setUpper('Pistol_Aim_Neutral');
+    else if (talking || (sprint && speed > 0.25)) this.setUpper(null);
+    else if (gun && (alerted || this.aimT > 0 || (a.faction === 'player' && a.aiming))) this.setUpper('Pistol_Aim_Neutral');
     else if (gun) this.setUpper('Pistol_Idle_Loop');
     else if (this.heldKind === 'melee') this.setUpper('Sword_Idle');
     else this.setUpper(null);

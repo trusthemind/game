@@ -22,3 +22,4 @@ export * from './dialogue/npcs';
 export * from './profile';
 export * from './economy';
 export * from './sim/health';
+export * from './world/collision';

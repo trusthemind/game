@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { Rng, Tile, type GameMap, type LootContainer, type ContainerKind } from '@ashfall/engine';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { Rng, Tile, solidBoxes, type Box, type GameMap, type LootContainer, type ContainerKind } from '@ashfall/engine';
 import { getTexture, type TexKind } from './textures';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
 import type { AssetLibrary } from './assets';
@@ -138,37 +139,79 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
   const sc = new THREE.Vector3();
   const col = new THREE.Color();
 
-  const wallMat = mat(new THREE.MeshStandardMaterial({ map: getTexture('plaster'), roughness: 0.92 }), 'wall');
-  const wallGeo = geo(new THREE.BoxGeometry(1, WALL_H, 1));
-  const wallMesh = new THREE.InstancedMesh(wallGeo, wallMat, Math.max(1, walls.length));
-  const palette = [0x9a9484, 0x8a8a80, 0xa39886, 0x7f8478, 0x9c8f7d, 0x868f8a];
-  walls.forEach(([x, y], i) => {
-    m4.makeTranslation(x + 0.5, WALL_H / 2, y + 0.5);
-    wallMesh.setMatrixAt(i, m4);
-    const b = map.buildings[map.buildingAt[map.idx(x, y)]! - 1];
-    col.setHex(palette[(b?.id ?? 0) % palette.length]!).offsetHSL(0, 0, rng.range(-0.03, 0.03));
-    wallMesh.setColorAt(i, col);
-  });
-  wallMesh.castShadow = wallMesh.receiveShadow = shadows;
-  group.add(wallMesh);
+  // Thin walls (32 cm) built from the same boxes the collision uses: a pillar per tile + arms to neighbours.
+  const boxes: Box[] = [];
+  type Piece = { x0: number; z0: number; x1: number; z1: number; y0: number; y1: number; b: number };
+  const wallPieces: Piece[] = [];
+  const glassPieces: { x: number; z: number; horiz: boolean }[] = [];
+  const pushPieces = (x: number, y: number, y0: number, y1: number) => {
+    const b = map.buildingAt[map.idx(x, y)]!;
+    for (const [bx0, by0, bx1, by1] of solidBoxes(map, x, y, boxes)) wallPieces.push({ x0: bx0, z0: by0, x1: bx1, z1: by1, y0, y1, b });
+  };
+  for (const [x, y] of walls) pushPieces(x, y, 0, WALL_H);
+  for (const [x, y, horiz] of windows) {
+    pushPieces(x, y, 0, 0.85);
+    pushPieces(x, y, WALL_H - 0.35, WALL_H);
+    glassPieces.push({ x: x + 0.5, z: y + 0.5, horiz });
+  }
+  // Walls are static: one merged mesh with world-scaled UVs (no stretched texture) and per-building vertex colour.
+  const wallMat = mat(new THREE.MeshStandardMaterial({ map: getTexture('plaster'), roughness: 0.95, vertexColors: true }), 'wall');
+  const capMat = mat(new THREE.MeshStandardMaterial({ color: 0x2b2a27, roughness: 0.9 }), 'wall');
+  const unitBox = geo(new THREE.BoxGeometry(1, 1, 1));
+  const caps = new THREE.InstancedMesh(unitBox, capMat, Math.max(1, wallPieces.length));
+  const palette = [0xb8b0a0, 0xa9a89c, 0xc2b49c, 0x9ea295, 0xb6a58e, 0xa4ada8, 0x9c8d7c, 0xb7aa96];
+  const TEX_M = 1 / 2.2; // one texture repeat per 2.2 m
+  const wallGeos: THREE.BufferGeometry[] = [];
+  let capCount = 0;
+  for (const pc of wallPieces) {
+    const w = pc.x1 - pc.x0;
+    const d = pc.z1 - pc.z0;
+    const h = pc.y1 - pc.y0;
+    const g = new THREE.BoxGeometry(w, h, d);
+    const uv = g.attributes.uv as THREE.BufferAttribute;
+    // BoxGeometry faces: +x, -x, +y, -y, +z, -z — 4 vertices each.
+    const dims: [number, number][] = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+    const off = (pc.x0 + pc.z0) * TEX_M;
+    for (let f = 0; f < 6; f++) {
+      const [du, dv] = dims[f]!;
+      for (let k = 0; k < 4; k++) {
+        const i = f * 4 + k;
+        uv.setXY(i, off + uv.getX(i) * du * TEX_M, (pc.y0 + uv.getY(i) * h) * TEX_M * (f === 2 || f === 3 ? 0 : 1) + (f === 2 || f === 3 ? uv.getY(i) * dv * TEX_M : 0));
+      }
+    }
+    g.translate((pc.x0 + pc.x1) / 2, pc.y0 + h / 2, (pc.z0 + pc.z1) / 2);
+    const bld = map.buildings[pc.b - 1];
+    col.setHex(palette[(bld?.id ?? 0) % palette.length]!).offsetHSL(0, 0, rng.range(-0.02, 0.02));
+    if (bld?.kind === 'warehouse' || bld?.kind === 'military') col.setHex(bld.kind === 'military' ? 0x7d8270 : 0x8a7f74);
+    const colors = new Float32Array(g.attributes.position!.count * 3);
+    for (let i = 0; i < colors.length; i += 3) colors.set([col.r, col.g, col.b], i);
+    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    wallGeos.push(g);
+    // Dark top cap so wall lines read clearly from the top-down camera.
+    if (pc.y1 >= WALL_H - 0.01) {
+      m4.makeScale(w + 0.02, 0.05, d + 0.02).setPosition((pc.x0 + pc.x1) / 2, WALL_H + 0.02, (pc.z0 + pc.z1) / 2);
+      caps.setMatrixAt(capCount++, m4);
+    }
+  }
+  caps.count = capCount;
+  if (wallGeos.length) {
+    const merged = geo(mergeGeometries(wallGeos));
+    for (const g of wallGeos) g.dispose();
+    const wallMesh = new THREE.Mesh(merged, wallMat);
+    wallMesh.castShadow = wallMesh.receiveShadow = shadows;
+    group.add(wallMesh);
+  }
+  group.add(caps);
 
-  if (windows.length) {
-    const sill = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1, 0.85, 1)), wallMat, windows.length);
-    const lintel = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1, 0.35, 1)), wallMat, windows.length);
-    const glassMat = mat(new THREE.MeshStandardMaterial({ color: 0x9fc3d6, transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.2, depthWrite: false }), 'wall');
-    const glass = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1, 0.9, 0.06)), glassMat, windows.length);
-    windows.forEach(([x, y, horiz], i) => {
-      m4.makeTranslation(x + 0.5, 0.425, y + 0.5);
-      sill.setMatrixAt(i, m4);
-      m4.makeTranslation(x + 0.5, WALL_H - 0.175, y + 0.5);
-      lintel.setMatrixAt(i, m4);
-      q.setFromAxisAngle(v.set(0, 1, 0), horiz ? 0 : Math.PI / 2);
-      m4.compose(v.set(x + 0.5, 1.3, y + 0.5), q, sc.set(1, 1, 1));
+  if (glassPieces.length) {
+    const glassMat = mat(new THREE.MeshStandardMaterial({ color: 0x9fc3d6, transparent: true, opacity: 0.25, roughness: 0.05, metalness: 0.2, depthWrite: false }), 'wall');
+    const glass = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1, 0.9, 0.04)), glassMat, glassPieces.length);
+    glassPieces.forEach((gp, i) => {
+      q.setFromAxisAngle(v.set(0, 1, 0), gp.horiz ? 0 : Math.PI / 2);
+      m4.compose(v.set(gp.x, 1.3, gp.z), q, sc.set(1, 1, 1));
       glass.setMatrixAt(i, m4);
     });
-    sill.castShadow = lintel.castShadow = shadows;
-    sill.receiveShadow = shadows;
-    group.add(sill, lintel, glass);
+    group.add(glass);
   }
 
   // ── Fences.
@@ -228,6 +271,12 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
             m.alphaTest = 0.5;
             m.transparent = false;
             m.side = THREE.DoubleSide;
+            // The twisted-tree leaf texture is hot pink: borrow the green leaf atlas and tint it autumn ochre.
+            if (/twisted/i.test(m.name)) {
+              const green = findMaterial(lib, /Leaves_NormalTree/);
+              if (green?.map) m.map = green.map;
+              m.color.setRGB(1.0, 0.72, 0.32);
+            }
           }
           return mat(m, leaves ? 'canopy' : undefined);
         });
@@ -335,4 +384,17 @@ export function markContainerSearched(mesh: THREE.InstancedMesh, index: Map<numb
   if (i === undefined) return;
   mesh.setColorAt(i, tmpC.setHex(CONTAINER_SHAPE[c.kind].color).multiplyScalar(0.45));
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+}
+
+function findMaterial(lib: AssetLibrary, re: RegExp): THREE.MeshStandardMaterial | null {
+  let found: THREE.MeshStandardMaterial | null = null;
+  for (const obj of lib.nature.values()) {
+    obj.traverse((o) => {
+      const mm = (o as THREE.Mesh).material;
+      if (!mm || found) return;
+      for (const m of Array.isArray(mm) ? mm : [mm]) if (re.test(m.name)) found = m as THREE.MeshStandardMaterial;
+    });
+    if (found) break;
+  }
+  return found;
 }

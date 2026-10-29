@@ -21,6 +21,7 @@ import { QUALITY, type QualityLevel, type QualityPreset } from './quality';
 import { addContainerInstance, buildWorld, markContainerSearched, type WorldMeshes } from './world';
 import type { WorldUniforms } from './patches';
 import { disposeTextures } from './textures';
+import { buildRoofs, updateRoofs, type RoofSet } from './roofs';
 
 interface Lighting {
   bg: number;
@@ -38,7 +39,7 @@ interface Lighting {
 const LIGHTING: Record<Raid['timeOfDay'], Lighting> = {
   day: { bg: 0x0a0c0b, fog: 0x9aa7ad, fogDensity: 0.01, hemiSky: 0xd8e4ea, hemiGround: 0x4a4636, hemi: 1.5, sun: 2.6, sunColor: 0xfff1d8, sunDir: [-0.5, 1, 0.35], flashlight: 0 },
   dusk: { bg: 0x050506, fog: 0x3a2c30, fogDensity: 0.018, hemiSky: 0xd9906a, hemiGround: 0x2a2228, hemi: 0.75, sun: 1.5, sunColor: 0xff9a5a, sunDir: [-1, 0.45, 0.2], flashlight: 60 },
-  night: { bg: 0x030405, fog: 0x070a10, fogDensity: 0.03, hemiSky: 0x40507a, hemiGround: 0x0a0a10, hemi: 0.16, sun: 0.35, sunColor: 0x8fa6ff, sunDir: [0.4, 1, -0.3], flashlight: 120 },
+  night: { bg: 0x030405, fog: 0x0a0e16, fogDensity: 0.016, hemiSky: 0x5a6a9a, hemiGround: 0x14141c, hemi: 0.42, sun: 0.75, sunColor: 0x8fa6ff, sunDir: [0.4, 1, -0.3], flashlight: 120 },
 };
 
 export interface RendererStats {
@@ -57,6 +58,7 @@ export class GameRenderer {
   private hue: HueSaturationEffect | null = null;
   private vignette: VignetteEffect | null = null;
   private world: WorldMeshes;
+  private roofs: RoofSet;
   private effects: Effects;
   private views = new Map<number, CharacterView>();
   /** Actor currently in a conversation (plays the talking idle). */
@@ -144,6 +146,8 @@ export class GameRenderer {
 
     this.world = buildWorld(raid.map, this.uniforms, this.preset.shadows, lib);
     this.scene.add(this.world.group);
+    this.roofs = buildRoofs(raid.map, this.uniforms, this.preset.shadows);
+    this.scene.add(this.roofs.group);
     this.containerCount = raid.map.containers.length;
     this.effects = new Effects(this.preset.muzzleLights);
     this.effects.enableRain(raid.rain);
@@ -272,6 +276,7 @@ export class GameRenderer {
     const p = raid.player;
 
     this.updateFog(dt);
+    if (this.frameNo % 3 === 0) updateRoofs(this.roofs, raid.map, p.pos.x, p.pos.y, raid.playerFov, raid.explored, dt * 3);
 
     // Actors.
     for (const a of raid.actors) {
@@ -316,8 +321,10 @@ export class GameRenderer {
     // Camera: follow the player, lead towards the aim point (peek), with shake.
     const aimX = p.intent.aimX;
     const aimY = p.intent.aimY;
-    const leadX = Math.max(-5, Math.min(5, (aimX - p.pos.x) * 0.3));
-    const leadY = Math.max(-4, Math.min(4, (aimY - p.pos.y) * 0.3));
+    // Peek: the camera leans towards the cursor, much further while aiming.
+    const lean = p.aiming ? 0.42 : 0.12;
+    const leadX = Math.max(-7, Math.min(7, (aimX - p.pos.x) * lean));
+    const leadY = Math.max(-5, Math.min(5, (aimY - p.pos.y) * lean));
     const k = 1 - Math.exp(-dt * 6);
     let fx0 = p.pos.x + leadX;
     let fz0 = p.pos.y + leadY;
@@ -428,6 +435,7 @@ export class GameRenderer {
   dispose(): void {
     for (const el of this.labels.values()) el.remove();
     this.world.dispose();
+    this.roofs.dispose();
     this.effects.dispose();
     this.composer?.dispose();
     this.fowTex.dispose();

@@ -71,7 +71,7 @@ export class BotBrain {
     private rng: Rng,
     public leaderId: number | null,
   ) {
-    this.skill = role === 'guard' ? rng.range(0.65, 0.85) : role === 'companion' ? 0.7 : role === 'infected' ? 0.2 : rng.range(0.3, 0.65);
+    this.skill = role === 'guard' ? rng.range(0.5, 0.72) : role === 'companion' ? 0.65 : role === 'infected' ? 0.2 : rng.range(0.22, 0.55);
     this.courage = rng.range(0.3, 1);
     this.thinkT = rng.range(0, 0.5);
   }
@@ -142,10 +142,10 @@ export class BotBrain {
       const already = best.id === this.targetId && raid.time - this.lastSeenAt < 3;
       if (!already) {
         const near = 1 - Math.min(1, d / viewRange);
-        this.detect += dt * (1.2 + near * 5) * (this.alerted ? 2.5 : 1);
+        this.detect += dt * (0.7 + near * 3) * (this.alerted ? 2 : 1);
       }
       if (already || this.detect >= 1) {
-        if (!already) this.reactT = (0.25 + this.rng.range(0, 0.45)) * (1.4 - this.skill);
+        if (!already) this.reactT = (0.55 + this.rng.range(0, 0.6)) * (1.5 - this.skill);
         this.targetId = best.id;
         this.targetVisible = true;
         this.lastKnown = { ...best.pos };
@@ -385,7 +385,7 @@ export class BotBrain {
     this.aimErrT -= dt;
     if (this.aimErrT <= 0) {
       this.aimErrT = this.rng.range(0.25, 0.6);
-      const mag = (1.05 - this.skill) * (0.4 + d * 0.035) * (raid.timeOfDay === 'night' && !t.flashlight ? 1.5 : 1);
+      const mag = (1.3 - this.skill) * (0.55 + d * 0.05) * (raid.timeOfDay === 'night' && !t.flashlight ? 1.5 : 1) * (t.crouching ? 1.2 : 1);
       this.aimErr = { x: this.rng.range(-mag, mag), y: this.rng.range(-mag, mag) };
     }
     const lead = this.skill * 0.12;
@@ -442,11 +442,11 @@ export class BotBrain {
       }
       this.burstT += dt;
       a.intent.fire = true;
-      if (this.burstT > (d > 15 ? 0.25 : 0.6)) {
+      if (this.burstT > (d > 15 ? 0.2 : 0.38)) {
         this.burstT = 0;
-        this.pauseT = this.rng.range(0.25, 0.7);
+        this.pauseT = this.rng.range(0.45, 1.0);
       }
-    } else if (a.fireCd <= 0 && this.rng.chance(0.35)) {
+    } else if (a.fireCd <= 0 && this.rng.chance(0.16)) {
       a.intent.fire = true;
       a.intent.firePressed = true;
     }

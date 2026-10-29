@@ -5,7 +5,7 @@ import { Rng } from '@ashfall/engine';
  * Procedural textures painted into canvases at startup — no asset downloads, nothing to cache-bust,
  * and every texture is generated once and memoised.
  */
-export type TexKind = 'grass' | 'asphalt' | 'wood' | 'concrete' | 'dirt' | 'plaster' | 'bark' | 'metal';
+export type TexKind = 'grass' | 'asphalt' | 'wood' | 'concrete' | 'dirt' | 'plaster' | 'bark' | 'metal' | 'roof' | 'tar';
 
 const cache = new Map<string, THREE.Texture>();
 const SIZE = 256;
@@ -153,22 +153,56 @@ const PAINTERS: Record<TexKind, (g: CanvasRenderingContext2D, rng: Rng) => void>
     speckle(g, rng, 2500, ['#6a5c48', '#2a231a', '#7a6e5a'], 1, 3);
   },
   plaster(g, rng) {
-    g.fillStyle = '#8c8676';
+    // Neutral painted plaster (instance colour tints it): soft mottling, rain streaks, grime at the base.
+    g.fillStyle = '#e4e0d8';
     g.fillRect(0, 0, SIZE, SIZE);
-    blotches(g, rng, 40, ['#9a9483', '#6f6a5c', '#7d7363', '#5e5a50'], 20, 70, 0.35);
-    // Exposed bricks where plaster fell off.
-    for (let i = 0; i < 5; i++) {
-      const bx = rng.range(0, SIZE - 60);
-      const by = rng.range(0, SIZE - 40);
-      for (let r = 0; r < 4; r++)
-        for (let c = 0; c < 3; c++) {
-          g.fillStyle = rng.pick(['#7a4a36', '#6a3e2e', '#84523c']);
-          g.globalAlpha = 0.85;
-          g.fillRect(bx + c * 20 + (r % 2) * 10, by + r * 10, 18, 8);
-        }
+    blotches(g, rng, 60, ['#d8d2c6', '#ece8e0', '#cfc8bb'], 15, 60, 0.35);
+    speckle(g, rng, 2200, ['#c9c2b4', '#f2efe9', '#b8b0a2'], 1, 2);
+    for (let i = 0; i < 8; i++) {
+      const x = rng.range(0, SIZE);
+      const grd = g.createLinearGradient(0, 0, 0, SIZE);
+      grd.addColorStop(0, 'rgba(90,80,65,0.0)');
+      grd.addColorStop(rng.range(0.3, 0.8), 'rgba(90,80,65,0.06)');
+      grd.addColorStop(1, 'rgba(90,80,65,0.0)');
+      g.fillStyle = grd;
+      g.fillRect(x, 0, rng.range(1, 4), SIZE);
     }
-    g.globalAlpha = 1;
-    speckle(g, rng, 1500, ['#a8a290', '#4c483e'], 1, 2);
+    const base = g.createLinearGradient(0, SIZE * 0.78, 0, SIZE);
+    base.addColorStop(0, 'rgba(60,50,40,0)');
+    base.addColorStop(1, 'rgba(60,50,40,0.35)');
+    g.fillStyle = base;
+    g.fillRect(0, 0, SIZE, SIZE);
+  },
+  roof(g, rng) {
+    g.fillStyle = '#e6e2dc';
+    g.fillRect(0, 0, SIZE, SIZE);
+    const rowH = SIZE / 10;
+    for (let r = 0; r < 10; r++) {
+      const off = (r % 2) * 13;
+      for (let c = -1; c < 10; c++) {
+        const x = c * 26 + off;
+        const y = r * rowH;
+        const v = rng.range(0.82, 1);
+        g.fillStyle = `rgba(${Math.round(225 * v)},${Math.round(220 * v)},${Math.round(212 * v)},1)`;
+        g.fillRect(x + 1, y + 1, 24, rowH - 2);
+        g.fillStyle = 'rgba(0,0,0,0.22)';
+        g.fillRect(x + 1, y + rowH - 5, 24, 4);
+      }
+    }
+    blotches(g, rng, 25, ['#6a6a50', '#4a4a3a'], 10, 40, 0.18);
+  },
+  tar(g, rng) {
+    g.fillStyle = '#9a9b97';
+    g.fillRect(0, 0, SIZE, SIZE);
+    blotches(g, rng, 40, ['#a5a6a2', '#8a8b88', '#aaa79c'], 15, 60, 0.4);
+    speckle(g, rng, 3000, ['#b0b0ac', '#7a7a78'], 1, 2);
+    g.strokeStyle = 'rgba(40,40,40,0.35)';
+    for (let i = 0; i <= 4; i++) {
+      g.beginPath();
+      g.moveTo(0, i * 64);
+      g.lineTo(SIZE, i * 64);
+      g.stroke();
+    }
   },
   bark(g, rng) {
     g.fillStyle = '#3a2c20';

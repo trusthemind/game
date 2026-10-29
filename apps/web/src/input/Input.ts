@@ -45,6 +45,7 @@ export class Input {
   private keys = new Set<string>();
   private queue: Action[] = [];
   private mouseDown = false;
+  private aimDown = false;
   private crouch = false;
   private disposers: (() => void)[] = [];
 
@@ -66,6 +67,7 @@ export class Input {
     on('blur', () => {
       this.keys.clear();
       this.mouseDown = false;
+      this.aimDown = false;
     });
     on('mousemove', (e) => {
       const r = this.el.getBoundingClientRect();
@@ -73,7 +75,9 @@ export class Input {
       this.mouseNdc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
     });
     const down = (e: MouseEvent) => {
-      if (e.button !== 0 || !this.enabled) return;
+      if (!this.enabled) return;
+      if (e.button === 2) this.aimDown = true;
+      if (e.button !== 0) return;
       this.mouseDown = true;
       this.intent.firePressed = true;
     };
@@ -81,6 +85,7 @@ export class Input {
     this.disposers.push(() => el.removeEventListener('mousedown', down));
     on('mouseup', (e) => {
       if (e.button === 0) this.mouseDown = false;
+      if (e.button === 2) this.aimDown = false;
     });
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -108,6 +113,8 @@ export class Input {
     it.sprint = k.has('ShiftLeft') || k.has('ShiftRight');
     it.crouch = this.crouch;
     it.fire = this.mouseDown;
+    // Hold right mouse (or ctrl+click on a trackpad) to aim.
+    it.aim = this.aimDown || k.has('ControlLeft') || k.has('AltLeft');
     return it;
   }
 
@@ -124,6 +131,7 @@ export class Input {
   releaseAll(): void {
     this.keys.clear();
     this.mouseDown = false;
+    this.aimDown = false;
   }
 
   dispose(): void {

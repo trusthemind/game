@@ -13,6 +13,8 @@ import {
   traderCatalog,
   traderDiscount,
   type Category,
+  MAP_PRESETS,
+  type MapId,
 } from '@ashfall/engine';
 import { useApp, type HideoutTab } from '../../state/appStore';
 import { useProfile } from '../../state/profileStore';
@@ -24,6 +26,7 @@ import { CategoryIcon } from '../inventory/icons';
 import { DialogueBox } from '../components/DialogueBox';
 import { hideoutDialogueHost } from '../dialogueHosts';
 import { SyncBadge } from '../components/SyncBadge';
+import { audio } from '../../audio/AudioEngine';
 import { usePortrait } from '../components/usePortrait';
 import './hideout.css';
 
@@ -384,6 +387,21 @@ function StatsTab() {
             </select>
           </label>
           <label className="row">
+            <span>Volume</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={profile.settings.volume}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                audio.setVolume(v);
+                useProfile.getState().mutate((d) => (d.settings.volume = v));
+              }}
+            />
+          </label>
+          <label className="row">
             <span>Performance overlay (F3)</span>
             <input type="checkbox" checked={profile.settings.showPerf} onChange={(e) => useProfile.getState().mutate((d) => (d.settings.showPerf = e.target.checked))} />
           </label>
@@ -429,6 +447,8 @@ function StatsTab() {
 function DeployModal({ onClose }: { onClose(): void }) {
   const profile = useProfile((s) => s.profile)!;
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 99999));
+  const [mapId, setMapId] = useState<MapId>(useApp.getState().raidMap);
+  const [time, setTime] = useState(useApp.getState().raidTime);
   const comp = profile.companion ? NPCS[profile.companion] : null;
   const atRisk = equipmentValue(profile.equipment);
   const armed = !!(profile.equipment.slots.primary || profile.equipment.slots.secondary);
@@ -442,6 +462,21 @@ function DeployModal({ onClose }: { onClose(): void }) {
           </button>
         </div>
         <div className="pad stack">
+          <div className="map-picks">
+            {(['outskirts', 'pinehollow', 'portkirov'] as const).map((id) => {
+              const m = MAP_PRESETS[id];
+              return (
+                <button key={id} className={`map-pick ${mapId === id ? 'on' : ''}`} onClick={() => setMapId(id)}>
+                  <span className={`map-thumb ${id}`} />
+                  <span className="h">{m.name}</span>
+                  <span className="dim small">{m.tagline}</span>
+                  <span className="faint small mono">
+                    {m.size}×{m.size} m · {m.raidMinutes} min
+                  </span>
+                </button>
+              );
+            })}
+          </div>
           <div className="deploy-grid">
             <div>
               <div className="dim small">Gear at risk</div>
@@ -450,6 +485,16 @@ function DeployModal({ onClose }: { onClose(): void }) {
             <div>
               <div className="dim small">Companion</div>
               <div className="h">{comp ? comp.name : '—'}</div>
+            </div>
+            <div>
+              <div className="dim small">Time of day</div>
+              <div className="seg">
+                {(['random', 'day', 'dusk', 'night'] as const).map((t) => (
+                  <button key={t} className={time === t ? 'on' : ''} onClick={() => setTime(t)}>
+                    {t}
+                  </button>
+                ))}
+              </div>
             </div>
             <div>
               <div className="dim small">Zone seed</div>
@@ -462,7 +507,7 @@ function DeployModal({ onClose }: { onClose(): void }) {
             className="btn primary"
             onClick={() => {
               onClose();
-              useApp.getState().startRaid(seed);
+              useApp.getState().startRaid(seed, mapId, time);
             }}
           >
             Enter raid

@@ -46,7 +46,7 @@ export class Pathfinder {
   }
 
   /** Path between tile centres. Returns smoothed waypoints (excluding start) or null when unreachable. */
-  find(sx: number, sy: number, gx: number, gy: number, maxExpand = 6000): PathPoint[] | null {
+  find(sx: number, sy: number, gx: number, gy: number, maxExpand = 24000): PathPoint[] | null {
     const map = this.map;
     sx |= 0;
     sy |= 0;

@@ -70,3 +70,19 @@
 .toast { padding: 8px 14px; border-radius: 4px; background: rgba(14,16,15,.95); border: 1px solid var(--line-2); font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
 .toast.good { border-color: var(--good); }
 .toast.bad { border-color: var(--bad); }
+
+.modal { width: min(760px, 94vw); }
+.map-picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.map-pick { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 10px; border: 1px solid var(--line); border-radius: 4px; background: rgba(255,255,255,.02); cursor: pointer; }
+.map-pick:hover { border-color: var(--line-2); }
+.map-pick.on { border-color: var(--accent); background: rgba(214,167,74,.07); }
+.map-pick .h { font-size: 14px; }
+.map-thumb { display: block; height: 70px; border-radius: 3px; border: 1px solid var(--line); }
+.map-thumb.outskirts { background: linear-gradient(135deg, #3c4a2c 0 35%, #5a5b55 35% 60%, #2f3a22 60%); }
+.map-thumb.pinehollow { background: radial-gradient(circle at 30% 40%, #2c3a22, #1e2a18 60%), #1e2a18; }
+.map-thumb.portkirov { background: linear-gradient(90deg, #4a4c4a 0 70%, #24354a 70%); }
+
+.deploy-grid { grid-template-columns: 1fr 1fr 1.4fr 1fr; }
+.seg { display: flex; border: 1px solid var(--line-2); border-radius: 4px; overflow: hidden; }
+.seg button { flex: 1; padding: 7px 4px; border: 0; background: transparent; cursor: pointer; font-size: 11px; text-transform: capitalize; color: var(--text-dim); }
+.seg button.on { background: rgba(214,167,74,.15); color: var(--accent-2); }
