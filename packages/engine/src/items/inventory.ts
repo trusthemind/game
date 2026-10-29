@@ -13,6 +13,8 @@ export interface ItemInstance {
   /** Def id of the loaded ammo type. */
   ammoType?: string;
   grid?: GridContainer;
+  /** Remaining uses (bandages, painkillers…) or HP resource (medkits). */
+  uses?: number;
   /** Found in raid. */
   fir?: boolean;
 }
@@ -51,6 +53,7 @@ export function createItem(defId: string, opts: Partial<Omit<ItemInstance, 'def'
   if (def.armor && item.dur === undefined) item.dur = def.armor.durability;
   if (def.grid && !item.grid) item.grid = createGrid(def.grid.w, def.grid.h);
   if (def.weapon && item.ammo === undefined) item.ammo = 0;
+  if (def.med && item.uses === undefined) item.uses = def.med.resource || def.med.uses;
   if (def.stackMax) item.stack = Math.min(Math.max(1, item.stack), def.stackMax);
   return item;
 }

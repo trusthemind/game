@@ -1,4 +1,5 @@
-import { useRaidUi } from '../../game/hudStore';
+import { useRaidUi, type HudState } from '../../game/hudStore';
+import { BodyFigure } from '../components/BodyFigure';
 import type { GameSession } from '../../game/GameSession';
 import { Minimap } from './Minimap';
 import './hud.css';
@@ -45,12 +46,27 @@ export function Hud({ session }: { session: GameSession }) {
       </div>
 
       <div className="hud-bl panel-lite">
-        <div className="hp-row">
-          <span className="h">Health</span>
-          <span className="mono">{Math.ceil(hud.hp)}</span>
-        </div>
-        <div className="hp-bar">
-          <i style={{ width: `${hpPct}%`, background: hpPct > 50 ? 'var(--good)' : hpPct > 25 ? 'var(--accent)' : 'var(--bad)' }} />
+        <div className="health-row">
+          <BodyFigure parts={hud.parts} height={112} />
+          <div className="health-side">
+            <div className="hp-row">
+              <span className="h">Health</span>
+              <span className="mono">
+                {Math.ceil(hud.hp)}
+                <span className="dim small"> / {hud.maxHp}</span>
+              </span>
+            </div>
+            <div className="hp-bar">
+              <i style={{ width: `${hpPct}%`, background: hpPct > 50 ? 'var(--good)' : hpPct > 25 ? 'var(--accent)' : 'var(--bad)' }} />
+            </div>
+            <div className="conditions">
+              {conditions(hud).map((c) => (
+                <span key={c.text} className={`tag ${c.bad ? 'bad' : ''}`}>
+                  {c.text}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="mini-bars">
           <Mini label="STA" v={hud.stamina} color="#d9d3a0" />
@@ -58,7 +74,6 @@ export function Hud({ session }: { session: GameSession }) {
           <Mini label="H2O" v={hud.hydration} color="#6aa7d6" />
         </div>
         <div className="status">
-          {hud.bleed && <span className="tag bad">Bleeding · Q</span>}
           {hud.crouch && <span className="tag">Crouched</span>}
           {hud.flashlight && <span className="tag">Light</span>}
           <span className={`tag ${hud.weight > 40 ? 'bad' : ''}`}>{hud.weight.toFixed(1)} kg</span>
@@ -122,6 +137,24 @@ export function Hud({ session }: { session: GameSession }) {
     </div>
   );
 }
+
+function conditions(h: HudState): { text: string; bad: boolean }[] {
+  const out: { text: string; bad: boolean }[] = [];
+  const heavy = h.parts.filter((p) => p.heavy);
+  const light = h.parts.filter((p) => p.light && !p.heavy);
+  const frac = h.parts.filter((p) => p.fracture);
+  const black = h.parts.filter((p) => p.hp <= 0);
+  if (heavy.length) out.push({ text: `Heavy bleed ×${heavy.length}`, bad: true });
+  if (light.length) out.push({ text: `Bleeding ×${light.length}`, bad: true });
+  if (frac.length) out.push({ text: `Fracture: ${frac.map((p) => PART_SHORT[p.part]).join(', ')}`, bad: true });
+  if (black.length) out.push({ text: `Destroyed: ${black.map((p) => PART_SHORT[p.part]).join(', ')}`, bad: true });
+  if (h.pain) out.push({ text: 'Pain', bad: true });
+  if (h.painkiller > 0) out.push({ text: `Painkiller ${Math.ceil(h.painkiller)}s`, bad: false });
+  if (out.some((o) => o.bad)) out.push({ text: 'Q — treat', bad: false });
+  return out;
+}
+
+const PART_SHORT: Record<string, string> = { head: 'head', thorax: 'thorax', stomach: 'stomach', leftArm: 'L arm', rightArm: 'R arm', leftLeg: 'L leg', rightLeg: 'R leg' };
 
 function Mini({ label, v, color }: { label: string; v: number; color: string }) {
   return (

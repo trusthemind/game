@@ -82,7 +82,7 @@ function loadFbx(file) {
 }
 
 /** Bake the FBX unit scale/rotation into a clean group sized in metres, centred at the origin, longest axis on +Z. */
-function normalise(obj, targetLength) {
+function normalise(obj, targetLength, opts = {}) {
   obj.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(obj);
   const size = box.getSize(new THREE.Vector3());
@@ -93,6 +93,30 @@ function normalise(obj, targetLength) {
   else if (size.y === longest) wrapper.rotation.x = Math.PI / 2;
   wrapper.scale.setScalar(targetLength / longest);
   wrapper.updateMatrixWorld(true);
+  // Point the muzzle/blade at +Z: the slimmer end (barrel, blade tip) is the front, the bulkier end
+  // (stock, grip, handle) is the back. Compare vertical extent of the two end slices.
+  if (opts.autoFlip) {
+    const b = new THREE.Box3().setFromObject(wrapper);
+    const len = b.max.z - b.min.z;
+    const ends = { front: [Infinity, -Infinity], back: [Infinity, -Infinity] };
+    const v = new THREE.Vector3();
+    wrapper.traverse((o) => {
+      if (!o.isMesh) return;
+      const pos = o.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+        const e = v.z > b.max.z - len * 0.18 ? ends.front : v.z < b.min.z + len * 0.18 ? ends.back : null;
+        if (!e) continue;
+        e[0] = Math.min(e[0], v.y);
+        e[1] = Math.max(e[1], v.y);
+      }
+    });
+    const hFront = ends.front[1] - ends.front[0];
+    const hBack = ends.back[1] - ends.back[0];
+    // 'slim': barrel/blade forward. 'heavy': axe/hammer head forward.
+    if (opts.autoFlip === 'heavy' ? hFront < hBack : hFront > hBack) wrapper.rotation.y += Math.PI;
+    wrapper.updateMatrixWorld(true);
+  }
   const box2 = new THREE.Box3().setFromObject(wrapper);
   const c = box2.getCenter(new THREE.Vector3());
   wrapper.position.sub(c);
@@ -133,8 +157,8 @@ async function optimise(input, output, { skinned = false, simplifyRatio = 0 } = 
 // ── Weapons ──────────────────────────────────────────────────────────────────
 // item def id → [source FBX, length in metres]
 const WEAPONS = {
-  pm: ['Pistol_1.fbx', 0.2],
-  mp443: ['Pistol_3.fbx', 0.22],
+  pm: ['Pistol_1.fbx', 0.3],
+  mp443: ['Pistol_3.fbx', 0.32],
   mp133: ['Shotgun_1.fbx', 1.05],
   aks74u: ['AssaultRifle_2.fbx', 0.68],
   sks: ['AssaultRifle_5.fbx', 1.0],
@@ -145,14 +169,16 @@ const WEAPONS = {
   pkm: ['AssaultRifle2_4.fbx', 1.15],
 };
 const MELEE = {
-  knife: ['Knife.fbx', 0.3],
-  karambit: ['Knife.fbx', 0.2],
-  machete: ['Knife.fbx', 0.55],
-  axe: ['Axe.fbx', 0.75],
-  crowbar: ['Shovel.fbx', 0.8],
-  bat: ['Axe_Small.fbx', 0.8],
-  sledge: ['Axe.fbx', 0.9],
+  knife: ['Knife.fbx', 0.4],
+  karambit: ['Knife.fbx', 0.32],
+  machete: ['Knife.fbx', 0.7],
+  axe: ['Axe.fbx', 0.9],
+  crowbar: ['Shovel.fbx', 1.0],
+  bat: ['Axe_Small.fbx', 0.85],
+  sledge: ['Axe.fbx', 1.05],
 };
+const HEAVY_FRONT = new Set(['axe', 'sledge', 'bat', 'crowbar']);
+
 const PROPS = {
   backpack: ['Backpack.fbx', 0.55],
   firstaid: ['FirstAidKit_Hard.fbx', 0.35],
@@ -174,7 +200,7 @@ async function buildSet(name, table, dirs) {
       console.warn(`  ! missing ${file}`);
       continue;
     }
-    const g = normalise(loadFbx(src), len);
+    const g = normalise(loadFbx(src), len, { autoFlip: HEAVY_FRONT.has(id) ? 'heavy' : 'slim' });
     g.name = id;
     scene.add(g);
   }

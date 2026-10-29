@@ -62,3 +62,8 @@
 .crosshair::after { top: 13px; left: 2px; height: 2px; width: 24px; -webkit-mask: linear-gradient(90deg, #000 35%, transparent 35% 65%, #000 65%); mask: linear-gradient(90deg, #000 35%, transparent 35% 65%, #000 65%); }
 .perf { position: absolute; top: 230px; right: 16px; font-family: var(--font-mono); font-size: 11px; line-height: 1.6; min-width: 196px; }
 .perf b { color: var(--accent-2); font-weight: 600; }
+
+.health-row { display: flex; gap: 12px; align-items: center; }
+.health-side { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.conditions { display: flex; flex-wrap: wrap; gap: 4px; }
+.hud-bl { width: 330px; }

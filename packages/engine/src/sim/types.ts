@@ -2,10 +2,11 @@ import type { Vec2 } from '../core/math';
 import type { Equipment } from '../items/inventory';
 import type { BotArchetype } from '../world/map';
 import type { BotBrain as Brain } from '../ai/brain';
+import type { BodyPart, Health } from './health';
 
 export type Faction = 'player' | 'scav' | 'raider' | 'infected' | 'boss' | 'npc';
 export type WeaponSlot = 'primary' | 'secondary' | 'melee';
-export type HitZone = 'head' | 'thorax' | 'limbs';
+export type HitZone = BodyPart;
 
 /** What an actor wants to do this tick. Produced by player input or by a bot brain — the sim treats both the same. */
 export interface ActorIntent {
@@ -23,6 +24,8 @@ export interface ActorIntent {
   switchTo: WeaponSlot | null;
   /** Item uid to consume (meds / food). */
   use: string | null;
+  /** Body part to treat with `use` (null = pick automatically). */
+  useOn?: BodyPart | null;
 }
 
 export const emptyIntent = (): ActorIntent => ({
@@ -42,10 +45,12 @@ export interface Actor {
   baseSpeed: number;
   /** Cached weight/armour movement multiplier (recomputed a few times per second). */
   speedMul: number;
+  /** Total HP across body parts (derived from `health`, kept in sync for AI/UI). */
   hp: number;
   maxHp: number;
-  /** HP per second lost to bleeding. */
+  /** HP per second currently lost to bleeding (derived). */
   bleed: number;
+  health: Health;
   stamina: number;
   energy: number;
   hydration: number;
@@ -58,6 +63,7 @@ export interface Actor {
   bloom: number;
   useT: number;
   useUid: string | null;
+  usePart: BodyPart | null;
   crouching: boolean;
   sprinting: boolean;
   flashlight: boolean;

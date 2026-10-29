@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import type { Interactable, LootTarget } from '@ashfall/engine';
 
+import type { PartView } from '../ui/components/BodyFigure';
+
 export interface HudState {
+  parts: PartView[];
+  pain: boolean;
+  painkiller: number;
   hp: number;
   maxHp: number;
   bleed: boolean;

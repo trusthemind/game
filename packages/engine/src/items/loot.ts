@@ -14,7 +14,7 @@ interface ContainerSpec {
   table: Table;
 }
 
-const MEDS: Table = [['bandage', 10], ['ai2', 8], ['salewa', 3], ['ifak', 2], ['grizzly', 0.6], ['stim', 0.5]];
+const MEDS: Table = [['bandage', 10], ['esmarch', 5], ['splint', 5], ['ai2', 8], ['analgin', 6], ['salewa', 3], ['ifak', 2], ['morphine', 1.2], ['cms', 1], ['grizzly', 0.6], ['surv12', 0.25], ['stim', 0.4]];
 const FOOD: Table = [['water', 8], ['juice', 6], ['tushonka', 7], ['crackers', 8], ['mre', 2]];
 const JUNK: Table = [['bolts', 8], ['wires', 8], ['battery', 2], ['tank', 3], ['tools', 3]];
 const SMALL_VAL: Table = [['chain', 6], ['rolex', 2], ['cpu', 2], ['flash', 2], ['bitcoin', 0.5], ['roubles', 8]];
@@ -28,7 +28,7 @@ export const CONTAINERS: Record<ContainerKind, ContainerSpec> = {
     table: [...SMALL_VAL, ['bandage', 3], ['a_9x18', 4], ['a_12buck', 3], ['crackers', 2], ['bolts', 2]] },
   shelf: { label: 'Shelf', grid: [5, 3], rolls: [1, 4], searchTime: 0.6, table: [...FOOD, ...JUNK, ['ai2', 3]] },
   register: { label: 'Cash register', grid: [3, 2], rolls: [1, 3], searchTime: 0.5, table: [['roubles', 20], ['chain', 2], ['flash', 1]] },
-  medcabinet: { label: 'Medical cabinet', grid: [4, 3], rolls: [1, 4], searchTime: 0.6, table: [...MEDS, ['ledx', 0.15], ['salewa', 3]] },
+  medcabinet: { label: 'Medical cabinet', grid: [4, 3], rolls: [1, 4], searchTime: 0.6, table: [...MEDS, ['ledx', 0.15], ['salewa', 3], ['cms', 2], ['splint', 3]] },
   crate: { label: 'Wooden crate', grid: [5, 4], rolls: [1, 4], searchTime: 0.75, table: [...JUNK, ...FOOD, ['a_545ps', 3], ['a_762ps', 3], ['b_daypack', 1]] },
   toolbox: { label: 'Toolbox', grid: [4, 3], rolls: [1, 3], searchTime: 0.6, table: [...JUNK, ['crowbar', 2], ['axe', 0.8], ['sledge', 0.4], ['cpu', 1], ['gpu', 0.12]] },
   weaponbox: { label: 'Weapon box', grid: [5, 4], rolls: [1, 2], searchTime: 1.1,

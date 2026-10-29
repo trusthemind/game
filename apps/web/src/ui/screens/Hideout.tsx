@@ -227,7 +227,7 @@ function offerSub(def: ReturnType<typeof traderCatalog>[number]['def']): string 
   if (def.ammo) return `pen ${def.ammo.penetration} · ${def.ammo.caliber}`;
   if (def.armor) return `class ${def.armor.armorClass} · ${def.armor.durability} dur`;
   if (def.grid) return `${def.grid.w}×${def.grid.h} slots`;
-  if (def.med) return `${def.med.heal} HP${def.med.stopsBleed ? ' · stops bleeding' : ''}`;
+  if (def.med) return [def.med.resource && `${def.med.resource} HP`, def.med.stopsHeavy && 'heavy bleed', def.med.stopsLight && 'bleed', def.med.fixesFracture && 'fracture', def.med.surgery && 'surgery', def.med.painkiller && 'painkiller'].filter(Boolean).join(' · ');
   if (def.food) return `energy ${def.food.energy} · water ${def.food.hydration}`;
   return def.category;
 }

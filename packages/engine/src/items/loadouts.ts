@@ -33,7 +33,7 @@ const KITS: Record<BotArchetype, ArchetypeKit> = {
     rig: [['r_scav', 5], ['r_mbss', 2]],
     backpack: [[null, 4], ['b_sling', 4], ['b_daypack', 2]],
     ammoQuality: [1, 3], mags: [1, 3],
-    meds: [['bandage', 5], ['ai2', 4]], medCount: [0, 2],
+    meds: [['bandage', 5], ['ai2', 4], ['analgin', 2], ['splint', 1]], medCount: [0, 2],
     extras: [['crackers', 4], ['water', 3], ['bolts', 3], ['wires', 3], ['roubles', 5], ['chain', 1.5], ['rolex', 0.3]], extraCount: [0, 3],
   },
   raider: {
@@ -45,7 +45,7 @@ const KITS: Record<BotArchetype, ArchetypeKit> = {
     rig: [['r_alpha', 4], ['r_bank', 2]],
     backpack: [['b_daypack', 3], ['b_pilgrim', 3], ['b_attack', 1]],
     ammoQuality: [0, 1], mags: [3, 5],
-    meds: [['ifak', 4], ['salewa', 3], ['bandage', 3], ['grizzly', 0.6], ['stim', 0.4]], medCount: [2, 4],
+    meds: [['ifak', 4], ['salewa', 3], ['bandage', 3], ['esmarch', 3], ['splint', 2], ['morphine', 1], ['grizzly', 0.6], ['cms', 0.6], ['stim', 0.4]], medCount: [2, 4],
     extras: [['mre', 2], ['water', 2], ['roubles', 4], ['flash', 2], ['cpu', 1.5], ['intel', 0.8], ['bitcoin', 0.5]], extraCount: [1, 3],
   },
   guard: {
@@ -57,7 +57,7 @@ const KITS: Record<BotArchetype, ArchetypeKit> = {
     rig: [['r_bank', 1]],
     backpack: [[null, 3], ['b_pilgrim', 1]],
     ammoQuality: [0, 1], mags: [3, 5],
-    meds: [['ifak', 3], ['salewa', 3]], medCount: [1, 3],
+    meds: [['ifak', 3], ['salewa', 3], ['esmarch', 2], ['splint', 1]], medCount: [1, 3],
     extras: [['roubles', 3], ['rolex', 1], ['bitcoin', 0.6]], extraCount: [0, 2],
   },
   boss: {
@@ -69,7 +69,7 @@ const KITS: Record<BotArchetype, ArchetypeKit> = {
     rig: [['r_bank', 1]],
     backpack: [['b_attack', 1]],
     ammoQuality: [0, 0], mags: [3, 4],
-    meds: [['grizzly', 2], ['stim', 2], ['ifak', 2]], medCount: [3, 4],
+    meds: [['grizzly', 2], ['stim', 2], ['ifak', 2], ['surv12', 1]], medCount: [3, 4],
     extras: [['ledx', 1], ['gpu', 1.5], ['bitcoin', 2], ['intel', 2], ['lion', 0.7]], extraCount: [2, 3],
   },
   infected: {
@@ -150,6 +150,9 @@ export function starterKit(): Equipment {
   addItem(eq.slots.rig.grid!, createItem('a_9x18', { stack: 40 }));
   addItem(eq.pockets, createItem('bandage'));
   addItem(eq.pockets, createItem('ai2'));
+  addItem(eq.pockets, createItem('esmarch'));
   addItem(eq.pockets, createItem('water'));
+  addItem(eq.slots.rig.grid!, createItem('splint'));
+  addItem(eq.slots.rig.grid!, createItem('analgin'));
   return eq;
 }

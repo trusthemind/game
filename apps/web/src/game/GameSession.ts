@@ -1,4 +1,6 @@
 import {
+  BODY_PARTS,
+  inPain,
   carryGrids,
   companionLoadout,
   countAmmo,
@@ -278,6 +280,9 @@ export class GameSession {
     const ex = raid.extractingAt !== null ? raid.map.extractions.find((e) => e.id === raid.extractingAt) : undefined;
     const comp = raid.actors.find((a) => a.companion);
     return {
+      parts: BODY_PARTS.map((part) => ({ part, ...p.health.parts[part] })),
+      pain: inPain(p.health),
+      painkiller: p.health.painkiller,
       hp: p.hp,
       maxHp: p.maxHp,
       bleed: p.bleed > 0,

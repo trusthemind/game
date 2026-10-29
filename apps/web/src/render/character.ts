@@ -3,6 +3,7 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { Rng, getDef, type Actor, type Corpse, type Equipment } from '@ashfall/engine';
 import type { AssetLibrary } from './assets';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
+import { faceTexture, type FaceSpec } from './facePainter';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Appearance
@@ -23,6 +24,9 @@ export interface Appearance {
   boots: number;
   gloves: number | null;
   zombie?: boolean;
+  eyes?: number;
+  age?: 0 | 1 | 2;
+  scars?: boolean;
 }
 
 export const SKIN_TONES = [0xf1c8a8, 0xe3b08e, 0xc99069, 0x9a6544, 0x6b4430];
@@ -49,6 +53,9 @@ export function lookFor(seed: number, archetype: string, npcId?: string): Appear
     pants: rng.pick(DRAB_PANTS),
     boots: rng.pick([0x2a2420, 0x1e1e1e, 0x3b2f24]),
     gloves: null,
+    eyes: rng.pick([0x4a3020, 0x5a3a22, 0x3a5a7a, 0x5a6a4a, 0x6a6a6a, 0x2a1d14]),
+    age: rng.weighted([[0, 3], [1, 4], [2, 2]] as const),
+    scars: rng.chance(archetype === 'raider' || archetype === 'guard' ? 0.35 : 0.1),
   };
   switch (archetype) {
     case 'raider':
@@ -65,13 +72,13 @@ export function lookFor(seed: number, archetype: string, npcId?: string): Appear
 
 /** The player's own survivor: persisted body/hair choices + a practical scavenger outfit. */
 export function playerAppearance(look: { sex: 'm' | 'f'; skin: number; hair: string; hairColor: number; beard: boolean }): Appearance {
-  return { ...look, hair: look.hair as HairStyle, top: 0x4b5138, topStyle: 'jacket', pants: 0x3a3a30, boots: 0x2a2420, gloves: 0x2b2722 };
+  return { ...look, hair: look.hair as HairStyle, top: 0x4b5138, topStyle: 'jacket', pants: 0x3a3a30, boots: 0x2a2420, gloves: 0x2b2722, eyes: 0x4a3020, age: 1 };
 }
 
 const NPC_LOOKS: Record<string, Appearance> = {
-  lena: { sex: 'f', skin: 0xf1c8a8, hair: 'ponytail', hairColor: 0x7c3b21, beard: false, top: 0xd8dcd4, topStyle: 'coat', pants: 0x2f4f5a, boots: 0x2a2420, gloves: null },
-  mykola: { sex: 'm', skin: 0xe3b08e, hair: 'short', hairColor: 0x8c8a86, beard: true, top: 0xb5622e, topStyle: 'jacket', pants: 0x3a4558, boots: 0x3b2f24, gloves: 0x5a4632 },
-  vera: { sex: 'f', skin: 0xe3b08e, hair: 'bob', hairColor: 0x1c1612, beard: false, top: 0x4a2f55, topStyle: 'coat', pants: 0x1f1f22, boots: 0x1e1e1e, gloves: null },
+  lena: { sex: 'f', skin: 0xf1c8a8, hair: 'ponytail', hairColor: 0x7c3b21, beard: false, top: 0xd8dcd4, topStyle: 'coat', pants: 0x2f4f5a, boots: 0x2a2420, gloves: null, eyes: 0x4f6a3a, age: 0 },
+  mykola: { sex: 'm', skin: 0xe3b08e, hair: 'short', hairColor: 0x8c8a86, beard: true, top: 0xb5622e, topStyle: 'jacket', pants: 0x3a4558, boots: 0x3b2f24, gloves: 0x5a4632, eyes: 0x3a5a7a, age: 2 },
+  vera: { sex: 'f', skin: 0xe3b08e, hair: 'bob', hairColor: 0x1c1612, beard: false, top: 0x4a2f55, topStyle: 'coat', pants: 0x1f1f22, boots: 0x1e1e1e, gloves: null, eyes: 0x2a1d14, age: 1 },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,6 +119,26 @@ function analyseRig(meshes: THREE.SkinnedMesh[]): RigInfo {
   for (const mesh of meshes) {
     analyseMesh(mesh, boxes);
     geometries.set(mesh.name, mesh.geometry);
+  }
+  // Second pass once the head box is known: planar face UVs for head vertices on the front half.
+  const hb = boxes.head;
+  const hs = hb.getSize(new THREE.Vector3());
+  const hc = hb.getCenter(new THREE.Vector3());
+  for (const mesh of meshes) {
+    const pos = mesh.geometry.attributes.position!;
+    const reg = mesh.geometry.attributes.aRegion!;
+    const face = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const z = pos.getZ(i);
+      const inHead = reg.getX(i) === 0 && y > hb.min.y - hs.y * 0.05;
+      face[i * 3] = (x - hb.min.x) / hs.x;
+      face[i * 3 + 1] = (y - hb.min.y) / hs.y;
+      // Fade the projection out towards the sides of the head so features don't smear.
+      face[i * 3 + 2] = inHead ? THREE.MathUtils.clamp(((z - hc.z) / (hs.z * 0.5)) * 2.2 - 0.3, 0, 1) : 0;
+    }
+    mesh.geometry.setAttribute('aFace', new THREE.BufferAttribute(face, 3));
   }
   // Face direction: the hands of an A/T-pose sit on ±X, so forward is ±Z; glTF characters face +Z.
   return { geometries, boxes, forward: new THREE.Vector3(0, 0, 1) };
@@ -168,14 +195,17 @@ function bodyMaterial(a: Appearance, u: WorldUniforms, dead = false): THREE.Mesh
   if (m) return m;
   m = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0 });
   const pal = palette(a, dead);
+  const faceTex = faceTexture(faceSpecFor(a));
   patchWorldMaterial(m, u, {
     pre: (shader) => {
       shader.uniforms.uPal = { value: pal };
+      shader.uniforms.uFaceTex = { value: faceTex };
+      shader.uniforms.uDead = { value: dead ? 0.6 : 1 };
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute float aRegion;\nvarying float vRegion;\nvarying vec3 vObjPos;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRegion = aRegion;\nvObjPos = position;');
+        .replace('#include <common>', '#include <common>\nattribute float aRegion;\nattribute vec3 aFace;\nvarying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vFace;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRegion = aRegion;\nvObjPos = position;\nvFace = aFace;');
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform vec3 uPal[7];\nvarying float vRegion;\nvarying vec3 vObjPos;')
+        .replace('#include <common>', '#include <common>\nuniform vec3 uPal[7];\nuniform sampler2D uFaceTex;\nuniform float uDead;\nvarying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vFace;')
         .replace(
           '#include <color_fragment>',
           `#include <color_fragment>
@@ -184,7 +214,11 @@ function bodyMaterial(a: Appearance, u: WorldUniforms, dead = false): THREE.Mesh
           for (int i = 1; i < 7; i++) if (i == ri) pc = uPal[i];
           // Cheap fabric/grime variation so flat colours don't look like plastic.
           float n = fract(sin(dot(floor(vObjPos * 40.0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-          pc *= 0.9 + n * 0.14;
+          if (ri != 0) pc *= 0.9 + n * 0.14;
+          if (vFace.z > 0.01) {
+            vec4 ft = texture2D(uFaceTex, vFace.xy);
+            pc = mix(pc, ft.rgb * uDead, ft.a * vFace.z);
+          }
           diffuseColor.rgb = pc;`,
         );
     },
@@ -300,57 +334,31 @@ function hairGeometry(style: HairStyle, head: THREE.Box3): THREE.BufferGeometry[
   }
 }
 
-function beardGeometry(head: THREE.Box3): THREE.BufferGeometry[] {
+/** Ears stay geometric (they stick out of the silhouette); everything else on the face is painted. */
+function earParts(head: THREE.Box3, a: Appearance, u: WorldUniforms): THREE.Mesh[] {
   const s = head.getSize(new THREE.Vector3());
   const c = head.getCenter(new THREE.Vector3());
-  // Jaw-line beard (open around the mouth) + moustache.
-  const g = new THREE.SphereGeometry(0.5, 16, 8, Math.PI * 0.05, Math.PI * 0.9, Math.PI * 0.6, Math.PI * 0.3);
-  g.scale(s.x * 1.06, s.y * 1.0, s.z * 1.1);
-  g.translate(c.x, c.y - s.y * 0.02, c.z + s.z * 0.02);
-  const stache = new THREE.BoxGeometry(s.x * 0.34, s.y * 0.045, s.z * 0.06);
-  stache.translate(c.x, c.y - s.y * 0.14, c.z + s.z * 0.47);
-  return [g, stache];
-}
-
-/** Eyes, brows, nose, mouth, ears — enough of a face to read in portraits and close-ups. */
-function faceParts(head: THREE.Box3, a: Appearance, u: WorldUniforms): THREE.Mesh[] {
-  const s = head.getSize(new THREE.Vector3());
-  const c = head.getCenter(new THREE.Vector3());
-  const fz = c.z + s.z * 0.44;
-  const out: THREE.Mesh[] = [];
   const skin = flatMat(a.skin, { rough: 0.7 }, u);
-  for (const side of [-1, 1]) {
-    const white = new THREE.SphereGeometry(s.x * 0.075, 10, 8);
-    white.scale(1.15, 0.72, 0.5);
-    white.translate(c.x + side * s.x * 0.2, c.y + s.y * 0.05, fz);
-    out.push(new THREE.Mesh(white, flatMat(a.zombie ? 0xc9c48a : 0xe8e4dc, { rough: 0.3 }, u)));
-    const pupil = new THREE.SphereGeometry(s.x * 0.038, 8, 6);
-    pupil.scale(1, 1, 0.5);
-    pupil.translate(c.x + side * s.x * 0.2, c.y + s.y * 0.045, fz + s.z * 0.035);
-    out.push(new THREE.Mesh(pupil, flatMat(a.zombie ? 0x6a6a3a : 0x2a1d14, { rough: 0.2 }, u)));
-    const brow = new THREE.BoxGeometry(s.x * 0.24, s.y * 0.035, s.z * 0.05);
-    brow.rotateZ(side * -0.12);
-    brow.translate(c.x + side * s.x * 0.2, c.y + s.y * 0.15, fz + s.z * 0.01);
-    out.push(new THREE.Mesh(brow, flatMat(a.hair === 'bald' ? 0x3a281b : a.hairColor, {}, u)));
+  return [-1, 1].map((side) => {
     const ear = new THREE.SphereGeometry(s.x * 0.12, 8, 6);
     ear.scale(0.35, 1, 0.75);
-    ear.translate(c.x + side * s.x * 0.5, c.y, c.z - s.z * 0.02);
-    out.push(new THREE.Mesh(ear, skin));
-  }
-  const nose = new THREE.ConeGeometry(s.x * 0.07, s.z * 0.2, 4);
-  nose.rotateX(Math.PI / 2);
-  nose.scale(1, 1.25, 1);
-  nose.translate(c.x, c.y - s.y * 0.06, fz + s.z * 0.06);
-  out.push(new THREE.Mesh(nose, skin));
-  const mouth = new THREE.BoxGeometry(s.x * 0.22, s.y * 0.022, s.z * 0.04);
-  mouth.translate(c.x, c.y - s.y * 0.2, fz - s.z * 0.02);
-  out.push(new THREE.Mesh(mouth, flatMat(a.zombie ? 0x3a1a14 : 0x7a3f36, {}, u)));
-  if (a.zombie) {
-    const wound = new THREE.BoxGeometry(s.x * 0.18, s.y * 0.1, s.z * 0.03);
-    wound.translate(c.x - s.x * 0.18, c.y - s.y * 0.1, fz);
-    out.push(new THREE.Mesh(wound, flatMat(0x5a1a14, {}, u)));
-  }
-  return out;
+    ear.translate(c.x + side * s.x * 0.49, c.y - s.y * 0.02, c.z - s.z * 0.02);
+    return new THREE.Mesh(ear, skin);
+  });
+}
+
+export function faceSpecFor(a: Appearance): FaceSpec {
+  return {
+    sex: a.sex,
+    skin: a.skin,
+    hairColor: a.hair === 'bald' ? 0x3a281b : a.hairColor,
+    eyes: a.eyes ?? 0x4a3020,
+    age: a.age ?? 1,
+    beard: a.beard,
+    scars: !!a.scars,
+    zombie: !!a.zombie,
+    seed: a.skin ^ a.hairColor ^ (a.top << 1),
+  };
 }
 
 /** Wrap bind-space geometry so it rides on a bone exactly like the skinned surface underneath. */
@@ -466,8 +474,7 @@ export class CharacterView {
       m.castShadow = shadows;
       attachToBone(this.skinned, head, m);
     }
-    if (a.beard) for (const g of beardGeometry(rig.boxes.head)) attachToBone(this.skinned, head, new THREE.Mesh(g, hairMat));
-    for (const m of faceParts(rig.boxes.head, a, this.u)) attachToBone(this.skinned, head, m);
+    for (const m of earParts(rig.boxes.head, a, this.u)) attachToBone(this.skinned, head, m);
     if (a.sex === 'f') {
       const c = rig.boxes.chest.getCenter(new THREE.Vector3());
       const s = rig.boxes.chest.getSize(new THREE.Vector3());
@@ -688,8 +695,9 @@ export class CharacterView {
       }
       this.gear.worldToLocal(tmpV);
       h.position.copy(tmpV);
-      h.position.z += this.heldLen * 0.28;
-      h.position.y += 0.03;
+      // Pistols sit in front of the grip, long guns extend forward with the stock at the shoulder.
+      h.position.z += this.heldLen < 0.4 ? this.heldLen * 0.45 : this.heldLen * 0.22;
+      h.position.y += 0.04;
       h.rotation.set(0, 0, 0);
     } else {
       this.gear.worldToLocal(tmpV);

@@ -1,3 +1,5 @@
+import type { MedEffect } from '../sim/health';
+
 export type Category =
   | 'weapon'
   | 'melee'
@@ -76,7 +78,7 @@ export interface ItemDef {
   ammo?: AmmoStats;
   armor?: ArmorStats;
   grid?: { w: number; h: number };
-  med?: { heal: number; stopsBleed: boolean; useTime: number; uses: number };
+  med?: MedEffect;
   food?: { energy: number; hydration: number; useTime: number };
 }
 
@@ -155,12 +157,30 @@ const defs: ItemDef[] = [
   { id: 'b_attack', name: 'Attack-2 raid backpack', short: 'ATTACK-2', category: 'backpack', w: 4, h: 5, weight: 2.8, value: 120000, rarity: 4, grid: { w: 6, h: 6 } },
 
   // ── Meds ─────────────────────────────────────────────────
-  { id: 'bandage', name: 'Army bandage', short: 'BNDG', category: 'med', w: 1, h: 1, weight: 0.05, value: 2500, rarity: 1, med: { heal: 0, stopsBleed: true, useTime: 2.5, uses: 1 } },
-  { id: 'ai2', name: 'AI-2 medkit', short: 'AI-2', category: 'med', w: 1, h: 1, weight: 0.1, value: 4500, rarity: 1, med: { heal: 30, stopsBleed: false, useTime: 2.0, uses: 1 } },
-  { id: 'salewa', name: 'Salewa first aid kit', short: 'SALEWA', category: 'med', w: 1, h: 2, weight: 0.6, value: 18000, rarity: 2, med: { heal: 60, stopsBleed: true, useTime: 3.0, uses: 1 } },
-  { id: 'ifak', name: 'IFAK trauma kit', short: 'IFAK', category: 'med', w: 1, h: 1, weight: 0.4, value: 22000, rarity: 3, med: { heal: 45, stopsBleed: true, useTime: 2.4, uses: 1 } },
-  { id: 'grizzly', name: 'Grizzly medical kit', short: 'GRIZZLY', category: 'med', w: 2, h: 2, weight: 1.6, value: 52000, rarity: 4, med: { heal: 100, stopsBleed: true, useTime: 4.5, uses: 1 } },
-  { id: 'stim', name: 'Combat stimulant', short: 'STIM', category: 'med', w: 1, h: 1, weight: 0.05, value: 38000, rarity: 4, med: { heal: 25, stopsBleed: true, useTime: 1.0, uses: 1 } },
+  { id: 'bandage', name: 'Army bandage', short: 'BNDG', category: 'med', w: 1, h: 1, weight: 0.05, value: 2500, rarity: 1,
+    med: { resource: 0, stopsLight: true, stopsHeavy: false, fixesFracture: false, surgery: false, painkiller: 0, uses: 1, useTime: 3 } },
+  { id: 'esmarch', name: 'Esmarch tourniquet', short: 'ESMARCH', category: 'med', w: 1, h: 1, weight: 0.08, value: 6500, rarity: 1,
+    med: { resource: 0, stopsLight: false, stopsHeavy: true, fixesFracture: false, surgery: false, painkiller: 0, uses: 8, useTime: 4 } },
+  { id: 'splint', name: 'Immobilizing splint', short: 'SPLINT', category: 'med', w: 1, h: 1, weight: 0.1, value: 5500, rarity: 1,
+    med: { resource: 0, stopsLight: false, stopsHeavy: false, fixesFracture: true, surgery: false, painkiller: 0, uses: 1, useTime: 5 } },
+  { id: 'ai2', name: 'AI-2 medkit', short: 'AI-2', category: 'med', w: 1, h: 1, weight: 0.1, value: 4500, rarity: 1,
+    med: { resource: 100, stopsLight: false, stopsHeavy: false, fixesFracture: false, surgery: false, painkiller: 0, uses: 1, useTime: 2 } },
+  { id: 'salewa', name: 'Salewa first aid kit', short: 'SALEWA', category: 'med', w: 1, h: 2, weight: 0.6, value: 18000, rarity: 2,
+    med: { resource: 400, stopsLight: true, stopsHeavy: true, fixesFracture: false, surgery: false, painkiller: 0, costLight: 45, costHeavy: 175, uses: 1, useTime: 3 } },
+  { id: 'ifak', name: 'IFAK trauma kit', short: 'IFAK', category: 'med', w: 1, h: 1, weight: 0.4, value: 22000, rarity: 3,
+    med: { resource: 300, stopsLight: true, stopsHeavy: true, fixesFracture: false, surgery: false, painkiller: 0, costLight: 30, costHeavy: 210, uses: 1, useTime: 3 } },
+  { id: 'grizzly', name: 'Grizzly medical kit', short: 'GRIZZLY', category: 'med', w: 2, h: 2, weight: 1.6, value: 52000, rarity: 4,
+    med: { resource: 1800, stopsLight: true, stopsHeavy: true, fixesFracture: true, surgery: false, painkiller: 0, costLight: 40, costHeavy: 130, costFracture: 50, uses: 1, useTime: 5 } },
+  { id: 'cms', name: 'CMS surgical kit', short: 'CMS', category: 'med', w: 2, h: 1, weight: 0.4, value: 34000, rarity: 3,
+    med: { resource: 0, stopsLight: false, stopsHeavy: false, fixesFracture: false, surgery: true, painkiller: 0, uses: 5, useTime: 14 } },
+  { id: 'surv12', name: 'Surv12 field surgical kit', short: 'SURV12', category: 'med', w: 3, h: 1, weight: 1.0, value: 96000, rarity: 4,
+    med: { resource: 0, stopsLight: false, stopsHeavy: false, fixesFracture: false, surgery: true, painkiller: 0, uses: 15, useTime: 9 } },
+  { id: 'analgin', name: 'Analgin painkillers', short: 'ANLGN', category: 'med', w: 1, h: 1, weight: 0.05, value: 4200, rarity: 1,
+    med: { resource: 0, stopsLight: false, stopsHeavy: false, fixesFracture: false, surgery: false, painkiller: 95, uses: 4, useTime: 3 } },
+  { id: 'morphine', name: 'Morphine injector', short: 'MORPH', category: 'med', w: 1, h: 1, weight: 0.02, value: 21000, rarity: 3,
+    med: { resource: 0, stopsLight: false, stopsHeavy: false, fixesFracture: false, surgery: false, painkiller: 305, uses: 1, useTime: 2 } },
+  { id: 'stim', name: 'Propital regenerative stim', short: 'PROPITAL', category: 'med', w: 1, h: 1, weight: 0.05, value: 38000, rarity: 4,
+    med: { resource: 0, stopsLight: false, stopsHeavy: false, fixesFracture: false, surgery: false, painkiller: 240, regen: 1, regenTime: 300, uses: 1, useTime: 1 } },
 
   // ── Food & drink ─────────────────────────────────────────
   { id: 'water', name: 'Bottle of water', short: 'WATER', category: 'drink', w: 1, h: 2, weight: 0.6, value: 3500, rarity: 1, food: { energy: 0, hydration: 45, useTime: 3 } },

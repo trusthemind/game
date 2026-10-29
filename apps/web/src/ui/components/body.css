@@ -1,0 +1,5 @@
+.body-figure { display: block; overflow: visible; }
+.body-figure path { transition: fill .3s; }
+.body-figure .part-num { font-family: var(--font-mono); font-size: 9px; fill: #f2f0e8; paint-order: stroke; stroke: rgba(0,0,0,.7); stroke-width: 2px; pointer-events: none; }
+.body-figure .bleed-dot { animation: pulse .9s infinite; }
+.body-figure .part-hover path:first-child { stroke: var(--accent-2); stroke-width: 3; }

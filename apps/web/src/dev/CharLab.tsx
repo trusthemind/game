@@ -52,6 +52,16 @@ export function CharLab() {
       { look: lookFor(11, 'scav'), eq: ['svd:primary'], active: 'primary', speed: 0, crouch: true },
       { look: lookFor(5, 'infected'), eq: [], active: 'melee', speed: 1.2 },
     ];
+    if (view === 'guns') {
+      const ids = ['pm', 'mp443', 'mp133', 'aks74u', 'sks', 'ak74m', 'akm', 'm4a1', 'svd', 'pkm', 'knife', 'karambit', 'machete', 'axe', 'crowbar', 'bat', 'sledge'];
+      cast.length = 0;
+      ids.forEach((id, i) => {
+        const melee = i >= 10;
+        cast.push({ look: lookFor(i + 20, 'scav'), eq: [`${id}:${melee ? 'melee' : i < 2 ? 'secondary' : 'primary'}`], active: melee ? 'melee' : i < 2 ? 'secondary' : 'primary', speed: 0 });
+      });
+      cam.position.set(0, 1.6, 15);
+      cam.lookAt(0, 1.0, 0);
+    }
     const views: { v: CharacterView; a: Actor }[] = [];
     loadAssets().then((lib) => {
       cast.forEach((c, i) => {
@@ -62,9 +72,9 @@ export function CharLab() {
         }
         const v = new CharacterView(lib, c.look, u, true);
         const a = {
-          pos: { x: (i - (cast.length - 1) / 2) * 1.35, y: 0 },
+          pos: { x: (i - (cast.length - 1) / 2) * (view === 'guns' ? 1.05 : 1.35), y: 0 },
           vel: { x: 0, y: c.speed },
-          facing: Math.PI / 2,
+          facing: view === 'guns' ? 0 : Math.PI / 2,
           crouching: !!c.crouch,
           sprinting: false,
           eq,
@@ -74,10 +84,10 @@ export function CharLab() {
         scene.add(v.root);
         views.push({ v, a });
       });
-      for (const id of ['lena', 'mykola', 'vera']) {
+      for (const id of view === 'guns' ? [] : ['lena', 'mykola', 'vera']) {
         const img = document.createElement('img');
-        img.src = renderPortrait(lib, lookFor(0, 'npc', id));
-        img.style.cssText = 'position:fixed;top:12px;width:128px;height:128px;border:1px solid #555;left:' + (12 + ['lena', 'mykola', 'vera'].indexOf(id) * 140) + 'px';
+        img.src = renderPortrait(lib, lookFor(0, 'npc', id), 512);
+        img.style.cssText = 'position:fixed;top:12px;width:300px;height:300px;border:1px solid #555;left:' + (12 + ['lena', 'mykola', 'vera'].indexOf(id) * 310) + 'px';
         document.body.appendChild(img);
       }
       (window as unknown as { __labReady?: boolean }).__labReady = true;

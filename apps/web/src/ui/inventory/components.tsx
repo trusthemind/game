@@ -55,7 +55,14 @@ export function ItemTooltip() {
   if (d.ammo) lines.push(['Caliber', d.ammo.caliber], ['Penetration', `${d.ammo.penetration}`], ['Damage', `×${d.ammo.damageMul}`]);
   if (d.armor) lines.push(['Class', `${d.armor.armorClass}`], ['Durability', `${Math.round(item.dur ?? 0)}/${d.armor.durability}`], ['Speed', `-${Math.round(d.armor.slow * 100)}%`]);
   if (d.grid) lines.push(['Capacity', `${d.grid.w}×${d.grid.h}`]);
-  if (d.med) lines.push(['Heal', `${d.med.heal} HP`], ['Stops bleeding', d.med.stopsBleed ? 'Yes' : 'No'], ['Use time', `${d.med.useTime}s`]);
+  if (d.med) {
+    const m = d.med;
+    if (m.resource) lines.push(['HP resource', `${item.uses ?? m.resource}/${m.resource}`]);
+    else lines.push(['Uses', `${item.uses ?? m.uses}/${m.uses}`]);
+    const fx = [m.stopsLight && 'light bleed', m.stopsHeavy && 'heavy bleed', m.fixesFracture && 'fracture', m.surgery && 'destroyed limb', m.painkiller && `pain ${m.painkiller}s`, m.regen && 'regeneration'].filter(Boolean);
+    if (fx.length) lines.push(['Treats', fx.join(', ')]);
+    lines.push(['Use time', `${m.useTime}s`]);
+  }
   if (d.food) lines.push(['Energy', `${d.food.energy > 0 ? '+' : ''}${d.food.energy}`], ['Hydration', `${d.food.hydration > 0 ? '+' : ''}${d.food.hydration}`]);
   lines.push(['Weight', `${itemWeight(item).toFixed(2)} kg`], ['Value', `${fmt(itemValue(item))} ₵`]);
   const left = Math.min(x + 16, window.innerWidth - 260);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { applyRaidResult, createEquipment, CONTAINERS, NPCS, type RaidResult, type RaidSummary } from '@ashfall/engine';
+import { applyRaidResult, createEquipment, CONTAINERS, NPCS, PART_LABEL, type RaidResult, type RaidSummary } from '@ashfall/engine';
 import { GameSession } from '../../game/GameSession';
 import { useRaidUi } from '../../game/hudStore';
 import { useApp } from '../../state/appStore';
@@ -11,7 +11,8 @@ import { Hud } from '../hud/Hud';
 import { Minimap } from '../hud/Minimap';
 import { DialogueBox } from '../components/DialogueBox';
 import { raidDialogueHost } from '../dialogueHosts';
-import { InventoryRoot, ItemGrid, DropZoneBox, EquipSlot } from '../inventory/components';
+import { InventoryRoot, ItemGrid, DropZoneBox } from '../inventory/components';
+import { BodyFigure } from '../components/BodyFigure';
 import { GearPanel } from '../inventory/GearPanel';
 import { makeRaidHost } from '../inventory/hosts';
 import './raid.css';
@@ -217,19 +218,39 @@ function InventoryOverlay({ session }: { session: GameSession }) {
           {!loot && (
             <div className="panel inv-col hint-col">
               <div className="panel-title">
-                <span>Quick use</span>
+                <span>Health</span>
+                <span className="dim">drag meds onto a body part</span>
               </div>
-              <div className="hints">
-                <p>
-                  <span className="kbd">Q</span> best meds · <span className="kbd">V</span> eat / drink
-                </p>
-                <p className="dim">Double-click a med or food item to use it. Right-click for more actions.</p>
-                <EquipSlot owner="player" slot="melee" w={2} h={1.5} cell={46} />
-              </div>
+              <HealthPanel />
             </div>
           )}
         </div>
       </InventoryRoot>
+    </div>
+  );
+}
+
+function HealthPanel() {
+  const hud = useRaidUi((s) => s.hud);
+  if (!hud) return null;
+  return (
+    <div className="hints health-panel">
+      <BodyFigure parts={hud.parts} height={300} droppable showNumbers />
+      <div className="dim small">
+        {hud.parts.map((p) => (
+          <div key={p.part} className="row">
+            <span>{PART_LABEL[p.part]}</span>
+            <span className={`mono ${p.hp <= 0 ? 'bad' : ''}`}>
+              {Math.ceil(p.hp)}/{p.max}
+              {p.heavy ? ' · heavy bleed' : p.light ? ' · bleed' : ''}
+              {p.fracture ? ' · fracture' : ''}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="dim small">
+        <span className="kbd">Q</span> auto-treat · <span className="kbd">V</span> eat / drink · double-click a med to use it
+      </p>
     </div>
   );
 }

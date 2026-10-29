@@ -5,11 +5,16 @@ import { getDef } from '../items/defs';
 import type { HitZone } from './types';
 
 export const ZONE_WEIGHTS: readonly (readonly [HitZone, number])[] = [
-  ['head', 0.12],
-  ['thorax', 0.5],
-  ['limbs', 0.38],
+  ['head', 0.09],
+  ['thorax', 0.26],
+  ['stomach', 0.17],
+  ['leftArm', 0.11],
+  ['rightArm', 0.11],
+  ['leftLeg', 0.13],
+  ['rightLeg', 0.13],
 ];
-export const ZONE_MULT: Record<HitZone, number> = { head: 2.1, thorax: 1, limbs: 0.65 };
+/** Per-part HP pools already make heads fragile; multipliers only fine-tune. */
+export const ZONE_MULT: Record<HitZone, number> = { head: 1.2, thorax: 1, stomach: 1, leftArm: 0.9, rightArm: 0.9, leftLeg: 0.9, rightLeg: 0.9 };
 
 export interface DamageResult {
   damage: number;
@@ -42,7 +47,7 @@ export function resolveBulletHit(
   const dmg = baseDamage * (ammo?.damageMul ?? 1) * ZONE_MULT[zone];
   const armor = armorItem ? getDef(armorItem.def).armor : undefined;
   if (!armor || !armorItem || (armorItem.dur ?? 0) <= 0) {
-    return { damage: dmg, penetrated: true, armorDamage: 0, bleedChance: zone === 'limbs' ? 0.35 : 0.25 };
+    return { damage: dmg, penetrated: true, armorDamage: 0, bleedChance: 0.4 };
   }
   const chance = penetrationChance(pen, armor, armorItem.dur ?? 0);
   const penetrated = rng.next() < chance;
@@ -51,7 +56,7 @@ export function resolveBulletHit(
     damage: penetrated ? dmg * (0.75 + 0.25 * chance) : dmg * 0.22,
     penetrated,
     armorDamage,
-    bleedChance: penetrated ? 0.3 : 0,
+    bleedChance: penetrated ? 0.4 : 0,
   };
 }
 
@@ -69,7 +74,7 @@ export function resolveMeleeHit(stats: MeleeStats, zone: HitZone, armorItem: Ite
 
 export function armorFor(zone: HitZone, slots: { helmet: ItemInstance | null; armor: ItemInstance | null }): ItemInstance | null {
   if (zone === 'head') return slots.helmet;
-  if (zone === 'thorax') return slots.armor;
+  if (zone === 'thorax' || zone === 'stomach') return slots.armor;
   return null;
 }
 

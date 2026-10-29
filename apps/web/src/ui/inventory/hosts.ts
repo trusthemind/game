@@ -163,6 +163,16 @@ export function makeRaidHost(session: GameSession): InvHost {
       return out;
     },
     dropSpecial(zone, src) {
+      if (zone.startsWith('heal:')) {
+        // Drag a med onto a body part: treat that part specifically.
+        const it = toSource(resolver, src);
+        const item = it && peekSource(it);
+        if (item && getDef(item.def).med && fromPlayer(src)) {
+          session.input.intent.use = item.uid;
+          session.input.intent.useOn = zone.slice(5) as never;
+        }
+        return;
+      }
       if (zone !== 'ground') return;
       const it = removeFrom(resolver, src);
       if (it) {

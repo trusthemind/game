@@ -24,6 +24,27 @@ import { OPAQUE, Tile } from '../world/tiles';
 import { BotBrain, type BrainRole } from '../ai/brain';
 import { armorFor, gaussian, resolveBulletHit, resolveMeleeHit, ZONE_WEIGHTS } from './combat';
 import {
+  aimMul,
+  applyMed,
+  bleeding,
+  BODY_PARTS,
+  canSprint,
+  createHealth,
+  damagePart,
+  HEAVY_BLEED_DPS,
+  inPain,
+  isDead,
+  LIGHT_BLEED_DPS,
+  metabolismMul,
+  moveMul,
+  PART_LABEL,
+  tickHealth,
+  totalHp,
+  totalMax,
+  treatmentTarget,
+  type BodyPart,
+} from './health';
+import {
   emptyIntent,
   hostile,
   type Actor,
@@ -88,7 +109,7 @@ const ARCH_STATS: Record<BotArchetype, { hp: number; speed: number; faction: Fac
   scav: { hp: 100, speed: 2.7, faction: 'scav', names: ['Scav', 'Looter', 'Drifter', 'Marauder'] },
   raider: { hp: 120, speed: 3.0, faction: 'raider', names: ['Raider', 'Operator', 'Hunter'] },
   guard: { hp: 140, speed: 2.9, faction: 'boss', names: ['Guard'] },
-  boss: { hp: 260, speed: 2.6, faction: 'boss', names: ['Warlord Kostia'] },
+  boss: { hp: 180, speed: 2.6, faction: 'boss', names: ['Warlord Kostia'] },
   infected: { hp: 70, speed: 2.1, faction: 'infected', names: ['Infected'] },
 };
 
@@ -188,6 +209,8 @@ export class Raid {
   // ── Setup helpers ───────────────────────────────────────────────────────────
 
   private spawnActor(o: { name: string; faction: Faction; archetype: Actor['archetype']; x: number; y: number; hp: number; speed: number; eq: Equipment }): Actor {
+    // `hp` is a toughness factor relative to a human (100 → the standard 440-HP Tarkov body).
+    const health = createHealth(o.hp / 100, o.archetype === 'infected');
     const a: Actor = {
       id: this.nextId++,
       name: o.name,
@@ -198,9 +221,10 @@ export class Raid {
       facing: 0,
       radius: 0.34,
       baseSpeed: o.speed,
-      hp: o.hp,
-      maxHp: o.hp,
+      hp: totalHp(health),
+      maxHp: totalMax(health),
       bleed: 0,
+      health,
       stamina: 100,
       energy: 85,
       hydration: 85,
@@ -212,6 +236,7 @@ export class Raid {
       bloom: 0,
       useT: 0,
       useUid: null,
+      usePart: null,
       crouching: false,
       sprinting: false,
       flashlight: false,
@@ -284,8 +309,11 @@ export class Raid {
     if (!this.map.isWalkable(tile.x, tile.y)) return;
     const a = this.spawnActor({ name: enc.name, faction: 'npc', archetype: 'npc', x: tile.x + 0.5, y: tile.y + 0.5, hp: 100, speed: 2.8, eq: enc.eq });
     a.npcId = enc.npcId;
-    a.hp = 55; // Wounded — the player finds them in trouble.
-    a.bleed = 0.15;
+    // Wounded — the player finds them in trouble.
+    a.health.parts.leftLeg.hp = 18;
+    a.health.parts.leftLeg.light = true;
+    a.health.parts.stomach.hp = 40;
+    this.syncHealth(a);
     a.brain = new BotBrain('npc', rng, null);
   }
 
@@ -359,13 +387,14 @@ export class Raid {
   private updateActor(a: Actor, dt: number): void {
     const it = a.intent;
 
-    // Status effects.
-    if (a.bleed > 0) this.damageRaw(a, a.bleed * dt, null);
-    if (!a.alive) return;
+    // Status effects: bleeding, regeneration, painkillers.
+    if (tickHealth(a.health, dt) > 0 || a.health.regenT > 0) this.syncHealth(a);
+    if (isDead(a.health)) return this.kill(a, a.lastAttacker !== null ? this.actorById(a.lastAttacker) : null);
     if (a.faction === 'player') {
-      a.energy = Math.max(0, a.energy - 0.035 * dt);
-      a.hydration = Math.max(0, a.hydration - 0.055 * dt);
-      if (a.energy <= 0 || a.hydration <= 0) this.damageRaw(a, 0.25 * dt, null);
+      const meta = metabolismMul(a.health);
+      a.energy = Math.max(0, a.energy - 0.035 * meta * dt);
+      a.hydration = Math.max(0, a.hydration - 0.055 * meta * dt);
+      if (a.energy <= 0 || a.hydration <= 0) this.damageRaw(a, 0.4 * dt, null, 'stomach');
       if (!a.alive) return;
     }
 
@@ -392,7 +421,7 @@ export class Raid {
     }
     const moving = ml > 0.05;
     a.crouching = it.crouch;
-    a.sprinting = it.sprint && moving && !a.crouching && a.stamina > 1 && a.useT <= 0;
+    a.sprinting = it.sprint && moving && !a.crouching && a.stamina > 1 && a.useT <= 0 && canSprint(a.health);
     if (a.sprinting) a.stamina = Math.max(0, a.stamina - 13 * dt);
     else a.stamina = Math.min(100, a.stamina + (moving ? 6 : 11) * dt);
 
@@ -402,7 +431,7 @@ export class Raid {
     else if (a.sprinting) speed *= 1.6;
     if (a.useT > 0) speed *= 0.45;
     if (a.reloadT > 0) speed *= 0.85;
-    if (a.hp < a.maxHp * 0.25) speed *= 0.85;
+    speed *= moveMul(a.health);
     const accel = Math.min(1, dt * 14);
     a.vel.x += (mx * speed - a.vel.x) * accel;
     a.vel.y += (my * speed - a.vel.y) * accel;
@@ -420,7 +449,7 @@ export class Raid {
     }
 
     // Item use (meds / food).
-    if (it.use && a.useT <= 0 && a.reloadT <= 0) this.startUse(a, it.use);
+    if (it.use && a.useT <= 0 && a.reloadT <= 0) this.startUse(a, it.use, it.useOn ?? null);
     if (a.useT > 0) {
       a.useT -= dt;
       if (a.useT <= 0) this.finishUse(a);
@@ -555,7 +584,7 @@ export class Raid {
     a.fireCd = 60 / def.rpm;
     w.ammo = (w.ammo ?? 1) - 1;
     const moving = Math.hypot(a.vel.x, a.vel.y) > 0.6;
-    const spread = def.spread * (moving ? 1.8 : 1) * (a.crouching ? 0.7 : 1) + a.bloom;
+    const spread = (def.spread * (moving ? 1.8 : 1) * (a.crouching ? 0.7 : 1) + a.bloom) * aimMul(a.health);
     a.bloom = Math.min(0.12, a.bloom + def.recoil * 0.35);
     this.makeNoise(a.pos.x, a.pos.y, def.noise, a.id, 'shot');
     const pellets = def.pellets ?? 1;
@@ -661,7 +690,8 @@ export class Raid {
       // Allies don't hit each other in melee (bots would otherwise brawl in doorways).
       if (!hostile(a.faction, b.faction) && a.faction !== 'player') continue;
       const zone = this.rollZone(b);
-      const res = resolveMeleeHit(st, zone, armorFor(zone, b.eq.slots));
+      const res: ReturnType<typeof resolveMeleeHit> & { fractureChance?: number } = resolveMeleeHit(st, zone, armorFor(zone, b.eq.slots));
+      res.fractureChance = st.armorBypass * 0.35;
       // Stealth bonus: hitting someone who isn't facing you.
       const facingAway = Math.abs(((angleTo(b.pos, a.pos) - b.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI) > 2.1;
       if (facingAway && b.brain && !b.brain.alerted) res.damage *= 1.8;
@@ -670,25 +700,54 @@ export class Raid {
     }
   }
 
-  private applyHit(target: Actor, attacker: Actor, res: { damage: number; penetrated: boolean; armorDamage: number; bleedChance: number }, zone: HitZone, melee: boolean, x: number, y: number): void {
+  private applyHit(
+    target: Actor,
+    attacker: Actor,
+    res: { damage: number; penetrated: boolean; armorDamage: number; bleedChance: number; fractureChance?: number },
+    zone: HitZone,
+    melee: boolean,
+    x: number,
+    y: number,
+  ): void {
+    if (!target.alive) return;
     const armor = armorFor(zone, target.eq.slots);
     if (armor && res.armorDamage > 0) armor.dur = Math.max(0, (armor.dur ?? 0) - res.armorDamage);
-    if (this.rng.chance(res.bleedChance)) target.bleed = Math.max(target.bleed, res.damage > 35 ? 1.4 : 0.55);
     target.lastHitAt = this.time;
     target.lastAttacker = attacker.id;
     this.emit({ t: 'hit', target: target.id, attacker: attacker.id, x, y, zone, damage: res.damage, penetrated: res.penetrated, melee });
     if (target.brain) target.brain.onDamaged(this, target, attacker);
-    this.damageRaw(target, res.damage, attacker);
+    const died = damagePart(target.health, zone, res.damage, this.rng, {
+      bleedChance: res.bleedChance,
+      heavyChance: res.damage > 40 ? 0.45 : 0.2,
+      fractureChance: res.fractureChance ?? (res.penetrated && !melee ? 0.16 : 0),
+    });
+    this.syncHealth(target);
+    if (target === this.player) {
+      const p = target.health.parts[zone];
+      if (p.fracture && res.fractureChance !== 0) this.emit({ t: 'msg', text: `${PART_LABEL[zone]}: fracture`, tone: 'bad' });
+    }
+    if (died) this.kill(target, attacker);
     if (target === this.player || attacker === this.player) this.invVersion++;
   }
 
-  private damageRaw(a: Actor, amount: number, attacker: Actor | null): void {
+  /** Keep the derived totals that AI and HUD read in sync with the per-limb model. */
+  syncHealth(a: Actor): void {
+    a.hp = totalHp(a.health);
+    a.maxHp = totalMax(a.health);
+    let dps = 0;
+    for (const p of BODY_PARTS) dps += (a.health.parts[p].heavy ? HEAVY_BLEED_DPS : 0) + (a.health.parts[p].light ? LIGHT_BLEED_DPS : 0);
+    a.bleed = dps;
+  }
+
+  private damageRaw(a: Actor, amount: number, attacker: Actor | null, part: BodyPart = 'thorax'): void {
     if (!a.alive) return;
-    a.hp -= amount;
-    if (a.hp <= 0) this.kill(a, attacker ?? (a.lastAttacker !== null ? this.actorById(a.lastAttacker) : null));
+    const died = damagePart(a.health, part, amount, null);
+    this.syncHealth(a);
+    if (died) this.kill(a, attacker ?? (a.lastAttacker !== null ? this.actorById(a.lastAttacker) : null));
   }
 
   private kill(a: Actor, killer: Actor | null): void {
+    if (!a.alive) return;
     a.alive = false;
     a.hp = 0;
     a.vel.x = a.vel.y = 0;
@@ -754,15 +813,19 @@ export class Raid {
     return null;
   }
 
-  private startUse(a: Actor, uid: string): void {
+  private startUse(a: Actor, uid: string, part: BodyPart | null): void {
     const found = this.findCarried(a, uid);
     if (!found) return;
     const d = getDef(found.item.def);
     const t = d.med?.useTime ?? d.food?.useTime;
     if (t === undefined) return;
-    if (d.med && d.med.heal === 0 && a.bleed === 0 && d.med.stopsBleed) {
-      if (a === this.player) this.emit({ t: 'msg', text: 'Not bleeding' });
-      return;
+    if (d.med) {
+      const target = treatmentTarget(a.health, d.med, part ?? undefined);
+      if (!target || (part && treatmentTarget(a.health, d.med, part) !== part && !d.med.painkiller && !d.med.regen)) {
+        if (a === this.player) this.emit({ t: 'msg', text: part ? `Nothing to treat on ${PART_LABEL[part].toLowerCase()}` : 'Nothing to treat with that' });
+        return;
+      }
+      a.usePart = target;
     }
     a.useT = t;
     a.useUid = uid;
@@ -777,9 +840,18 @@ export class Raid {
     if (!found) return;
     const d = getDef(found.item.def);
     if (d.med) {
-      a.hp = Math.min(a.maxHp, a.hp + d.med.heal);
-      if (d.med.stopsBleed) a.bleed = 0;
+      const part = a.usePart ?? treatmentTarget(a.health, d.med);
+      a.usePart = null;
+      if (!part) return;
+      const left = applyMed(a.health, d.med, part, found.item.uses ?? (d.med.resource || d.med.uses));
+      if (left === null) return;
+      found.item.uses = left;
+      if (left <= 0) removeItem(found.grid, uid);
       if (found.item.def === 'stim') a.stamina = 100;
+      this.syncHealth(a);
+      this.emit({ t: 'used', actor: a.id, item: found.item.def });
+      if (a === this.player) this.invVersion++;
+      return;
     }
     if (d.food) {
       a.energy = clamp(a.energy + d.food.energy, 0, 100);
@@ -790,16 +862,30 @@ export class Raid {
     if (a === this.player) this.invVersion++;
   }
 
-  /** Best medical item for the situation: bandage when only bleeding, otherwise the biggest heal. */
+  /**
+   * Best med for the current state, Tarkov priority: heavy bleed → light bleed → fracture → pain → HP.
+   * Bots skip surgery (too slow mid-fight).
+   */
   bestMed(a: Actor): ItemInstance | null {
+    const h = a.health;
+    const b = bleeding(h);
+    const fracture = BODY_PARTS.some((p) => h.parts[p].fracture);
+    const missing = a.maxHp - a.hp;
     let best: ItemInstance | null = null;
     let score = 0;
     for (const g of carryGrids(a.eq))
       for (const p of g.items) {
         const m = getDef(p.item.def).med;
-        if (!m) continue;
-        const missing = a.maxHp - a.hp;
-        const s = Math.min(m.heal, missing) + (a.bleed > 0 && m.stopsBleed ? 40 : 0) - m.useTime;
+        if (!m || (m.surgery && a.brain)) continue;
+        if (!treatmentTarget(h, m)) continue;
+        let s = 0;
+        if (b.heavy && m.stopsHeavy) s += 100;
+        if (b.light && m.stopsLight) s += 50;
+        if (fracture && m.fixesFracture) s += 40;
+        if (inPain(h) && m.painkiller) s += 25;
+        if (m.resource > 0) s += Math.min(missing, p.item.uses ?? m.resource) * 0.3;
+        if (m.surgery) s += 30;
+        s -= m.useTime;
         if (s > score) {
           score = s;
           best = p.item;
@@ -944,8 +1030,12 @@ export class Raid {
   healActor(actorId: number): void {
     const a = this.actorById(actorId);
     if (!a || !a.alive) return;
-    a.bleed = 0;
-    a.hp = Math.max(a.hp, a.maxHp * 0.85);
+    for (const p of BODY_PARTS) {
+      const s = a.health.parts[p];
+      s.light = s.heavy = s.fracture = false;
+      s.hp = Math.max(s.hp, s.max * 0.85);
+    }
+    this.syncHealth(a);
   }
 
   private updateLootSearch(dt: number): void {
