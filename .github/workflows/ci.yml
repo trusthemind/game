@@ -25,6 +25,31 @@ jobs:
       - run: npm run bench -w @ashfall/engine
       - run: npm run build -w @ashfall/web
 
+  server:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:8
+        ports: ['27017:27017']
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - run: go vet ./...
+      - run: go test -race ./...
+        env:
+          MONGODB_TEST_URI: mongodb://localhost:27017
+      - run: docker build -t ashfall-server .
+
   e2e:
     runs-on: ubuntu-latest
     needs: check

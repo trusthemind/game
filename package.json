@@ -21,7 +21,7 @@
     "test": "npm run test --workspaces --if-present",
     "bench": "npm run bench -w @ashfall/engine",
     "e2e": "npm run e2e -w @ashfall/web",
-    "server": "cd server && go run ./cmd/ashfall",
+    "server": "cd server && go run ./cmd/server",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "devDependencies": {
