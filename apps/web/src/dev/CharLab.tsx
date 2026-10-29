@@ -51,6 +51,8 @@ export function CharLab() {
       { look: lookFor(2, 'boss'), eq: ['pkm:primary', 'slick6:armor', 'altyn:helmet', 'b_attack:backpack'], active: 'primary', speed: 0 },
       { look: lookFor(11, 'scav'), eq: ['svd:primary'], active: 'primary', speed: 0, crouch: true },
       { look: lookFor(5, 'infected'), eq: [], active: 'melee', speed: 1.2 },
+      { look: lookFor(14, 'scav'), eq: [], active: 'melee', speed: 0 },
+      { look: lookFor(15, 'scav'), eq: [], active: 'melee', speed: 1.4 },
     ];
     if (view === 'guns') {
       const ids = ['pm', 'mp443', 'mp133', 'aks74u', 'sks', 'ak74m', 'akm', 'm4a1', 'svd', 'pkm', 'knife', 'karambit', 'machete', 'axe', 'crowbar', 'bat', 'sledge'];

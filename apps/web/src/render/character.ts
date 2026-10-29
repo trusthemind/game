@@ -101,15 +101,20 @@ interface RigInfo {
   forward: THREE.Vector3;
 }
 
-let rigInfo: RigInfo | null = null;
+const rigInfos = new Map<THREE.Object3D, RigInfo>();
+
+// Bone names follow the Unreal mannequin convention used by Quaternius' UAL1/UAL2 rigs.
+const HAND_R = /^(hand|index|middle|pinky|ring|thumb)_.*r$|^hand_r$/i;
+const HAND_L = /^(hand|index|middle|pinky|ring|thumb)_.*l$|^hand_l$/i;
 
 function regionForBone(name: string): Region {
-  if (/head|neck/.test(name)) return Region.Skin;
-  if (/hand|f_|thumb/.test(name)) return Region.Hands;
-  if (/forearm/.test(name)) return Region.Sleeve;
-  if (/spine|shoulder|upper_arm/.test(name)) return Region.Top;
-  if (/hips/.test(name)) return Region.Pants;
-  if (/foot|toe/.test(name)) return Region.Boots;
+  const n = name.toLowerCase();
+  if (/^head$|^neck/.test(n)) return Region.Skin;
+  if (/^(hand|index|middle|pinky|ring|thumb)_/.test(n)) return Region.Hands;
+  if (/^lowerarm/.test(n)) return Region.Sleeve;
+  if (/^(spine|clavicle|upperarm)/.test(n)) return Region.Top;
+  if (/^pelvis/.test(n)) return Region.Pants;
+  if (/^(foot|ball)/.test(n)) return Region.Boots;
   return Region.Pants;
 }
 
@@ -166,11 +171,11 @@ function analyseMesh(mesh: THREE.SkinnedMesh, boxes: RigInfo['boxes']): void {
     region[i] = regionForBone(name);
     v.fromBufferAttribute(pos, i);
     // Mesh-space positions are in the skinned mesh's bind space.
-    if (/head/.test(name)) boxes.head.expandByPoint(v);
-    else if (/spine00[23]/.test(name)) boxes.chest.expandByPoint(v);
-    else if (/hips/.test(name)) boxes.hips.expandByPoint(v);
-    else if (/hand\.?R|f_.*R$|thumb.*R$/.test(name)) boxes.handR.expandByPoint(v);
-    else if (/hand\.?L|f_.*L$|thumb.*L$/.test(name)) boxes.handL.expandByPoint(v);
+    if (/^head$/i.test(name)) boxes.head.expandByPoint(v);
+    else if (/^spine_0[23]$/.test(name)) boxes.chest.expandByPoint(v);
+    else if (/^pelvis$/.test(name)) boxes.hips.expandByPoint(v);
+    else if (HAND_R.test(name)) boxes.handR.expandByPoint(v);
+    else if (HAND_L.test(name)) boxes.handL.expandByPoint(v);
   }
   geo.setAttribute('aRegion', new THREE.BufferAttribute(region, 1));
 }
@@ -377,8 +382,8 @@ function attachToBone(mesh: THREE.SkinnedMesh, boneName: string, obj: THREE.Obje
 // Animation layering
 // ─────────────────────────────────────────────────────────────────────────────
 
-const UPPER = /^DEF-(spine00[23]|neck|head|shoulder|upper_arm|forearm|hand|f_|thumb)/;
-const LOWER = /^(DEF-(hips|spine001|thigh|shin|foot|toe)|root)/;
+const UPPER = /^(spine_02|spine_03|neck_01|Head|clavicle|upperarm|lowerarm|hand|index|middle|pinky|ring|thumb)/;
+const LOWER = /^(root|pelvis|spine_01|thigh|calf|foot|ball)/;
 const filtered = new Map<string, THREE.AnimationClip>();
 
 function layerClip(lib: AssetLibrary, name: string, layer: 'upper' | 'lower' | 'full'): THREE.AnimationClip | null {
@@ -414,6 +419,8 @@ export class CharacterView {
   private upperName = '';
   private oneShot: THREE.AnimationAction | null = null;
   private oneShotT = 0;
+  private oneShotLayer: 'upper' | 'full' = 'upper';
+  private heavyMelee = false;
   private gearKey = '';
   private gear = new THREE.Group();
   private gearAttachments: THREE.Object3D[] = [];
@@ -423,6 +430,7 @@ export class CharacterView {
   private handR: THREE.Bone | null = null;
   private handL: THREE.Bone | null = null;
   private aimT = 0;
+  private rig!: RigInfo;
   dead = false;
   private hidden = false;
 
@@ -432,7 +440,8 @@ export class CharacterView {
     private u: WorldUniforms,
     shadows: boolean,
   ) {
-    this.model = SkeletonUtils.clone(lib.character.scene);
+    const src = look.sex === 'f' && lib.characterF ? lib.characterF.scene : lib.character.scene;
+    this.model = SkeletonUtils.clone(src);
     const skinnedMeshes: THREE.SkinnedMesh[] = [];
     this.model.traverse((o) => {
       if ((o as THREE.SkinnedMesh).isSkinnedMesh) skinnedMeshes.push(o as THREE.SkinnedMesh);
@@ -441,23 +450,22 @@ export class CharacterView {
     // The body is the mesh with the most vertices (the other is the joint rings).
     skinnedMeshes.sort((a, b) => b.geometry.attributes.position!.count - a.geometry.attributes.position!.count);
     this.skinned = skinnedMeshes[0]!;
-    rigInfo ??= analyseRig(skinnedMeshes);
+    if (!rigInfos.has(src)) rigInfos.set(src, analyseRig(skinnedMeshes));
+    this.rig = rigInfos.get(src)!;
     this.bodyMeshes = skinnedMeshes;
     for (const m of skinnedMeshes) {
       m.material = bodyMaterial(look, u);
       m.castShadow = shadows;
       m.frustumCulled = false;
     }
-    const s = CHAR_SCALE * (look.sex === 'f' ? 0.95 : 1);
-    this.model.scale.setScalar(s);
-    if (look.sex === 'f') this.model.scale.x *= 0.94;
+    this.model.scale.setScalar(CHAR_SCALE);
     this.root.add(this.model);
-    this.handR = this.skinned.skeleton.getBoneByName('DEF-handR') ?? this.skinned.skeleton.bones.find((b) => /hand\.?R$/.test(b.name)) ?? null;
-    this.handL = this.skinned.skeleton.getBoneByName('DEF-handL') ?? this.skinned.skeleton.bones.find((b) => /hand\.?L$/.test(b.name)) ?? null;
+    this.handR = this.skinned.skeleton.getBoneByName('hand_r') ?? null;
+    this.handL = this.skinned.skeleton.getBoneByName('hand_l') ?? null;
     this.mixer = new THREE.AnimationMixer(this.model);
     this.buildBody(shadows);
     this.root.add(this.gear);
-    this.setLower('Idle_Loop', 1);
+    this.setLower('Idle_Loop', 1, 'full');
   }
 
   private bone(re: RegExp): string {
@@ -465,9 +473,9 @@ export class CharacterView {
   }
 
   private buildBody(shadows: boolean): void {
-    const rig = rigInfo!;
+    const rig = this.rig;
     const a = this.look;
-    const head = this.bone(/head$/);
+    const head = this.bone(/^head$/i);
     const hairMat = flatMat(a.hairColor, { rough: 0.9, side: true }, this.u);
     for (const g of hairGeometry(a.hair, rig.boxes.head)) {
       const m = new THREE.Mesh(g, hairMat);
@@ -475,16 +483,6 @@ export class CharacterView {
       attachToBone(this.skinned, head, m);
     }
     for (const m of earParts(rig.boxes.head, a, this.u)) attachToBone(this.skinned, head, m);
-    if (a.sex === 'f') {
-      const c = rig.boxes.chest.getCenter(new THREE.Vector3());
-      const s = rig.boxes.chest.getSize(new THREE.Vector3());
-      const bust = new THREE.SphereGeometry(0.5, 12, 8);
-      bust.scale(s.x * 0.62, s.y * 0.32, s.z * 0.5);
-      bust.translate(c.x, c.y + s.y * 0.08, c.z + s.z * 0.28);
-      attachToBone(this.skinned, this.bone(/spine003$|spine\.003$/), new THREE.Mesh(bust, bodyMaterial(a, this.u)));
-      // bodyMaterial expects aRegion; give the bust a uniform "top" region.
-      bust.setAttribute('aRegion', new THREE.BufferAttribute(new Float32Array(bust.attributes.position!.count).fill(2), 1));
-    }
     if (a.topStyle === 'hoodie' || a.topStyle === 'coat') {
       // Collar / hood roll around the neck.
       const c = rig.boxes.chest.getCenter(new THREE.Vector3());
@@ -492,7 +490,7 @@ export class CharacterView {
       const collar = new THREE.TorusGeometry(s.x * 0.24, s.x * 0.07, 6, 14);
       collar.rotateX(Math.PI / 2);
       collar.translate(c.x, rig.boxes.chest.max.y - s.y * 0.04, c.z - s.z * 0.06);
-      attachToBone(this.skinned, this.bone(/spine003$|spine\.003$/), new THREE.Mesh(collar, flatMat(a.top, { rough: 0.95 }, this.u)));
+      attachToBone(this.skinned, this.bone(/^spine_03$/), new THREE.Mesh(collar, flatMat(a.top, { rough: 0.95 }, this.u)));
     }
   }
 
@@ -505,7 +503,7 @@ export class CharacterView {
     this.gearKey = key;
     for (const g of this.gearAttachments) g.parent?.remove(g);
     this.gearAttachments = [];
-    const rig = rigInfo!;
+    const rig = this.rig;
     const add = (bone: RegExp, obj: THREE.Object3D) => {
       const holder = new THREE.Group();
       holder.add(obj);
@@ -519,14 +517,14 @@ export class CharacterView {
       const g = capGeometry(rig.boxes.head, cls >= 5 ? 0.62 : 0.5, 1.22);
       const m = new THREE.Mesh(g, flatMat(classColor(cls), { rough: 0.5, metal: 0.3 }, this.u));
       m.castShadow = true;
-      add(/head$/, m);
+      add(/^head$/i, m);
       if (cls >= 5) {
         // Visor.
         const c = rig.boxes.head.getCenter(new THREE.Vector3());
         const sz = rig.boxes.head.getSize(new THREE.Vector3());
         const v = new THREE.BoxGeometry(sz.x * 0.95, sz.y * 0.32, sz.z * 0.12);
         v.translate(c.x, c.y + sz.y * 0.05, c.z + sz.z * 0.55);
-        add(/head$/, new THREE.Mesh(v, flatMat(0x1a2024, { rough: 0.2, metal: 0.6 }, this.u)));
+        add(/^head$/i, new THREE.Mesh(v, flatMat(0x1a2024, { rough: 0.2, metal: 0.6 }, this.u)));
       }
     }
     if (s.armor) {
@@ -537,7 +535,7 @@ export class CharacterView {
       vest.translate(c.x, c.y - sz.y * 0.05, c.z);
       const m = new THREE.Mesh(vest, flatMat(classColor(cls), { rough: 0.85 }, this.u));
       m.castShadow = true;
-      add(/spine003$|spine\.003$/, m);
+      add(/^spine_03$/, m);
     }
     if (s.rig) {
       const c = rig.boxes.chest.getCenter(new THREE.Vector3());
@@ -545,7 +543,7 @@ export class CharacterView {
       for (let i = -1; i <= 1; i++) {
         const p = new THREE.BoxGeometry(sz.x * 0.2, sz.y * 0.26, sz.z * 0.22);
         p.translate(c.x + i * sz.x * 0.24, c.y - sz.y * 0.28, c.z + sz.z * 0.66);
-        add(/spine003$|spine\.003$/, new THREE.Mesh(p, flatMat(0x3d3a2c, { rough: 0.9 }, this.u)));
+        add(/^spine_03$/, new THREE.Mesh(p, flatMat(0x3d3a2c, { rough: 0.9 }, this.u)));
       }
     }
     if (s.backpack) {
@@ -559,7 +557,7 @@ export class CharacterView {
         bp.scale.setScalar(k);
         bp.rotation.y = Math.PI;
         bp.position.set(c.x, c.y - sz.y * 0.1, c.z - sz.z * 0.5 - 0.12 * k);
-        add(/spine003$|spine\.003$/, bp);
+        add(/^spine_03$/, bp);
       }
     }
 
@@ -573,6 +571,7 @@ export class CharacterView {
       if (src) {
         this.held = src.clone();
         this.heldKind = d.melee ? 'melee' : 'gun';
+        this.heavyMelee = /^(axe|sledge|bat|crowbar)$/.test(held.def);
         this.heldLen = new THREE.Box3().setFromObject(src).getSize(tmpV).z;
         this.gear.add(this.held);
       }
@@ -581,7 +580,11 @@ export class CharacterView {
 
   // ── Animation ──────────────────────────────────────────────────────────────
 
-  private setLower(name: string, timeScale: number, layer: 'lower' | 'full' = 'lower'): void {
+  /**
+   * Base locomotion layer. Plays on the whole body unless an upper-body pose (weapon stance or a one-shot
+   * like reload/punch) is active — then only legs/hips, so the two never average into a half-pose.
+   */
+  private setLower(name: string, timeScale: number, layer: 'lower' | 'full'): void {
     const key = `${name}:${layer}`;
     if (this.lowerName === key) {
       if (this.lower) this.lower.timeScale = timeScale;
@@ -590,9 +593,12 @@ export class CharacterView {
     const clip = layerClip(this.lib, name, layer);
     if (!clip) return;
     const next = this.mixer.clipAction(clip);
+    const sameClip = this.lowerName.split(':')[0] === name;
     next.reset().setEffectiveWeight(1).play();
+    // Switching between the full/legs-only variant of the same cycle keeps the step phase.
+    if (sameClip && this.lower) next.time = this.lower.time;
     next.timeScale = timeScale;
-    if (this.lower) this.lower.crossFadeTo(next, 0.2, false);
+    if (this.lower) this.lower.crossFadeTo(next, sameClip ? 0.08 : 0.22, false);
     this.lower = next;
     this.lowerName = key;
   }
@@ -611,7 +617,7 @@ export class CharacterView {
         else next.fadeIn(0.15);
         this.upper = next;
       }
-    } else prev?.fadeOut(0.2);
+    } else prev?.fadeOut(0.15);
   }
 
   private playOneShot(name: string, layer: 'upper' | 'full', speed = 1): void {
@@ -624,9 +630,16 @@ export class CharacterView {
     a.timeScale = speed;
     a.setEffectiveWeight(1).fadeIn(0.06).play();
     if (this.oneShot && this.oneShot !== a) this.oneShot.fadeOut(0.06);
+    // A one-shot replaces the stance for its duration.
+    this.upper?.fadeOut(0.06);
+    this.upper = null;
+    this.upperName = '';
     this.oneShot = a;
+    this.oneShotLayer = layer;
     this.oneShotT = clip.duration / speed;
   }
+
+  private swingN = 0;
 
   fired(): void {
     this.aimT = 2.5;
@@ -634,15 +647,29 @@ export class CharacterView {
   }
 
   swung(): void {
-    this.playOneShot(this.heldKind === 'melee' ? 'Sword_Attack' : 'Punch_Jab', 'upper', this.heldKind === 'melee' ? 1.6 : 1.8);
+    this.swingN++;
+    if (this.look.zombie) return this.playOneShot('Zombie_Scratch', 'upper', 1.5);
+    if (this.heldKind !== 'melee') return this.playOneShot(this.swingN % 2 ? 'Punch_Jab' : 'Punch_Cross', 'upper', 1.8);
+    if (this.heavyMelee) return this.playOneShot('Melee_Hook', 'upper', 1.4);
+    this.playOneShot(['Sword_Regular_A', 'Sword_Regular_B', 'Sword_Regular_C'][this.swingN % 3]!, 'upper', 1.5);
   }
 
   reloading(): void {
     this.playOneShot('Pistol_Reload', 'upper', 1.4);
   }
 
+  /** Eating, drinking, bandaging. */
+  consuming(): void {
+    this.playOneShot('Consume', 'upper', 1.2);
+  }
+
+  /** Rummaging through a container or body. */
+  searching(): void {
+    this.playOneShot('PickUp_Table', 'upper', 1.1);
+  }
+
   hit(): void {
-    if (!this.oneShot || this.oneShotT <= 0) this.playOneShot('Hit_Chest', 'upper', 1.6);
+    if (!this.oneShot || this.oneShotT <= 0) this.playOneShot(Math.random() < 0.5 ? 'Hit_Chest' : 'Hit_Head', 'upper', 1.6);
   }
 
   update(a: Actor, dt: number, visible: boolean, alerted: boolean, talking = false): void {
@@ -658,30 +685,40 @@ export class CharacterView {
     const along = speed > 0.01 ? (a.vel.x * Math.cos(a.facing) + a.vel.y * Math.sin(a.facing)) / speed : 1;
     const dir = along < -0.35 ? -1 : 1;
     const sprint = !zombie && !a.crouching && (a.sprinting || speed > 4.2);
-    if (speed > 0.25) {
-      if (a.crouching) this.setLower('Crouch_Fwd_Loop', (dir * speed) / 1.4);
-      else if (zombie) this.setLower('Walk_Loop', speed / 1.6);
-      else if (sprint) this.setLower('Sprint_Loop', speed / 5.6, 'full');
-      else if (speed > 2.4) this.setLower('Jog_Fwd_Loop', (dir * speed) / 3.6);
-      else this.setLower('Walk_Loop', (dir * speed) / 1.5);
-    } else if (a.crouching) this.setLower('Crouch_Idle_Loop', 1);
-    else if (talking) this.setLower('Idle_Talking_Loop', 1, 'full');
-    else this.setLower('Idle_Loop', 1);
+    const moving = speed > 0.25;
 
+    // Upper-body stance first: it decides whether the base layer plays on the whole body.
     this.aimT = Math.max(0, this.aimT - dt);
-    const gun = this.heldKind === 'gun';
-    if (zombie) this.setUpper('Pistol_Aim_Neutral'); // arms out: the classic shamble
-    else if (talking || (sprint && speed > 0.25)) this.setUpper(null);
-    else if (gun && (alerted || this.aimT > 0 || (a.faction === 'player' && a.aiming))) this.setUpper('Pistol_Aim_Neutral');
-    else if (gun) this.setUpper('Pistol_Idle_Loop');
-    else if (this.heldKind === 'melee') this.setUpper('Sword_Idle');
-    else this.setUpper(null);
-
     this.oneShotT -= dt;
     if (this.oneShot && this.oneShotT <= 0) {
       this.oneShot.fadeOut(0.12);
       this.oneShot = null;
     }
+    // Treating wounds / eating: keep the consume gesture going while the use timer runs.
+    if (a.useT > 0 && !this.oneShot) this.consuming();
+    const gun = this.heldKind === 'gun';
+    let stance: string | null = null;
+    if (zombie || talking || (sprint && moving)) stance = null;
+    else if (gun && (alerted || this.aimT > 0 || (a.faction === 'player' && a.aiming))) stance = 'Pistol_Aim_Neutral';
+    else if (gun) stance = 'Pistol_Idle_Loop';
+    else if (this.heldKind === 'melee' && (alerted || a.faction === 'player')) stance = 'Sword_Idle';
+    if (!this.oneShot) this.setUpper(stance);
+    const upperBusy = !!this.upper || (!!this.oneShot && this.oneShotLayer === 'upper');
+    const layer: 'lower' | 'full' = upperBusy ? 'lower' : 'full';
+
+    if (zombie) {
+      if (moving) this.setLower('Zombie_Walk_Fwd_Loop', speed / 1.2, layer);
+      else this.setLower('Zombie_Idle_Loop', 1, layer);
+    } else if (moving) {
+      if (a.crouching) this.setLower('Crouch_Fwd_Loop', (dir * speed) / 1.4, layer);
+      else if (sprint) this.setLower('Sprint_Loop', speed / 5.6, layer);
+      else if (speed > 2.4) this.setLower('Jog_Fwd_Loop', (dir * speed) / 3.6, layer);
+      else this.setLower('Walk_Loop', (dir * speed) / 1.5, layer);
+    } else if (a.crouching) this.setLower('Crouch_Idle_Loop', 1, layer);
+    else if (talking) this.setLower('Idle_Talking_Loop', 1, 'full');
+    else if (a.faction === 'npc' && !alerted) this.setLower(this.look.sex === 'f' ? 'Idle_Loop' : 'Idle_FoldArms_Loop', 1, layer);
+    else this.setLower('Idle_Loop', 1, layer);
+
     // Skip skinning work for actors the player can't see (big win with 40 bots).
     if (!this.hidden) this.mixer.update(dt);
     this.placeHeld(a);
@@ -794,7 +831,7 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256):
   scene.add(key1, rim);
   view.root.updateMatrixWorld(true);
   view.root.traverse((o) => o.updateMatrixWorld(true));
-  const headBone = (view as unknown as { skinned: THREE.SkinnedMesh }).skinned.skeleton.bones.find((b) => /head$/.test(b.name));
+  const headBone = (view as unknown as { skinned: THREE.SkinnedMesh }).skinned.skeleton.bones.find((b) => /^head$/i.test(b.name));
   const hp = headBone ? headBone.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(0, 1.6, 0);
   const cam = new THREE.PerspectiveCamera(26, 1, 0.05, 10);
   cam.position.set(hp.x + 0.12, hp.y + 0.1, hp.z + 0.95);

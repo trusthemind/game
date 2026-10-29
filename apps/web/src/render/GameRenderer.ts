@@ -59,6 +59,7 @@ export class GameRenderer {
   private vignette: VignetteEffect | null = null;
   private world: WorldMeshes;
   private roofs: RoofSet;
+  private wasLooting = false;
   private effects: Effects;
   private views = new Map<number, CharacterView>();
   /** Actor currently in a conversation (plays the talking idle). */
@@ -249,6 +250,8 @@ export class GameRenderer {
         case 'reload':
           this.views.get(e.actor)?.reloading();
           break;
+        case 'used':
+          break;
         case 'impact':
           this.effects.burst(e.x, e.y, 6, 'spark');
           this.effects.burst(e.x, e.y, 4, 'dust');
@@ -294,6 +297,11 @@ export class GameRenderer {
       const visible = a === p || !!a.companion || raid.isVisibleToPlayer(a.pos.x, a.pos.y);
       const alerted = !!a.brain && (a.brain.state === 'engage' || a.brain.state === 'cover' || a.brain.state === 'search');
       v.update(a, dt, visible, alerted, this.talkingActor === a.id || (a === p && this.talkingActor !== null));
+      if (a === p) {
+        const looting = this.raid.loot !== null;
+        if (looting && !this.wasLooting) v.searching();
+        this.wasLooting = looting;
+      }
       if (a.npcId && a.alive) this.updateLabel(a.id, a.name, a.pos.x, a.pos.y, visible, a.companion ? 'comp' : 'npc');
     }
 

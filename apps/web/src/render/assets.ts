@@ -9,6 +9,8 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
  */
 export interface AssetLibrary {
   character: GLTF;
+  /** Female body on the same skeleton (mesh only; shares the clips). */
+  characterF: GLTF | null;
   clips: Map<string, THREE.AnimationClip>;
   weapons: Map<string, THREE.Object3D>;
   melee: Map<string, THREE.Object3D>;
@@ -35,15 +37,15 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
     for (const c of g.scene.children) m.set(c.name, c);
     return m;
   };
-  pending = Promise.all([load('character'), load('weapons'), load('melee'), load('props'), load('nature')]).then(
-    ([character, weapons, melee, props, nature]) => {
+  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature')]).then(
+    ([character, characterF, weapons, melee, props, nature]) => {
       const clips = new Map<string, THREE.AnimationClip>();
       for (const c of character.animations) clips.set(c.name, c);
       for (const g of [weapons, melee, props, nature])
         g.scene.traverse((o) => {
           if ((o as THREE.Mesh).isMesh) o.castShadow = true;
         });
-      ready = { character, clips, weapons: byName(weapons), melee: byName(melee), props: byName(props), nature: byName(nature) };
+      ready = { character, characterF, clips, weapons: byName(weapons), melee: byName(melee), props: byName(props), nature: byName(nature) };
       return ready;
     },
   );

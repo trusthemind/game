@@ -234,9 +234,10 @@ async function buildCharacter() {
       const [bone, prop] = track.name.split('.');
       const node = nodes.get(bone);
       const pathName = prop === 'quaternion' ? 'rotation' : prop === 'position' ? 'translation' : prop === 'scale' ? 'scale' : null;
-      if (!node || !pathName) continue;
+      // The FBX root carries the Z-up→Y-up conversion; the glTF root already has its own. Skip it.
+      if (!node || !pathName || bone === 'root') continue;
       // Only the hips carry translation; dropping the rest keeps limbs from drifting with FBX unit noise.
-      if (pathName === 'translation' && bone !== 'pelvis' && bone !== 'root') continue;
+      if (pathName === 'translation' && bone !== 'pelvis') continue;
       if (pathName === 'scale') continue;
       const input = doc.createAccessor().setType('SCALAR').setArray(new Float32Array(track.times)).setBuffer(buffer);
       const output = doc
@@ -249,7 +250,23 @@ async function buildCharacter() {
     }
     added++;
   }
-  console.log(`  merged ${added} UAL1 clips → ${root.listAnimations().length} total`);
+  // Top-down camera: finger curls are invisible, and a lot of clips are irrelevant for this game.
+  const DROP = /^(Swim|Driving|Dance|Farm_|Fishing|Shield_|Idle_Shield|NinjaJump|Slide_|Spell_|TreeChopping|Idle_Rail|Idle_Lantern|Jump_|Roll|Sword_Dash|Walk_Formal|A_TPose|Hit_Knockback_RM|Idle_Torch)/;
+  const FINGER = /^(index|middle|pinky|ring|thumb)_/;
+  for (const anim of root.listAnimations()) {
+    if (DROP.test(anim.getName())) {
+      anim.dispose();
+      continue;
+    }
+    for (const ch of anim.listChannels()) {
+      if (FINGER.test(ch.getTargetNode()?.getName() ?? '')) {
+        const sm = ch.getSampler();
+        ch.dispose();
+        sm?.dispose();
+      }
+    }
+  }
+  console.log(`  merged ${added} UAL1 clips → ${root.listAnimations().length} kept`);
   const tmp = path.join(OUT, 'character.raw.glb');
   await io.write(tmp, doc);
   await optimise(tmp, path.join(OUT, 'character.glb'), { skinned: true });
