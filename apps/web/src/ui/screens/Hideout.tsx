@@ -30,12 +30,14 @@ import { SyncBadge } from '../components/SyncBadge';
 import { audio } from '../../audio/AudioEngine';
 import { usePortrait } from '../components/usePortrait';
 import { TasksTab } from './TasksTab';
+import { BaseTab } from './BaseTab';
 import './hideout.css';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 const TABS: { id: HideoutTab; label: string }[] = [
   { id: 'gear', label: 'Stash & Gear' },
   { id: 'tasks', label: 'Tasks' },
+  { id: 'base', label: 'Base' },
   { id: 'trader', label: 'Trader' },
   { id: 'survivors', label: 'Survivors' },
   { id: 'stats', label: 'Profile' },
@@ -84,6 +86,7 @@ export function Hideout() {
         <main className="hideout-main fade-in" key={tab}>
           {tab === 'gear' && <GearTab />}
           {tab === 'tasks' && <TasksTab />}
+          {tab === 'base' && <BaseTab />}
           {tab === 'trader' && <TraderTab />}
           {tab === 'survivors' && <SurvivorsTab />}
           {tab === 'stats' && <StatsTab />}

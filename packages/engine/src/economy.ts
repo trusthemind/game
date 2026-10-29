@@ -1,3 +1,4 @@
+import { intelDiscount } from './hideout';
 import { ALL_ITEMS, getDef, type ItemDef } from './items/defs';
 import { addItem, createItem, itemValue, type ItemInstance } from './items/inventory';
 import { levelFromXp, type Profile } from './profile';
@@ -5,7 +6,8 @@ import { levelFromXp, type Profile } from './profile';
 /** Trader discount from Vera's affinity: up to 15%. */
 export function traderDiscount(profile: Profile): number {
   const a = profile.npcs.vera?.affinity ?? 0;
-  return Math.max(0, Math.min(0.15, a / 400 + (profile.npcs.vera?.flags.includes('q_intel_done') ? 0.05 : 0)));
+  const rel = Math.max(0, Math.min(0.15, a / 400 + (profile.npcs.vera?.flags.includes('q_intel_done') ? 0.05 : 0)));
+  return Math.min(0.25, rel + intelDiscount(profile));
 }
 
 export function buyPrice(def: ItemDef, profile: Profile, stack = 1): number {

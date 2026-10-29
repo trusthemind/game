@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { MapId, RaidResult, RaidSummary } from '@ashfall/engine';
 
 export type Screen = 'menu' | 'hideout' | 'raid' | 'raidEnd';
-export type HideoutTab = 'gear' | 'tasks' | 'trader' | 'survivors' | 'stats';
+export type HideoutTab = 'gear' | 'tasks' | 'base' | 'trader' | 'survivors' | 'stats';
 
 export interface Toast {
   id: number;

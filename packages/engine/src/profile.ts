@@ -6,6 +6,7 @@ import { INITIAL_AFFINITY, NPCS } from './dialogue/npcs';
 import { newRelationship, type Relationship } from './dialogue/types';
 import type { Difficulty, Grave, RaidResult } from './sim/raid';
 import { applyRaidToTasks, type TaskState } from './tasks';
+import { newHideout, type HideoutState } from './hideout';
 
 export const PROFILE_VERSION = 3;
 
@@ -61,6 +62,8 @@ export interface Profile {
   grave: Grave | null;
   /** Task progress by task id. */
   tasks: Record<string, TaskState>;
+  /** Base stations, running crafts, bitcoin farm clock. */
+  hideout: HideoutState;
 }
 
 export function createProfile(name = 'Survivor', id = randomId(), look: PlayerLook = DEFAULT_LOOK): Profile {
@@ -89,6 +92,7 @@ export function createProfile(name = 'Survivor', id = randomId(), look: PlayerLo
     look: { ...look },
     grave: null,
     tasks: {},
+    hideout: newHideout(now),
   };
 }
 

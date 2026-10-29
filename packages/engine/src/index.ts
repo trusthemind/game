@@ -26,3 +26,4 @@ export * from './economy';
 export * from './sim/health';
 export * from './world/collision';
 export * from './tasks';
+export * from './hideout';

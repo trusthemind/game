@@ -111,3 +111,20 @@
 .task-reward { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .chip { padding: 2px 7px; border: 1px solid var(--line); border-radius: 3px; background: rgba(255,255,255,.03); }
 @media (max-width: 1000px) { .tasks-tab { grid-template-columns: 1fr; } }
+
+/* ── Base ──────────────────────────────────────────────── */
+.base-tab { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+.station { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.station.built { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); }
+.station-head { display: flex; justify-content: space-between; gap: 10px; }
+.lvl-pips { display: flex; gap: 4px; }
+.lvl-pips i { width: 10px; height: 10px; border-radius: 2px; border: 1px solid var(--line-2); }
+.lvl-pips i.on { background: var(--accent); border-color: var(--accent); }
+.upgrade { display: flex; flex-direction: column; gap: 6px; }
+.cost { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.bad { color: #e08a7a; border-color: rgba(224,138,122,.4); }
+.recipes { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; }
+.recipe { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+.recipe.locked { opacity: .5; }
+.craft-job { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; padding: 6px 8px; background: rgba(214,167,74,.07); border-radius: 3px; }
+.craft-job .bar { grid-column: 1 / -1; height: 4px; }
