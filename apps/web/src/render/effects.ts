@@ -239,7 +239,7 @@ export class Effects {
 }
 
 const texCache = new Map<string, THREE.Texture>();
-function radialTexture(inner: string, outer: string): THREE.Texture {
+export function radialTexture(inner: string, outer: string): THREE.Texture {
   const key = inner + outer;
   const hit = texCache.get(key);
   if (hit) return hit;

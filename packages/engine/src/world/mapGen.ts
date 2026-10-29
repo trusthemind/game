@@ -1,3 +1,4 @@
+import { BOSSES } from '../items/bosses';
 import { Rng } from '../core/rng';
 import { createGrid } from '../items/inventory';
 import { GameMap, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype } from './map';
@@ -672,29 +673,42 @@ function placeBots(map: GameMap, rng: Rng, reach: Uint8Array, density: number): 
   // Hostile groups start well apart so the map doesn't turn into a bloodbath in the first seconds.
   const clear = (arch: BotArchetype, p: { x: number; y: number }) =>
     map.botSpawns.every((s) => s.archetype === arch || (s.archetype === 'guard' && arch === 'boss') || Math.hypot(s.x - p.x, s.y - p.y) > 16);
-  const spawnGroup = (arch: BotArchetype, count: number, near: { x: number; y: number }) => {
-    if (arch !== 'guard' && !clear(arch, near)) return;
-    const g = group++;
+  const spawnGroup = (arch: BotArchetype, count: number, near: { x: number; y: number }, g = group++, boss?: string) => {
+    if (arch !== 'guard' && arch !== 'boss' && !clear(arch, near)) return;
     for (let i = 0; i < count; i++) {
       for (let t = 0; t < 30; t++) {
         const x = Math.round(near.x + rng.range(-3, 3));
         const y = Math.round(near.y + rng.range(-3, 3));
         if (ok(x, y)) {
-          map.botSpawns.push({ archetype: arch, x: x + 0.5, y: y + 0.5, group: g });
+          map.botSpawns.push({ archetype: arch, x: x + 0.5, y: y + 0.5, group: g, ...(boss ? { boss } : {}) });
           break;
         }
       }
     }
   };
 
-  // Boss + guards in the (first) military compound; later compounds get guards only.
+  // Named boss of this location (with escort, sharing one group so they move and fight together).
+  const centre = (b: { rooms: { x: number; y: number; w: number; h: number }[] }) => {
+    const r = b.rooms.reduce((a, c) => (a.w * a.h > c.w * c.h ? a : c));
+    return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+  };
+  const bossRng = rng.fork('boss');
+  for (const def of BOSSES.filter((b) => b.map === map.mapId)) {
+    if (!bossRng.chance(def.chance)) continue;
+    const inDistrict = (x: number, y: number) => map.districtOf(Math.floor(x), Math.floor(y)) === def.district;
+    const homes = map.buildings.filter((b) => b.kind === def.building && inDistrict(b.x + b.w / 2, b.y + b.h / 2));
+    const any = map.buildings.filter((b) => b.kind === def.building);
+    const pois = map.pois.filter((p) => inDistrict(p.x, p.y));
+    const home = homes.length ? centre(bossRng.pick(homes)) : any.length ? centre(bossRng.pick(any)) : pois.length ? bossRng.pick(pois) : null;
+    if (!home || !farFromPlayer(home.x, home.y)) continue;
+    const g = group++;
+    spawnGroup('boss', 1, home, g, def.id);
+    if (def.guards) spawnGroup('guard', def.guards, home, g);
+  }
+  // Military compounds always have a guard detail.
   map.buildings
     .filter((b) => b.kind === 'military')
-    .forEach((mil, i) => {
-      const r = mil.rooms.reduce((a, b) => (a.w * a.h > b.w * b.h ? a : b));
-      if (i === 0) spawnGroup('boss', 1, { x: r.x + r.w / 2, y: r.y + r.h / 2 });
-      spawnGroup('guard', 2 + Math.round(density), { x: r.x + r.w / 2, y: r.y + r.h / 2 });
-    });
+    .forEach((mil) => spawnGroup('guard', 2 + Math.round(density), centre(mil)));
   const scavGroups = Math.round(7 * scale);
   const urbanPois = map.pois.filter((p) => {
     const d = map.districtOf(Math.floor(p.x), Math.floor(p.y));

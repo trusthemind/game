@@ -67,6 +67,22 @@ export function Minimap({ raid, size = 196, full = false }: { raid: Raid; size?:
       ctx.setTransform(scale, 0, 0, scale, -ox * scale, -oy * scale);
       ctx.drawImage(off, 0, 0);
       // Extractions are always known (you have the intel).
+      // World events (airdrop zone, crash site) and your own body.
+      for (const ev of raid.mapEvents) {
+        ctx.fillStyle = ev.kind === 'airdrop' ? '#6dff8a' : '#ff8a3a';
+        ctx.fillRect(ev.x - 1.6, ev.y - 1.6, 3.2, 3.2);
+      }
+      for (const c of raid.corpses) {
+        if (c.actorId >= 0) continue;
+        ctx.strokeStyle = '#e0b050';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(c.pos.x - 1.5, c.pos.y - 1.5);
+        ctx.lineTo(c.pos.x + 1.5, c.pos.y + 1.5);
+        ctx.moveTo(c.pos.x + 1.5, c.pos.y - 1.5);
+        ctx.lineTo(c.pos.x - 1.5, c.pos.y + 1.5);
+        ctx.stroke();
+      }
       for (const e of map.extractions) {
         ctx.fillStyle = '#4dff9a';
         ctx.beginPath();

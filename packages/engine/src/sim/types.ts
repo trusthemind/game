@@ -81,6 +81,8 @@ export interface Actor {
   brain: Brain | null;
   /** Dialogue NPC id (for npc faction and companions). */
   npcId?: string;
+  /** Named boss id (BOSSES). */
+  bossId?: string;
   /** Companion following the player. */
   companion?: boolean;
   /** Natural attack for creatures without gear (infected claws). */

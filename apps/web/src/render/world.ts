@@ -37,6 +37,8 @@ const CONTAINER_SHAPE: Record<ContainerKind, { w: number; h: number; d: number; 
   carTrunk: { w: 0.5, h: 0.12, d: 0.5, color: 0x6a5a3a },
   stash: { w: 0.6, h: 0.35, d: 0.6, color: 0x4a4030 },
   modbox: { w: 0.8, h: 0.45, d: 0.5, color: 0x3d4a32 },
+  airdrop: { w: 0.05, h: 0.05, d: 0.05, color: 0x4c5a3a },
+  helicrate: { w: 0.9, h: 0.6, d: 0.7, color: 0x434b3a },
   ground: { w: 0.5, h: 0.1, d: 0.5, color: 0x55503f },
 };
 

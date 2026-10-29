@@ -40,8 +40,9 @@ const DRAB_TOPS = [0x4f553a, 0x5a4632, 0x55595b, 0x2b3346, 0x6b5b45, 0x3d4a3a, 0
 const DRAB_PANTS = [0x3a4558, 0x2e3324, 0x45403a, 0x2b2b2e, 0x524634];
 
 /** Deterministic look per actor so the same bot looks the same every frame / reload. */
-export function lookFor(seed: number, archetype: string, npcId?: string): Appearance {
+export function lookFor(seed: number, archetype: string, npcId?: string, bossId?: string): Appearance {
   if (npcId && NPC_LOOKS[npcId]) return NPC_LOOKS[npcId]!;
+  if (bossId && BOSS_LOOKS[bossId]) return BOSS_LOOKS[bossId]!;
   const rng = new Rng(seed * 7919 + archetype.length);
   const sex: 'm' | 'f' = archetype === 'boss' ? 'm' : rng.chance(archetype === 'raider' || archetype === 'guard' ? 0.25 : 0.4) ? 'f' : 'm';
   const base: Appearance = {
@@ -76,6 +77,12 @@ export function lookFor(seed: number, archetype: string, npcId?: string): Appear
 export function playerAppearance(look: { sex: 'm' | 'f'; skin: number; hair: string; hairColor: number; beard: boolean }): Appearance {
   return { ...look, hair: look.hair as HairStyle, top: 0x4b5138, topStyle: 'jacket', pants: 0x3a3a30, boots: 0x2a2420, gloves: 0x2b2722, eyes: 0x4a3020, age: 1 };
 }
+
+const BOSS_LOOKS: Record<string, Appearance> = {
+  kostia: { sex: 'm', skin: 0xe3b08e, hair: 'buzz', hairColor: 0x2a201a, beard: true, top: 0x3b2622, topStyle: 'coat', pants: 0x1f1f22, boots: 0x1a1816, gloves: 0x1a1a1a, eyes: 0x3a2a1a, age: 2, scars: true },
+  bohdan: { sex: 'm', skin: 0xc99069, hair: 'short', hairColor: 0x8c8a86, beard: true, top: 0x3e4a2e, topStyle: 'jacket', pants: 0x3a3a2c, boots: 0x3b2f24, gloves: 0x4a3a28, eyes: 0x4a5a3a, age: 2 },
+  rina: { sex: 'f', skin: 0xf1c8a8, hair: 'long', hairColor: 0x7c3b21, beard: false, top: 0x1c1c20, topStyle: 'jacket', pants: 0x26262c, boots: 0x161616, gloves: 0x1a1a1a, eyes: 0x3a5a4a, age: 1 },
+};
 
 const NPC_LOOKS: Record<string, Appearance> = {
   lena: { sex: 'f', skin: 0xf1c8a8, hair: 'ponytail', hairColor: 0x7c3b21, beard: false, top: 0xd8dcd4, topStyle: 'coat', pants: 0x2f4f5a, boots: 0x2a2420, gloves: null, eyes: 0x4f6a3a, age: 0 },

@@ -34,6 +34,8 @@ export type ContainerKind =
   | 'carTrunk'
   | 'stash'
   | 'modbox'
+  | 'airdrop'
+  | 'helicrate'
   | 'ground';
 
 export interface LootContainer {
@@ -67,6 +69,8 @@ export interface BotSpawn {
   x: number;
   y: number;
   group: number;
+  /** Named boss id (see BOSSES) for the boss itself. */
+  boss?: string;
 }
 
 export class GameMap {

@@ -205,6 +205,11 @@ const defs: ItemDef[] = [
   { id: 'mag_saiga20', name: 'Saiga-12 20-round drum', short: 'DRUM 20', category: 'mod', w: 2, h: 2, weight: 1.2, value: 38000, rarity: 4,
     mod: { slot: 'mag', ids: ['saiga12'], magSize: 20, reloadMul: 1.4, ergo: 0.95 } },
 
+  // ── Boss trophies (only from bosses) ─────────────────────
+  { id: 'kostia_ring', name: "Warlord's signet ring", short: 'SIGNET', category: 'valuable', w: 1, h: 1, weight: 0.05, value: 380000, rarity: 5 },
+  { id: 'bohdan_claw', name: 'Bear-claw hunting trophy', short: 'TROPHY', category: 'valuable', w: 1, h: 2, weight: 0.4, value: 260000, rarity: 5 },
+  { id: 'rina_ledger', name: "Smuggler's ledger", short: 'LEDGER', category: 'valuable', w: 2, h: 1, weight: 0.3, value: 320000, rarity: 5 },
+
   // ── Melee ────────────────────────────────────────────────
   { id: 'knife', name: 'Kitchen knife', short: 'KNIFE', category: 'melee', w: 1, h: 2, weight: 0.2, value: 3000, rarity: 1,
     melee: { damage: 22, reach: 0.75, cooldown: 0.45, arc: 0.7, stamina: 6, bleedChance: 0.45, armorBypass: 0.1, noise: 3 } },

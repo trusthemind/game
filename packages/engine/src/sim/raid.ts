@@ -18,8 +18,9 @@ import {
 import { generateLoadout } from '../items/loadouts';
 import { CONTAINERS, generateLoot } from '../items/loot';
 import { effectiveWeapon } from '../items/mods';
+import { bossById } from '../items/bosses';
 import { computeFov } from '../world/fov';
-import type { GameMap, LootContainer, BotArchetype } from '../world/map';
+import type { GameMap, LootContainer, BotArchetype, ContainerKind } from '../world/map';
 import { generateMap, MAP_PRESETS, type MapId } from '../world/mapGen';
 import { Pathfinder } from '../world/pathfinding';
 import { OPAQUE, Tile } from '../world/tiles';
@@ -86,12 +87,28 @@ export interface RaidOptions {
   timeOfDay?: TimeOfDay;
   /** Pre-generated map (lets the client reuse a cached map for the same seed). */
   map?: GameMap;
+  /** Airdrops / helicopter crash (default on). */
+  events?: boolean;
   difficulty?: Difficulty;
   /** Your body from the last death on this map (Normal/Easy): loot it back once. */
   grave?: Grave | null;
 }
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
+
+/** Seconds an airdrop crate takes to come down under its parachute. */
+export const AIRDROP_FALL = 12;
+export interface MapEvent {
+  id: number;
+  kind: 'airdrop' | 'heli';
+  x: number;
+  y: number;
+  angle: number;
+  landed: boolean;
+  /** Raid time it was announced. */
+  at: number;
+  name: string;
+}
 export interface Grave {
   mapId: string;
   x: number;
@@ -141,8 +158,8 @@ const EXTRACT_TIME = 6;
 const ARCH_STATS: Record<BotArchetype, { hp: number; speed: number; faction: Faction; names: string[] }> = {
   scav: { hp: 100, speed: 2.7, faction: 'scav', names: ['Scav', 'Looter', 'Drifter', 'Marauder'] },
   raider: { hp: 120, speed: 3.0, faction: 'raider', names: ['Raider', 'Operator', 'Hunter'] },
-  guard: { hp: 140, speed: 2.9, faction: 'boss', names: ['Guard'] },
-  boss: { hp: 180, speed: 2.6, faction: 'boss', names: ['Warlord Kostia'] },
+  guard: { hp: 125, speed: 2.9, faction: 'boss', names: ['Guard', 'Bodyguard', 'Enforcer'] },
+  boss: { hp: 160, speed: 2.6, faction: 'boss', names: ['Warlord Kostia'] },
   infected: { hp: 70, speed: 2.1, faction: 'infected', names: ['Infected'] },
 };
 
@@ -169,6 +186,11 @@ export class Raid {
   time = 0;
   readonly timeLimit: number;
   readonly difficulty: Difficulty;
+  /** Named bosses on this map this raid. */
+  readonly bossesPresent: string[] = [];
+  /** Dynamic world events (airdrop, helicopter crash), visible on the map once announced. */
+  readonly mapEvents: MapEvent[] = [];
+  private airdropAt = -1;
   private readonly hadGrave: boolean;
   /** Uids the player brought in — anything else carried out is loot. */
   private readonly startUids = new Set<string>();
@@ -181,6 +203,7 @@ export class Raid {
   private events: RaidEvent[] = [];
   private nextId = 1;
   private nextCorpseId = 1;
+  private nextEventId = 1;
   private accumulator = 0;
   private valueIn: number;
   private killsBy: Record<string, number> = {};
@@ -245,11 +268,12 @@ export class Raid {
     this.botRng = this.rng.fork('bots');
     const groupLeaders = new Map<number, number>();
     for (const s of this.map.botSpawns) {
-      const a = this.spawnBot(s.archetype, s.x, s.y, groupLeaders.get(s.group) ?? null);
+      const a = this.spawnBot(s.archetype, s.x, s.y, groupLeaders.get(s.group) ?? null, s.boss);
       if (!groupLeaders.has(s.group)) groupLeaders.set(s.group, a.id);
     }
 
     for (const enc of opts.encounters ?? []) this.spawnEncounter(enc);
+    this.setupEvents(opts.events ?? true);
     this.hash.rebuild(this.liveActors());
     this.updateFov(true);
   }
@@ -303,20 +327,25 @@ export class Raid {
     return a;
   }
 
-  private spawnBot(arch: BotArchetype, x: number, y: number, leader: number | null): Actor {
+  private spawnBot(arch: BotArchetype, x: number, y: number, leader: number | null, bossId?: string): Actor {
     const rng = this.botRng;
     const tier = arch === 'boss' || arch === 'guard' ? 3 : 1;
     const st = ARCH_STATS[arch];
+    const boss = bossId ? bossById(bossId) : null;
     const a = this.spawnActor({
-      name: rng.pick(st.names),
+      name: boss?.name ?? rng.pick(st.names),
       faction: st.faction,
       archetype: arch,
       x,
       y,
-      hp: st.hp * (arch === 'infected' ? 1 : DIFFICULTY[this.difficulty].botHp),
+      hp: (boss?.hp ?? st.hp) * (arch === 'infected' ? 1 : DIFFICULTY[this.difficulty].botHp),
       speed: st.speed * rng.range(0.94, 1.06),
-      eq: generateLoadout(arch, rng.fork(`l${this.nextId}`), tier),
+      eq: boss ? boss.loadout(rng.fork(`boss-${boss.id}`)) : generateLoadout(arch, rng.fork(`l${this.nextId}`), tier),
     });
+    if (boss) {
+      a.bossId = boss.id;
+      this.bossesPresent.push(boss.id);
+    }
     if (arch === 'infected') a.natural = { damage: 13, cooldown: 1.05, reach: 0.65, bleedChance: 0.35 };
     const role: BrainRole = arch === 'infected' ? 'infected' : arch === 'boss' || arch === 'guard' ? 'guard' : 'bot';
     a.brain = new BotBrain(role, rng.fork(`b${a.id}`), leader);
@@ -324,6 +353,76 @@ export class Raid {
     a.brain.tune(diff.react, diff.skill);
     a.facing = rng.range(-Math.PI, Math.PI);
     return a;
+  }
+
+  // ── Map events ──────────────────────────────────────────────────────────────
+
+  private setupEvents(enabled: boolean): void {
+    if (!enabled) return;
+    const rng = this.rng.fork('events');
+    // Airdrop some minutes in.
+    if (rng.chance(0.75)) this.airdropAt = rng.range(150, Math.min(420, this.timeLimit * 0.5));
+    // A crashed helicopter with cargo, guarded by a raider team.
+    if (rng.chance(0.55)) {
+      const spot = this.openSpot(rng, 45, 4);
+      if (spot) {
+        const angle = rng.range(-Math.PI, Math.PI);
+        const ev: MapEvent = { id: this.nextEventId++, kind: 'heli', x: spot.x, y: spot.y, angle, landed: true, at: 0, name: 'Helicopter crash site' };
+        this.mapEvents.push(ev);
+        for (const [dx, dy] of [[2, 1], [-2, -1]] as const) {
+          const t = this.pathfinder.nearestWalkable(Math.floor(spot.x + Math.cos(angle) * dx - Math.sin(angle) * dy), Math.floor(spot.y + Math.sin(angle) * dx + Math.cos(angle) * dy), 3);
+          if (t) this.addEventContainer('helicrate', t.x, t.y, 3);
+        }
+        let leader: number | null = null;
+        const team = rng.int(2, 3);
+        for (let i = 0; i < team; i++) {
+          const t = this.pathfinder.nearestWalkable(Math.floor(spot.x + rng.range(-5, 5)), Math.floor(spot.y + rng.range(-5, 5)), 4);
+          if (!t) continue;
+          const a = this.spawnBot('raider', t.x + 0.5, t.y + 0.5, leader);
+          leader ??= a.id;
+        }
+      }
+    }
+  }
+
+  /** Open outdoor walkable tile with clearance, at least `minDist` from the player. */
+  private openSpot(rng: Rng, minDist: number, clearance: number): { x: number; y: number } | null {
+    const m = this.map;
+    for (let tries = 0; tries < 400; tries++) {
+      const x = rng.int(clearance + 2, m.width - clearance - 3);
+      const y = rng.int(clearance + 2, m.height - clearance - 3);
+      if (Math.hypot(x - this.player.pos.x, y - this.player.pos.y) < minDist) continue;
+      let ok = true;
+      for (let dy = -clearance; dy <= clearance && ok; dy++)
+        for (let dx = -clearance; dx <= clearance && ok; dx++) ok = m.isWalkable(x + dx, y + dy) && !m.isIndoors(x + dx, y + dy);
+      if (ok) return { x: x + 0.5, y: y + 0.5 };
+    }
+    return null;
+  }
+
+  private addEventContainer(kind: ContainerKind, x: number, y: number, tier: number): LootContainer {
+    const c: LootContainer = { id: 200000 + this.nextId++, kind, x, y, grid: createGrid(1, 1), revealedUids: [], searchT: 0, searched: false, generated: false, tier };
+    this.map.containers.push(c);
+    return c;
+  }
+
+  private updateMapEvents(): void {
+    if (this.airdropAt > 0 && this.time >= this.airdropAt) {
+      this.airdropAt = -1;
+      const spot = this.openSpot(this.rng.fork(`drop${Math.floor(this.time)}`), 30, 2);
+      if (spot) {
+        this.mapEvents.push({ id: this.nextEventId++, kind: 'airdrop', x: spot.x, y: spot.y, angle: 0, landed: false, at: this.time, name: 'Airdrop' });
+        this.emit({ t: 'msg', text: 'Airdrop inbound — green smoke marks the drop zone (see map)', tone: 'info' });
+      }
+    }
+    for (const ev of this.mapEvents) {
+      if (ev.kind !== 'airdrop' || ev.landed || this.time - ev.at < AIRDROP_FALL) continue;
+      ev.landed = true;
+      this.addEventContainer('airdrop', Math.floor(ev.x), Math.floor(ev.y), 4);
+      // The thud and smoke draw everyone nearby.
+      this.makeNoise(ev.x, ev.y, 80, -1, 'shot');
+      this.emit({ t: 'msg', text: 'The airdrop has landed', tone: 'info' });
+    }
   }
 
   /** Reinforcement waves (scavs / infected) arrive from out-of-sight spots so the map stays alive. */
@@ -410,6 +509,7 @@ export class Raid {
       this.waveT = this.rng.range(160, 260);
       this.spawnWave();
     }
+    this.updateMapEvents();
 
     this.updateLootSearch(dt);
     this.updateExtraction(dt);

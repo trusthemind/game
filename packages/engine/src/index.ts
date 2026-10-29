@@ -8,6 +8,7 @@ export * from './items/inventory';
 export * from './items/loot';
 export * from './items/loadouts';
 export * from './items/mods';
+export * from './items/bosses';
 export * from './world/tiles';
 export * from './world/map';
 export * from './world/mapGen';

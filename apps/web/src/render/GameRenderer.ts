@@ -22,6 +22,7 @@ import { addContainerInstance, buildWorld, markContainerSearched, type WorldMesh
 import type { WorldUniforms } from './patches';
 import { disposeTextures } from './textures';
 import { buildRoofs, updateRoofs, type RoofSet } from './roofs';
+import { MapEventView } from './mapEvents';
 
 interface Lighting {
   bg: number;
@@ -59,6 +60,7 @@ export class GameRenderer {
   private vignette: VignetteEffect | null = null;
   private world: WorldMeshes;
   private roofs: RoofSet;
+  private events: MapEventView;
   private wasLooting = false;
   private effects: Effects;
   private views = new Map<number, CharacterView>();
@@ -153,6 +155,8 @@ export class GameRenderer {
     this.effects = new Effects(this.preset.muzzleLights);
     this.effects.enableRain(raid.rain);
     this.scene.add(this.effects.group);
+    this.events = new MapEventView(this.uniforms);
+    this.scene.add(this.events.group);
 
     this.highlight = new THREE.Mesh(
       new THREE.RingGeometry(0.42, 0.5, 32).rotateX(-Math.PI / 2),
@@ -301,7 +305,7 @@ export class GameRenderer {
     for (const a of raid.actors) {
       let v = this.views.get(a.id);
       if (!v) {
-        const look = a === p ? this.playerLook : lookFor(a.id, a.archetype, a.npcId);
+        const look = a === p ? this.playerLook : lookFor(a.id, a.archetype, a.npcId, a.bossId);
         v = new CharacterView(this.lib, look, this.uniforms, this.preset.shadows);
         this.views.set(a.id, v);
         this.scene.add(v.root);
@@ -391,6 +395,7 @@ export class GameRenderer {
     if (this.vignette) this.vignette.darkness = 0.62 + (1 - p.hp / p.maxHp) * 0.3;
 
     this.effects.update(dt, this.camTarget);
+    this.events.update(this.raid, dt);
 
     this.renderer.info.reset();
     if (this.composer) this.composer.render(dt);
@@ -460,6 +465,7 @@ export class GameRenderer {
     for (const el of this.labels.values()) el.remove();
     this.world.dispose();
     this.roofs.dispose();
+    this.events.dispose();
     this.effects.dispose();
     this.composer?.dispose();
     this.fowTex.dispose();

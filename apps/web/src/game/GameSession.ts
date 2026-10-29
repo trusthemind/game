@@ -386,6 +386,7 @@ export class GameSession {
         ...raid.corpses
           .filter((c) => c.actorId < 0)
           .map((c) => ({ name: 'Your body', dist: Math.hypot(c.pos.x - p.pos.x, c.pos.y - p.pos.y), angle: Math.atan2(c.pos.y - p.pos.y, c.pos.x - p.pos.x), kind: 'grave' as const })),
+        ...raid.mapEvents.map((ev) => ({ name: ev.name, dist: Math.hypot(ev.x - p.pos.x, ev.y - p.pos.y), angle: Math.atan2(ev.y - p.pos.y, ev.x - p.pos.x), kind: 'event' as const })),
       ],
       interact: this.interact,
       crouch: p.crouching,
