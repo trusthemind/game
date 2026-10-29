@@ -83,11 +83,26 @@ export function Hud({ session }: { session: GameSession }) {
       <div className="hud-br panel-lite">
         <div className="weapon-name h">{hud.weapon}</div>
         {hud.ammo !== null ? (
-          <div className="ammo">
-            <span className="mono big">{hud.ammo}</span>
-            <span className="mono dim">/ {hud.mag}</span>
-            <span className="mono reserve">{hud.reserve}</span>
-            <span className="dim small">{hud.ammoType}</span>
+          <div className="ammo-block">
+            <div className="ammo">
+              <span className={`mono big ${hud.ammo === 0 ? 'bad' : hud.ammo <= hud.mag * 0.25 ? 'warn' : ''}`}>{hud.ammo}</span>
+              <span className="mono dim">/ {hud.mag}</span>
+              <span className="dim small">in mag</span>
+            </div>
+            <div className="mag-pips" title={`${hud.ammo} of ${hud.mag} rounds loaded`}>
+              {Array.from({ length: Math.min(hud.mag, 30) }, (_, i) => (
+                <i key={i} className={i < Math.ceil(((hud.ammo ?? 0) / hud.mag) * Math.min(hud.mag, 30)) ? 'on' : ''} />
+              ))}
+            </div>
+            <div className="reserve-line">
+              <span className={`mono ${hud.reserve === 0 ? 'bad' : ''}`}>{hud.reserve}</span>
+              <span className="dim small">
+                spare rounds · ≈{Math.floor(hud.reserve / Math.max(1, hud.mag))} reload{Math.floor(hud.reserve / Math.max(1, hud.mag)) === 1 ? '' : 's'}
+              </span>
+              {hud.ammoType && <span className="tag">{hud.ammoType}</span>}
+            </div>
+            {hud.ammo === 0 && hud.reserve > 0 && <div className="hint">Press R to reload</div>}
+            {hud.ammo === 0 && hud.reserve === 0 && <div className="hint bad">Out of ammo — switch weapon (1/2/3)</div>}
           </div>
         ) : (
           <div className="ammo dim">Melee</div>

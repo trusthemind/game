@@ -151,3 +151,21 @@ describe('ballistics', () => {
     expect(sledge.damage / ITEMS.sledge!.melee!.damage).toBeGreaterThan(knife.damage / ITEMS.knife!.melee!.damage);
   });
 });
+
+describe('quick heal (Q)', () => {
+  it('picks a medkit for plain HP loss on a limb', async () => {
+    const { Raid, starterKit, createItem, addItem } = await import('../src/index');
+    const r = new Raid({ seed: 1, playerEq: starterKit(), mapId: 'testsite', timeOfDay: 'day' });
+    if (!addItem(r.player.eq.pockets, createItem('ai2'))) addItem(r.player.eq.slots.rig!.grid!, createItem('ai2'));
+    damagePart(r.player.health, 'rightArm', 6, null);
+    const m = r.bestMed(r.player);
+    expect(m && ITEMS[m.def]!.med!.resource).toBeGreaterThan(0);
+  });
+
+  it('explains why nothing can be used', async () => {
+    const { Raid, createEquipment } = await import('../src/index');
+    const r = new Raid({ seed: 1, playerEq: createEquipment(), mapId: 'testsite', timeOfDay: 'day' });
+    expect(r.bestMed(r.player)).toBeNull();
+    expect(r.medHint(r.player)).toMatch(/No meds/);
+  });
+});

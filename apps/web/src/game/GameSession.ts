@@ -275,8 +275,10 @@ export class GameSession {
           break;
         case 'heal': {
           const m = raid.bestMed(p);
-          if (m) this.input.intent.use = m.uid;
-          else ui.pushMessage('No meds', 'bad');
+          if (m) {
+            this.input.intent.use = m.uid;
+            ui.pushMessage(`Using ${getDef(m.def).name}`, 'info');
+          } else ui.pushMessage(raid.medHint(p), 'bad');
           break;
         }
         case 'eat': {

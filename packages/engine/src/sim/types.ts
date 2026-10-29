@@ -105,6 +105,7 @@ export interface Noise {
   t: number;
   /** Gunfire is far more alarming than footsteps. */
   kind: 'step' | 'shot' | 'melee' | 'impact';
+  id: number;
 }
 
 export type RaidEvent =

@@ -5,7 +5,8 @@
  *   ASSET_SRC=/path/to/extracted/packs node tools/assets/build.mjs
  *
  * Expects under ASSET_SRC:
- *   ual/      Universal Animation Library [Standard]   (mannequin + 46 animations)
+ *   ual/      Universal Animation Library [Standard]   (Unreal FBX: 45 animations)
+ *   ual2/     Universal Animation Library 2 [Standard] (glTF: male + female mannequin, 43 animations)
  *   guns/     Ultimate Gun Pack (FBX)
  *   survival/ Survival Pack (FBX)
  *   nature/   Stylized Nature MegaKit (glTF)
@@ -208,10 +209,58 @@ async function buildSet(name, table, dirs) {
 }
 
 // ── Character (mannequin + animations) ───────────────────────────────────────
+// UAL2 (glTF, Unreal-style skeleton) is the base: male mannequin + 43 clips (climb, loot, consume, zombie
+// locomotion, melee…). UAL1's Unreal FBX uses the identical skeleton and rest pose, so its 45 clips
+// (locomotion, crouch, pistol, death, hits…) are copied straight onto the same joints by name.
+// The female mannequin shares the skeleton and is exported mesh-only.
 async function buildCharacter() {
   console.log('character:');
-  const src = find(path.join(SRC, 'ual'), 'AnimationLibrary_Godot_Standard.glb');
-  await optimise(src, path.join(OUT, 'character.glb'), { skinned: true });
+  const ual2 = find(path.join(SRC, 'ual2'), 'UAL2_Standard.glb');
+  const ual1 = find(path.join(SRC, 'ual'), 'AL_Standard.fbx');
+  const female = find(path.join(SRC, 'ual2'), 'Mannequin_F.glb');
+  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
+  const doc = await io.read(ual2);
+  const root = doc.getRoot();
+  const nodes = new Map(root.listNodes().map((n) => [n.getName(), n]));
+  const have = new Set(root.listAnimations().map((a) => a.getName()));
+  const buffer = root.listBuffers()[0];
+  const fbx = loadFbx(ual1);
+  let added = 0;
+  for (const clip of fbx.animations) {
+    const name = clip.name.replace(/^.*\|/, '');
+    if (have.has(name)) continue;
+    const anim = doc.createAnimation(name);
+    for (const track of clip.tracks) {
+      const [bone, prop] = track.name.split('.');
+      const node = nodes.get(bone);
+      const pathName = prop === 'quaternion' ? 'rotation' : prop === 'position' ? 'translation' : prop === 'scale' ? 'scale' : null;
+      if (!node || !pathName) continue;
+      // Only the hips carry translation; dropping the rest keeps limbs from drifting with FBX unit noise.
+      if (pathName === 'translation' && bone !== 'pelvis' && bone !== 'root') continue;
+      if (pathName === 'scale') continue;
+      const input = doc.createAccessor().setType('SCALAR').setArray(new Float32Array(track.times)).setBuffer(buffer);
+      const output = doc
+        .createAccessor()
+        .setType(pathName === 'rotation' ? 'VEC4' : 'VEC3')
+        .setArray(new Float32Array(track.values))
+        .setBuffer(buffer);
+      const sampler = doc.createAnimationSampler().setInput(input).setOutput(output).setInterpolation('LINEAR');
+      anim.addSampler(sampler).addChannel(doc.createAnimationChannel().setTargetNode(node).setTargetPath(pathName).setSampler(sampler));
+    }
+    added++;
+  }
+  console.log(`  merged ${added} UAL1 clips → ${root.listAnimations().length} total`);
+  const tmp = path.join(OUT, 'character.raw.glb');
+  await io.write(tmp, doc);
+  await optimise(tmp, path.join(OUT, 'character.glb'), { skinned: true });
+  fs.rmSync(tmp);
+  // Female body: mesh + skin only.
+  const fdoc = await io.read(female);
+  for (const a of fdoc.getRoot().listAnimations()) a.dispose();
+  const ftmp = path.join(OUT, 'character_f.raw.glb');
+  await io.write(ftmp, fdoc);
+  await optimise(ftmp, path.join(OUT, 'character_f.glb'), { skinned: true });
+  fs.rmSync(ftmp);
 }
 
 // ── Nature ───────────────────────────────────────────────────────────────────
@@ -255,11 +304,14 @@ async function buildNature() {
   fs.rmSync(tmp);
 }
 
-await buildCharacter();
-await buildSet('weapons', WEAPONS, [path.join(SRC, 'guns')]);
-await buildSet('melee', MELEE, [path.join(SRC, 'survival')]);
-await buildSet('props', PROPS, [path.join(SRC, 'survival')]);
-await buildNature();
+// ONLY=character,weapons… rebuilds a subset.
+const only = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
+const want = (k) => !only || only.has(k);
+if (want('character')) await buildCharacter();
+if (want('weapons')) await buildSet('weapons', WEAPONS, [path.join(SRC, 'guns')]);
+if (want('melee')) await buildSet('melee', MELEE, [path.join(SRC, 'survival')]);
+if (want('props')) await buildSet('props', PROPS, [path.join(SRC, 'survival')]);
+if (want('nature')) await buildNature();
 fs.writeFileSync(
   path.join(OUT, 'CREDITS.txt'),
   'All 3D models: Quaternius (https://quaternius.com) — CC0 1.0 Universal.\nUniversal Animation Library, Ultimate Gun Pack, Survival Pack, Stylized Nature MegaKit.\n',

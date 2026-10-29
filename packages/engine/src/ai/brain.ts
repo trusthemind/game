@@ -36,6 +36,10 @@ export class BotBrain {
   stateT = 0;
   alerted = false;
   targetId: number | null = null;
+  private lastNoiseId = 0;
+  private goInvestigate = false;
+  /** Heard something it won't walk to: just turn and watch that way for a while. */
+  lookAtPos: { x: number; y: number } | null = null;
   targetVisible = false;
   lastKnown: Vec2 | null = null;
   lastSeenAt = -999;
@@ -183,11 +187,18 @@ export class BotBrain {
         const d = Math.hypot(n.x - a.pos.x, n.y - a.pos.y);
         const r = n.radius * hearing;
         if (d > r) continue;
-        const loud = (1 - d / r) * (n.kind === 'shot' ? 3 : 1);
-        if (loud > loudest) {
-          loudest = loud;
-          this.investigatePos = { x: n.x, y: n.y };
+        const loud = (1 - d / r) * (n.kind === 'shot' ? 2 : 1);
+        if (loud <= loudest) continue;
+        loudest = loud;
+        // Not everyone runs towards gunfire: decide once per noise. Far shots mostly just put a bot on edge
+        // (it turns to look); close ones, and aggressive raiders/infected, pull it over to investigate.
+        if (n.kind === 'shot' && this.lastNoiseId !== n.id) {
+          this.lastNoiseId = n.id;
+          const eager = this.role === 'infected' ? 0.8 : this.role === 'guard' ? 0.15 : a.faction === 'raider' ? 0.55 : 0.35;
+          this.goInvestigate = d < r * 0.35 || this.rng.chance(eager * this.courage);
         }
+        if (n.kind !== 'shot' || this.goInvestigate) this.investigatePos = { x: n.x, y: n.y };
+        else if (!this.investigatePos) this.lookAtPos = { x: n.x, y: n.y };
       }
       if (loudest > 0.4) this.alerted = true;
     }
@@ -241,6 +252,7 @@ export class BotBrain {
       }
     }
     if (this.stateT > 30 && this.alerted && !this.investigatePos) this.alerted = false;
+    if (this.lookAtPos) return this.setState('idle');
     this.setStateIf(['patrol', 'idle'], 'patrol');
   }
 
@@ -305,6 +317,16 @@ export class BotBrain {
 
   private actIdle(raid: Raid, a: Actor, dt: number): void {
     this.lookT -= dt;
+    if (this.lookAtPos) {
+      // Watch the direction of the shots for a while, crouched if cautious.
+      this.lookAt(a, this.lookAtPos.x, this.lookAtPos.y);
+      a.intent.crouch = this.courage < 0.6;
+      if (this.lookT <= -6) {
+        this.lookAtPos = null;
+        this.lookT = 2;
+      }
+      return;
+    }
     if (this.lookT <= 0) {
       this.lookT = this.rng.range(1.5, 4);
       const ang = a.facing + this.rng.range(-1.4, 1.4);

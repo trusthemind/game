@@ -35,6 +35,7 @@ import {
   damagePart,
   HEAVY_BLEED_DPS,
   inPain,
+  isLimb,
   isDead,
   LIGHT_BLEED_DPS,
   metabolismMul,
@@ -159,7 +160,8 @@ export class Raid {
   private metNpcs = new Set<string>();
   private deadNpcs = new Set<string>();
   private scratch: Actor[] = [];
-  private waveT = 120;
+  private waveT = 180;
+  private noiseId = 1;
   private botRng!: Rng;
 
   constructor(opts: RaidOptions) {
@@ -291,11 +293,11 @@ export class Raid {
   /** Reinforcement waves (scavs / infected) arrive from out-of-sight spots so the map stays alive. */
   private spawnWave(): void {
     const alive = this.actors.reduce((n, a) => n + (a.alive && a.brain && !a.npcId ? 1 : 0), 0);
-    if (alive >= 34) return;
+    if (alive >= 26) return;
     const rng = this.botRng;
     for (let tries = 0; tries < 40; tries++) {
       const p = rng.pick(this.map.pois);
-      if (dist(p, this.player.pos) < 35 || this.isVisibleToPlayer(p.x, p.y)) continue;
+      if (dist(p, this.player.pos) < 55 || this.isVisibleToPlayer(p.x, p.y)) continue;
       const arch: BotArchetype = rng.chance(0.55) ? 'infected' : rng.chance(0.85) ? 'scav' : 'raider';
       const n = arch === 'infected' ? rng.int(2, 4) : rng.int(1, 3);
       let leader: number | null = null;
@@ -369,7 +371,7 @@ export class Raid {
 
     this.waveT -= dt;
     if (this.waveT <= 0) {
-      this.waveT = this.rng.range(90, 150);
+      this.waveT = this.rng.range(160, 260);
       this.spawnWave();
     }
 
@@ -420,14 +422,16 @@ export class Raid {
     }
     if (a.active !== 'melee' && !a.eq.slots[a.active]) a.active = a.eq.slots.primary ? 'primary' : a.eq.slots.secondary ? 'secondary' : 'melee';
 
-    // Facing (Project Zomboid style for the player): aim → face the cursor; otherwise face where you walk.
+    // Facing: you look (and your vision cone + flashlight point) where the mouse is; walking sideways or
+    // backwards is allowed. Only a sprint without aiming turns the body into the run direction.
     const aiming = !a.brain ? it.aim || it.fire || a.fireCd > -0.5 : true;
     a.aiming = aiming;
-    const turnRate = a.faction === 'player' ? (aiming ? 40 : 14) : a.archetype === 'infected' ? 4 : 7;
-    if (aiming || a.brain) {
-      if (Math.hypot(it.aimX - a.pos.x, it.aimY - a.pos.y) > 0.05) a.facing = turnTowards(a.facing, angleTo(a.pos, { x: it.aimX, y: it.aimY }), turnRate * dt);
-    } else if (Math.hypot(it.moveX, it.moveY) > 0.1) {
-      a.facing = turnTowards(a.facing, Math.atan2(it.moveY, it.moveX), turnRate * dt);
+    const runTurn = !a.brain && !aiming && it.sprint && Math.hypot(it.moveX, it.moveY) > 0.1 && a.stamina > 0 && !a.winded;
+    const turnRate = a.faction === 'player' ? (aiming ? 40 : 18) : a.archetype === 'infected' ? 4 : 7;
+    if (runTurn) {
+      a.facing = turnTowards(a.facing, Math.atan2(it.moveY, it.moveX), 14 * dt);
+    } else if (Math.hypot(it.aimX - a.pos.x, it.aimY - a.pos.y) > 0.05) {
+      a.facing = turnTowards(a.facing, angleTo(a.pos, { x: it.aimX, y: it.aimY }), turnRate * dt);
     }
 
     // Movement.
@@ -443,7 +447,7 @@ export class Raid {
     // Winded: once stamina hits zero you can't sprint again until it recovers to 30 (no sprint/walk flicker).
     if (a.stamina <= 0) a.winded = true;
     else if (a.winded && a.stamina >= 30) a.winded = false;
-    a.sprinting = it.sprint && moving && !a.crouching && !a.winded && a.useT <= 0 && canSprint(a.health);
+    a.sprinting = it.sprint && moving && !a.crouching && !a.winded && (a.brain !== null || !it.aim) && a.useT <= 0 && canSprint(a.health);
     if (a.sprinting) a.stamina = Math.max(0, a.stamina - 13 * dt);
     else a.stamina = Math.min(100, a.stamina + (moving ? 6 : 11) * (a.winded ? 0.8 : 1) * dt);
 
@@ -453,6 +457,8 @@ export class Raid {
     else if (a.sprinting) speed *= 1.6;
     if (a.useT > 0) speed *= 0.45;
     if (a.reloadT > 0) speed *= 0.85;
+    // Backpedalling is slower than walking forward.
+    if (moving && !a.sprinting && Math.cos(Math.atan2(my, mx) - a.facing) < -0.3) speed *= 0.78;
     speed *= moveMul(a.health);
     const accel = Math.min(1, dt * 14);
     a.vel.x += (mx * speed - a.vel.x) * accel;
@@ -899,13 +905,23 @@ export class Raid {
    * Best med for the current state, Tarkov priority: heavy bleed → light bleed → fracture → pain → HP.
    * Bots skip surgery (too slow mid-fight).
    */
+  /** Why quick-heal found nothing: no meds at all, or nothing they can fix. */
+  medHint(a: Actor): string {
+    const meds = carryGrids(a.eq).flatMap((g) => g.items.filter((p) => getDef(p.item.def).med));
+    if (!meds.length) return 'No meds in your pockets, rig or backpack';
+    const h = a.health;
+    if (BODY_PARTS.some((p) => isLimb(p) && h.parts[p].hp <= 0)) return 'Destroyed limb — needs a surgical kit (CMS / Surv12)';
+    if (totalHp(h) >= totalMax(h) && !bleeding(h).light && !bleeding(h).heavy) return 'Nothing to treat';
+    return 'None of your meds can treat this';
+  }
+
   bestMed(a: Actor): ItemInstance | null {
     const h = a.health;
     const b = bleeding(h);
     const fracture = BODY_PARTS.some((p) => h.parts[p].fracture);
-    const missing = a.maxHp - a.hp;
+    const missing = totalMax(h) - totalHp(h);
     let best: ItemInstance | null = null;
-    let score = 0;
+    let score = -Infinity;
     for (const g of carryGrids(a.eq))
       for (const p of g.items) {
         const m = getDef(p.item.def).med;
@@ -916,9 +932,10 @@ export class Raid {
         if (b.light && m.stopsLight) s += 50;
         if (fracture && m.fixesFracture) s += 40;
         if (inPain(h) && m.painkiller) s += 25;
-        if (m.resource > 0) s += Math.min(missing, p.item.uses ?? m.resource) * 0.3;
+        if (m.resource > 0) s += 5 + Math.min(missing, p.item.uses ?? m.resource) * 0.3;
         if (m.surgery) s += 30;
-        s -= m.useTime;
+        // Use time only breaks ties — any med that has something to do beats doing nothing.
+        s -= m.useTime * 0.1;
         if (s > score) {
           score = s;
           best = p.item;
@@ -939,7 +956,8 @@ export class Raid {
   // ── Noise / perception helpers ──────────────────────────────────────────────
 
   makeNoise(x: number, y: number, radius: number, source: number, kind: Noise['kind']): void {
-    this.noises.push({ x, y, radius, source, t: this.time, kind });
+    // Gunfire carries, but not across the whole map: ~65% of the weapon's nominal noise radius.
+    this.noises.push({ x, y, radius: kind === 'shot' ? radius * 0.65 : radius, source, t: this.time, kind, id: this.noiseId++ });
   }
 
   actorById(id: number): Actor | null {
