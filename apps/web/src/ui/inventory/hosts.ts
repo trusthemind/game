@@ -119,7 +119,7 @@ export function makeRaidHost(session: GameSession): InvHost {
     return { grids: ['pockets', 'rig', 'backpack'].map((p) => `corpse:${l.id}:${p}`) };
   };
   const fromPlayer = (src: SrcRef) => (src.kind === 'grid' ? src.gridId.startsWith('player:') : src.owner === 'player');
-  const use = (item: ItemInstance) => {
+  const consume = (item: ItemInstance) => {
     const d = getDef(item.def);
     if (d.med || d.food) session.input.intent.use = item.uid;
   };
@@ -146,7 +146,7 @@ export function makeRaidHost(session: GameSession): InvHost {
     quickTargets: (src) => (fromPlayer(src) ? lootGrids() : { grids: ['player:rig', 'player:pockets', 'player:backpack'], owner: 'player' }),
     onDoubleClick(item, src) {
       const d = getDef(item.def);
-      if (fromPlayer(src) && (d.med || d.food)) return use(item);
+      if (fromPlayer(src) && (d.med || d.food)) return consume(item);
       host.apply((r) => {
         const s = toSource(r, src);
         if (!s) return false;
@@ -157,7 +157,7 @@ export function makeRaidHost(session: GameSession): InvHost {
     menu(item, src) {
       const d = getDef(item.def);
       const out: MenuAction[] = [];
-      if (fromPlayer(src) && (d.med || d.food)) out.push({ label: d.med ? 'Use' : 'Consume', run: () => use(item) });
+      if (fromPlayer(src) && (d.med || d.food)) out.push({ label: d.med ? 'Use' : 'Consume', run: () => consume(item) });
       if (!fromPlayer(src)) out.push({ label: 'Take', run: () => host.onDoubleClick!(item, src) });
       if (fromPlayer(src)) out.push({ label: 'Drop', danger: true, run: () => host.dropSpecial!('ground', src) });
       return out;

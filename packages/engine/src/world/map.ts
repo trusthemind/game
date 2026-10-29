@@ -162,7 +162,7 @@ export class GameMap {
     const tDeltaY = dirY !== 0 ? Math.abs(1 / dirY) : Infinity;
     let tMaxX = dirX !== 0 ? (dirX > 0 ? x + 1 - ax : ax - x) * tDeltaX : Infinity;
     let tMaxY = dirY !== 0 ? (dirY > 0 ? y + 1 - ay : ay - y) * tDeltaY : Infinity;
-    let t = 0;
+    let t: number;
     for (let guard = 0; guard < 1024; guard++) {
       if (x === endX && y === endY) return -1;
       if (tMaxX < tMaxY) {

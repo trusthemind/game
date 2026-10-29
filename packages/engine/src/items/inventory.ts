@@ -331,3 +331,21 @@ export function quickMove(src: ItemSource, targets: GridContainer[], eq?: Equipm
 export function cloneDeep<T>(v: T): T {
   return structuredClone(v);
 }
+
+/** Every item carried in `eq`: slot items, grid items, and items nested inside containers (depth-first). */
+export function allItems(eq: Equipment, out: ItemInstance[] = []): ItemInstance[] {
+  const walkGrid = (g: GridContainer) => {
+    for (const p of g.items) {
+      out.push(p.item);
+      if (p.item.grid) walkGrid(p.item.grid);
+    }
+  };
+  for (const s of SLOTS) {
+    const it = eq.slots[s];
+    if (!it) continue;
+    out.push(it);
+    if (it.grid) walkGrid(it.grid);
+  }
+  walkGrid(eq.pockets);
+  return out;
+}

@@ -7,6 +7,7 @@ import {
   carryGrids,
   createGrid,
   equipmentValue,
+  allItems,
   equipmentWeight,
   findPlaced,
   removeItem,
@@ -90,6 +91,8 @@ export interface RaidResult {
   duration: number;
   kills: Record<string, number>;
   playerEq: Equipment | null;
+  /** Uids of items picked up during the raid that the player carried out. */
+  loot?: string[];
   valueIn: number;
   valueOut: number;
   xp: number;
@@ -139,6 +142,8 @@ export class Raid {
 
   time = 0;
   readonly timeLimit: number;
+  /** Uids the player brought in — anything else carried out is loot. */
+  private readonly startUids = new Set<string>();
   status: RaidStatus = 'active';
   extractT = 0;
   extractingAt: number | null = null;
@@ -183,6 +188,7 @@ export class Raid {
     this.player.flashlight = this.timeOfDay !== 'day';
     this.player.facing = Math.atan2(this.map.height / 2 - sp.y, this.map.width / 2 - sp.x);
     this.valueIn = equipmentValue(opts.playerEq);
+    for (const it of allItems(opts.playerEq)) this.startUids.add(it.uid);
 
     if (opts.companion) {
       const c = this.spawnActor({
@@ -455,7 +461,7 @@ export class Raid {
       a.stepT -= dt * v;
       if (a.stepT <= 0) {
         a.stepT = 0.75;
-        const r = a.crouching ? 1.6 : a.sprinting ? 10 : 4.5;
+        const r = a.crouching ? 1.4 : a.sprinting ? 8 : 3.5;
         this.makeNoise(a.pos.x, a.pos.y, a.archetype === 'infected' ? r * 0.5 : r, a.id, 'step');
         const tx = Math.floor(a.pos.x);
         const ty = Math.floor(a.pos.y);
@@ -1149,6 +1155,7 @@ export class Raid {
       duration: this.time,
       kills,
       playerEq: survived ? this.player.eq : null,
+      loot: survived ? allItems(this.player.eq).filter((it) => !this.startUids.has(it.uid)).map((it) => it.uid) : [],
       valueIn: this.valueIn,
       valueOut,
       xp,

@@ -23,3 +23,7 @@
 .end-grid .stat { background: rgba(10,12,11,.6); }
 .stat { display: flex; flex-direction: column; gap: 4px; padding: 12px; border: 1px solid var(--line); border-radius: 4px; }
 .stat b { font-size: 20px; }
+
+.end-loot { display: flex; flex-direction: column; gap: 8px; }
+.loot-chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 160px; overflow: auto; }
+.loot-chip { font-size: 12px; padding: 4px 8px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 3px; background: rgba(10,12,11,.6); }

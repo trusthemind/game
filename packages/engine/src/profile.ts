@@ -1,4 +1,4 @@
-import { addItem, carryGrids, createEquipment, createGrid, createItem, type Equipment, type GridContainer, SLOTS } from './items/inventory';
+import { addItem, carryGrids, removeItem, type ItemInstance, createEquipment, createGrid, createItem, type Equipment, type GridContainer, SLOTS } from './items/inventory';
 import { generateLoadout, starterKit } from './items/loadouts';
 import { getDef } from './items/defs';
 import { Rng } from './core/rng';
@@ -142,6 +142,8 @@ export interface RaidSummary {
   levelBefore: number;
   levelAfter: number;
   moneyFromItems: number;
+  /** Loot moved from your gear into the stash (stash full → it stays on your gear). */
+  toStash: ItemInstance[];
 }
 
 /** Fold a finished raid back into the persistent profile. */
@@ -189,8 +191,20 @@ export function applyRaidResult(profile: Profile, result: RaidResult): RaidSumma
       }
     }
   profile.money += moneyFromItems;
+  // Found-in-raid loot goes straight to the stash, so your kit comes back the way you packed it.
+  const toStash: ItemInstance[] = [];
+  if (result.status === 'extracted' && result.loot?.length) {
+    const loot = new Set(result.loot);
+    for (const g of carryGrids(profile.equipment))
+      for (const p of [...g.items]) {
+        if (!loot.has(p.item.uid)) continue;
+        removeItem(g, p.item.uid);
+        if (addItem(profile.stash, p.item)) toStash.push(p.item);
+        else g.items.push(p); // stash full: keep it where it was
+      }
+  }
   profile.updatedAt = Date.now();
-  return { xpGained: result.xp, levelBefore, levelAfter: levelFromXp(profile.xp).level, moneyFromItems };
+  return { xpGained: result.xp, levelBefore, levelAfter: levelFromXp(profile.xp).level, moneyFromItems, toStash };
 }
 
 /** True when the player has no weapon at all anywhere — they get a free survivor kit (every 10 min) to avoid a soft-lock. */

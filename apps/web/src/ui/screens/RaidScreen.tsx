@@ -68,6 +68,8 @@ export function RaidScreen() {
       cancelled = true;
       s?.dispose();
     };
+    // The raid is keyed by seed; map and time of day are chosen together with it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed]);
 
   if (error) {

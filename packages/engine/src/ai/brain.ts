@@ -113,27 +113,36 @@ export class BotBrain {
   }
 
   private perceive(raid: Raid, a: Actor, dt: number): void {
-    const night = raid.timeOfDay === 'night';
-    const viewRange = this.role === 'infected' ? 16 : night ? 24 : 34;
-    const coneHalf = this.alerted ? 1.5 : 1.05;
+    // Human-scale eyesight: ~22 m spotting range in daylight, much less at dusk/night. A calm bot watches a
+    // ~90° cone and only half-notices things at the edge of it; once alerted it scans wider and further.
+    const base = this.role === 'infected' ? 11 : raid.timeOfDay === 'night' ? 13 : raid.timeOfDay === 'dusk' ? 17 : 22;
+    const viewRange = base * (this.alerted ? 1.3 : 1);
+    const coneHalf = this.alerted ? 1.2 : 0.8;
     tmp.length = 0;
-    raid.queryActors(a.pos.x, a.pos.y, viewRange * 1.2, tmp);
+    raid.queryActors(a.pos.x, a.pos.y, viewRange * 1.3, tmp);
     let best: Actor | null = null;
     let bestD = Infinity;
+    let bestEff = viewRange;
     for (const b of tmp) {
       if (b === a || !b.alive || !hostile(a.faction, b.faction)) continue;
       const d = dist(a.pos, b.pos);
       // Bots notice each other later than they notice the player, so the map doesn't depopulate before you arrive.
       const botVsBot = b.faction !== 'player' && a.faction !== 'player';
-      const eff = viewRange * raid.visibilityOf(b) * (botVsBot ? 0.45 : 1);
+      const off = Math.abs(angleDiff(a.facing, angleTo(a.pos, b.pos)));
+      if (d > 1.8 && off > coneHalf) continue;
+      // Movement draws the eye: standing still or creeping is much harder to spot than running.
+      const speed = Math.hypot(b.vel.x, b.vel.y);
+      const motion = b.sprinting ? 1.25 : speed > 0.4 ? 1 : 0.65;
+      const peripheral = off > coneHalf * 0.55 ? 0.6 : 1;
+      const eff = viewRange * raid.visibilityOf(b) * motion * peripheral * (botVsBot ? 0.45 : 1);
       if (d > eff) continue;
-      if (d > 2.5 && Math.abs(angleDiff(a.facing, angleTo(a.pos, b.pos))) > coneHalf) continue;
       if (!raid.map.rayClear(a.pos.x, a.pos.y, b.pos.x, b.pos.y)) continue;
       // Prefer the current target slightly (target stickiness avoids flip-flopping).
       const score = b.id === this.targetId ? d * 0.7 : d;
       if (score < bestD) {
         bestD = score;
         best = b;
+        bestEff = eff;
       }
     }
 
@@ -141,8 +150,9 @@ export class BotBrain {
       const d = dist(a.pos, best.pos);
       const already = best.id === this.targetId && raid.time - this.lastSeenAt < 3;
       if (!already) {
-        const near = 1 - Math.min(1, d / viewRange);
-        this.detect += dt * (0.7 + near * 3) * (this.alerted ? 2 : 1);
+        // Takes a few seconds to recognise someone at the edge of sight, a blink up close.
+        const near = 1 - Math.min(1, d / bestEff);
+        this.detect += dt * (0.3 + near * near * 3.2) * (this.alerted ? 1.8 : 1);
       }
       if (already || this.detect >= 1) {
         if (!already) this.reactT = (0.55 + this.rng.range(0, 0.6)) * (1.5 - this.skill);
@@ -159,7 +169,7 @@ export class BotBrain {
       }
     } else {
       this.targetVisible = false;
-      this.detect = Math.max(0, this.detect - dt * 0.5);
+      this.detect = Math.max(0, this.detect - dt * 0.35);
     }
 
     // Hearing.

@@ -1,4 +1,4 @@
-import { getDef, levelFromXp } from '@ashfall/engine';
+import { getDef, itemValue, levelFromXp, RARITY_COLORS } from '@ashfall/engine';
 import { useApp } from '../../state/appStore';
 import { useProfile } from '../../state/profileStore';
 import './menu.css';
@@ -14,7 +14,8 @@ export function RaidEnd() {
   const survived = result.status === 'extracted';
   const kills = Object.entries(result.kills);
   const lvl = levelFromXp(profile.xp);
-  const items = survived ? countItems(result.playerEq) : 0;
+  const items = survived ? (result.loot?.length ?? countItems(result.playerEq)) : 0;
+  const loot = summary.toStash ?? [];
   return (
     <div className="menu raid-end">
       <div className="menu-inner fade-in" style={{ maxWidth: 640 }}>
@@ -60,6 +61,27 @@ export function RaidEnd() {
             {summary.moneyFromItems > 0 && <span className="good small">+{fmt(summary.moneyFromItems)} ₵ deposited</span>}
           </div>
         </div>
+        {survived && (
+          <div className="end-loot">
+            <div className="dim small">
+              {loot.length ? `Moved to stash · ${loot.length} item${loot.length === 1 ? '' : 's'} · ${fmt(loot.reduce((s, it) => s + itemValue(it), 0))} ₵` : 'No loot carried out'}
+              {items > loot.length && ` · ${items - loot.length} still on your gear`}
+            </div>
+            {loot.length > 0 && (
+              <div className="loot-chips">
+                {loot.map((it) => {
+                  const d = getDef(it.def);
+                  return (
+                    <span key={it.uid} className="loot-chip" style={{ borderColor: RARITY_COLORS[d.rarity] }}>
+                      {d.name}
+                      {it.stack > 1 && <b className="mono"> ×{it.stack}</b>}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
         {result.companion && (
           <p className={result.companion.alive ? 'good' : 'bad'}>
             {result.companion.alive ? 'Your companion made it out with you.' : 'Your companion did not make it.'}
