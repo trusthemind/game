@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DialogueRunner, NPCS, stageOf, STAGE_LABEL, type DialogueHost, type Relationship } from '@ashfall/engine';
+import { usePortrait } from './usePortrait';
 import './dialogue.css';
 
 interface Props {
@@ -22,6 +23,7 @@ export function DialogueBox({ npcId, rel: initialRel, host, onRelChange, onClose
   const [node, setNode] = useState(() => runner.start());
   const [shown, setShown] = useState(0);
   const [, force] = useState(0);
+  const portrait = usePortrait(npcId);
 
   useEffect(() => onRelChange(structuredClone(rel)), []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -65,9 +67,7 @@ export function DialogueBox({ npcId, rel: initialRel, host, onRelChange, onClose
     <div className="dialogue-backdrop fade-in">
       <div className="dialogue" style={{ ['--npc' as string]: npc.color }}>
         <div className="dialogue-portrait">
-          <div className="portrait-ring">
-            <span>{npc.name[0]}</span>
-          </div>
+          <div className="portrait-ring">{portrait ? <img src={portrait} alt={npc.name} /> : <span>{npc.name[0]}</span>}</div>
           <div className="dialogue-who">
             <div className="h">{npc.name}</div>
             <div className="dim small">{npc.role}</div>

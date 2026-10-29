@@ -24,6 +24,7 @@ import { CategoryIcon } from '../inventory/icons';
 import { DialogueBox } from '../components/DialogueBox';
 import { hideoutDialogueHost } from '../dialogueHosts';
 import { SyncBadge } from '../components/SyncBadge';
+import { usePortrait } from '../components/usePortrait';
 import './hideout.css';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -253,9 +254,7 @@ function SurvivorsTab() {
         }
         return (
           <div key={npc.id} className={`npc-card panel ${rel.dead ? 'dead' : ''}`} style={{ ['--npc' as string]: npc.color }}>
-            <div className="portrait-ring">
-              <span>{npc.name[0]}</span>
-            </div>
+            <NpcPortrait npcId={npc.id} letter={npc.name[0]!} />
             <div className="h">{npc.name}</div>
             <div className="dim small">{npc.role}</div>
             <p className="bio">{npc.bio}</p>
@@ -295,6 +294,11 @@ function SurvivorsTab() {
       })}
     </div>
   );
+}
+
+function NpcPortrait({ npcId, letter }: { npcId: string; letter: string }) {
+  const url = usePortrait(npcId);
+  return <div className="portrait-ring">{url ? <img src={url} alt="" /> : <span>{letter}</span>}</div>;
 }
 
 function StatsTab() {

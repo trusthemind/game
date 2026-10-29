@@ -14,7 +14,8 @@ import {
   VignetteEffect,
 } from 'postprocessing';
 import type { Interactable, Raid, RaidEvent } from '@ashfall/engine';
-import { ActorView, disposeActorCaches } from './actors';
+import { CharacterView, disposeCharacterCaches, lookFor, type Appearance } from './character';
+import type { AssetLibrary } from './assets';
 import { Effects } from './effects';
 import { QUALITY, type QualityLevel, type QualityPreset } from './quality';
 import { addContainerInstance, buildWorld, markContainerSearched, type WorldMeshes } from './world';
@@ -57,7 +58,9 @@ export class GameRenderer {
   private vignette: VignetteEffect | null = null;
   private world: WorldMeshes;
   private effects: Effects;
-  private views = new Map<number, ActorView>();
+  private views = new Map<number, CharacterView>();
+  /** Actor currently in a conversation (plays the talking idle). */
+  talkingActor: number | null = null;
   private uniforms: WorldUniforms;
   private fowTex: THREE.DataTexture;
   private fowCur: Float32Array;
@@ -70,6 +73,7 @@ export class GameRenderer {
   private camTarget = new THREE.Vector3();
   private shake = 0;
   private zoom = 1;
+  private camZoom = 1;
   private preset: QualityPreset;
   private scale = 1;
   private searched = new Set<number>();
@@ -85,6 +89,8 @@ export class GameRenderer {
     private raid: Raid,
     quality: QualityLevel,
     private labelLayer: HTMLElement | null,
+    private lib: AssetLibrary,
+    private playerLook: Appearance,
   ) {
     this.preset = QUALITY[quality];
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.preset.post, powerPreference: 'high-performance', stencil: false });
@@ -136,7 +142,7 @@ export class GameRenderer {
     this.playerGlow = new THREE.PointLight(0xffe6c0, raid.timeOfDay === 'day' ? 0 : 2.2, 5, 1.5);
     this.scene.add(this.playerGlow);
 
-    this.world = buildWorld(raid.map, this.uniforms, this.preset.shadows);
+    this.world = buildWorld(raid.map, this.uniforms, this.preset.shadows, lib);
     this.scene.add(this.world.group);
     this.containerCount = raid.map.containers.length;
     this.effects = new Effects(this.preset.muzzleLights);
@@ -216,9 +222,11 @@ export class GameRenderer {
     for (const e of events) {
       switch (e.t) {
         case 'shot': {
-          this.effects.tracer(e.fx, e.fy, e.tx, e.ty, e.hit);
-          this.effects.muzzleFlash(e.fx, e.fy);
-          this.views.get(e.actor)?.fired();
+          const view = this.views.get(e.actor);
+          const mz = view && view.root.visible ? view.muzzle : null;
+          this.effects.tracer(mz ? mz.x : e.fx, mz ? mz.z : e.fy, e.tx, e.ty, e.hit, mz ? mz.y : 0.95);
+          this.effects.muzzleFlash(mz ? mz.x : e.fx, mz ? mz.z : e.fy, mz ? mz.y : 0.95);
+          view?.fired();
           if (e.actor === pid) this.shake = Math.min(0.35, this.shake + 0.08);
           break;
         }
@@ -231,8 +239,12 @@ export class GameRenderer {
           this.effects.burst(e.x, e.y, e.penetrated ? 14 : 8, e.penetrated || e.melee ? 'blood' : 'spark');
           if (e.penetrated || e.melee) this.effects.blood(e.x, e.y, Math.min(1.6, e.damage / 30));
           if (e.target === pid) this.shake = Math.min(0.6, this.shake + 0.25);
+          this.views.get(e.target)?.hit();
           break;
         }
+        case 'reload':
+          this.views.get(e.actor)?.reloading();
+          break;
         case 'impact':
           this.effects.burst(e.x, e.y, 6, 'spark');
           this.effects.burst(e.x, e.y, 4, 'dust');
@@ -265,17 +277,19 @@ export class GameRenderer {
     for (const a of raid.actors) {
       let v = this.views.get(a.id);
       if (!v) {
-        v = new ActorView(a.id, a, this.preset.shadows);
+        const look = a === p ? this.playerLook : lookFor(a.id, a.archetype, a.npcId);
+        v = new CharacterView(this.lib, look, this.uniforms, this.preset.shadows);
         this.views.set(a.id, v);
         this.scene.add(v.root);
       }
       if (v.dead) {
-        v.root.visible = raid.explored[raid.map.idx(Math.floor(v.root.position.x), Math.floor(v.root.position.z))] === 1;
+        v.updateCorpse(dt, raid.explored[raid.map.idx(Math.floor(v.root.position.x), Math.floor(v.root.position.z))] === 1);
         continue;
       }
-      v.update(a, dt);
-      v.root.visible = a === p || !!a.companion || raid.isVisibleToPlayer(a.pos.x, a.pos.y);
-      if (a.npcId && a.alive) this.updateLabel(a.id, a.name, a.pos.x, a.pos.y, v.root.visible, a.companion ? 'comp' : 'npc');
+      const visible = a === p || !!a.companion || raid.isVisibleToPlayer(a.pos.x, a.pos.y);
+      const alerted = !!a.brain && (a.brain.state === 'engage' || a.brain.state === 'cover' || a.brain.state === 'search');
+      v.update(a, dt, visible, alerted, this.talkingActor === a.id || (a === p && this.talkingActor !== null));
+      if (a.npcId && a.alive) this.updateLabel(a.id, a.name, a.pos.x, a.pos.y, visible, a.companion ? 'comp' : 'npc');
     }
 
     // Containers: new ground piles + searched tint (scanned a few times per second).
@@ -305,12 +319,23 @@ export class GameRenderer {
     const leadX = Math.max(-5, Math.min(5, (aimX - p.pos.x) * 0.3));
     const leadY = Math.max(-4, Math.min(4, (aimY - p.pos.y) * 0.3));
     const k = 1 - Math.exp(-dt * 6);
-    this.camTarget.x += (p.pos.x + leadX - this.camTarget.x) * k;
-    this.camTarget.z += (p.pos.y + leadY - this.camTarget.z) * k;
+    let fx0 = p.pos.x + leadX;
+    let fz0 = p.pos.y + leadY;
+    let zoom = this.zoom;
+    const talker = this.talkingActor !== null ? raid.actorById(this.talkingActor) : null;
+    if (talker) {
+      // Conversation framing: close-up on both speakers, pushed into the upper half above the dialogue box.
+      fx0 = (p.pos.x + talker.pos.x) / 2;
+      fz0 = (p.pos.y + talker.pos.y) / 2 + 2.6;
+      zoom = 0.48;
+    }
+    this.camZoom += (zoom - this.camZoom) * (1 - Math.exp(-dt * 4));
+    this.camTarget.x += (fx0 - this.camTarget.x) * k;
+    this.camTarget.z += (fz0 - this.camTarget.z) * k;
     this.shake = Math.max(0, this.shake - dt * 2.2);
     const sx = (Math.random() - 0.5) * this.shake * 0.4;
     const sz = (Math.random() - 0.5) * this.shake * 0.4;
-    this.camera.position.set(this.camTarget.x + sx, 19 * this.zoom, this.camTarget.z + 11.5 * this.zoom + sz);
+    this.camera.position.set(this.camTarget.x + sx, 19 * this.camZoom, this.camTarget.z + 11.5 * this.camZoom + sz);
     this.camera.lookAt(this.camTarget.x + sx, 0, this.camTarget.z + sz);
 
     // Lights follow the player.
@@ -406,7 +431,8 @@ export class GameRenderer {
     this.effects.dispose();
     this.composer?.dispose();
     this.fowTex.dispose();
-    disposeActorCaches();
+    for (const v of this.views.values()) v.dispose();
+    disposeCharacterCaches();
     disposeTextures();
     this.renderer.dispose();
   }

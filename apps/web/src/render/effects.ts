@@ -55,7 +55,7 @@ export class Effects {
       const light = new THREE.PointLight(0xffc070, 0, 9, 2);
       light.visible = lights;
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, color: 0xffd28a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
-      sprite.scale.setScalar(0.9);
+      sprite.scale.setScalar(0.55);
       sprite.visible = false;
       this.group.add(light, sprite);
       return { light, sprite, life: 0 };
@@ -111,21 +111,21 @@ export class Effects {
     p.set([x, y, z, x - 0.03, y - 0.38, z + 0.05], i * 6);
   }
 
-  tracer(fx: number, fz: number, tx: number, tz: number, hit: boolean): void {
+  tracer(fx: number, fz: number, tx: number, tz: number, hit: boolean, fy = 0.95): void {
     const i = this.tracerCursor;
     this.tracerCursor = (i + 1) % this.MAX_TRACERS;
-    this.tracerPos.set([fx, 0.95, fz, tx, 0.9, tz], i * 6);
+    this.tracerPos.set([fx, fy, fz, tx, hit ? 1.1 : 0.9, tz], i * 6);
     const c = hit ? [1.6, 0.9, 0.5] : [1.4, 1.1, 0.6];
     this.tracerCol.set([...c, ...c], i * 6);
     this.tracerLife[i] = 0.07;
   }
 
-  muzzleFlash(x: number, z: number): void {
+  muzzleFlash(x: number, z: number, y = 0.95): void {
     const f = this.flashes.next();
     f.life = 0.06;
-    f.light.position.set(x, 1.1, z);
+    f.light.position.set(x, y + 0.15, z);
     f.light.intensity = 25;
-    f.sprite.position.set(x, 0.95, z);
+    f.sprite.position.set(x, y, z);
     f.sprite.visible = true;
     f.sprite.material.rotation = Math.random() * Math.PI;
   }

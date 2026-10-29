@@ -29,10 +29,19 @@ float ashBayer(vec2 p) {
  *  - occlusion cut-away: screen-door dither walls/canopies that stand between the camera and the player.
  * Shadow/depth passes use their own materials, so shadows stay intact.
  */
-export function patchWorldMaterial<T extends THREE.Material>(mat: T, u: WorldUniforms, opts: { fow?: boolean; occlude?: 'wall' | 'canopy' } = {}): T {
+export interface PatchOptions {
+  fow?: boolean;
+  occlude?: 'wall' | 'canopy';
+  /** Extra shader edits applied before the fog/occlusion injection (e.g. character palettes). */
+  pre?: (shader: THREE.WebGLProgramParametersWithUniforms) => void;
+  key?: string;
+}
+
+export function patchWorldMaterial<T extends THREE.Material>(mat: T, u: WorldUniforms, opts: PatchOptions = {}): T {
   const fow = opts.fow ?? true;
   const occ = opts.occlude ?? '';
   mat.onBeforeCompile = (shader) => {
+    opts.pre?.(shader);
     Object.assign(shader.uniforms, u);
     shader.vertexShader =
       DECL_V +
@@ -74,6 +83,6 @@ export function patchWorldMaterial<T extends THREE.Material>(mat: T, u: WorldUni
     }
     shader.fragmentShader = frag;
   };
-  mat.customProgramCacheKey = () => `ash-${fow ? 1 : 0}-${occ}`;
+  mat.customProgramCacheKey = () => `ash-${fow ? 1 : 0}-${occ}-${opts.key ?? ''}`;
   return mat;
 }

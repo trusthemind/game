@@ -15,6 +15,8 @@ import {
   type RaidResult,
 } from '@ashfall/engine';
 import { GameRenderer } from '../render/GameRenderer';
+import type { AssetLibrary } from '../render/assets';
+import { playerAppearance } from '../render/character';
 import type { QualityLevel } from '../render/quality';
 import { Input } from '../input/Input';
 import { PerfMonitor } from '../perf/PerfMonitor';
@@ -26,6 +28,7 @@ export interface SessionOptions {
   seed: number;
   profile: Profile;
   quality: QualityLevel;
+  assets: AssetLibrary;
   onEnd(result: RaidResult): void;
 }
 
@@ -66,7 +69,7 @@ export class GameSession {
 
   constructor(private opts: SessionOptions) {
     this.raid = raidFromProfile(opts.profile, opts.seed);
-    this.renderer = new GameRenderer(opts.canvas, this.raid, opts.quality, opts.labelLayer);
+    this.renderer = new GameRenderer(opts.canvas, this.raid, opts.quality, opts.labelLayer, opts.assets, playerAppearance(opts.profile.look));
     this.input = new Input(opts.canvas);
     window.addEventListener('resize', this.onResize);
   }
@@ -115,7 +118,7 @@ export class GameSession {
       this.interactT = 0.1;
       this.interact = raid.status === 'active' ? raid.nearestInteractable() : null;
     }
-    const stats = this.renderer.render(this.paused ? 0 : dt, this.interact);
+    const stats = this.renderer.render(this.paused && ui.overlay !== 'dialogue' ? 0 : dt, this.interact);
     const t2 = performance.now();
 
     this.perf.push(dt * 1000);
@@ -238,6 +241,14 @@ export class GameSession {
       this.raid.noteNpcMet(target.npcId);
       this.paused = true;
       this.input.releaseAll();
+      this.renderer.talkingActor = target.id;
+      const npc = this.raid.actorById(target.id);
+      if (npc) {
+        // Face each other.
+        npc.facing = Math.atan2(this.raid.player.pos.y - npc.pos.y, this.raid.player.pos.x - npc.pos.x);
+        this.raid.player.facing = npc.facing + Math.PI;
+        npc.vel.x = npc.vel.y = this.raid.player.vel.x = this.raid.player.vel.y = 0;
+      }
       useRaidUi.setState({ overlay: 'dialogue', dialogueActor: target.id });
     }
   }
@@ -254,6 +265,7 @@ export class GameSession {
     const ui = useRaidUi.getState();
     if (ui.overlay === 'loot') this.raid.closeLoot();
     this.paused = false;
+    this.renderer.talkingActor = null;
     useRaidUi.setState({ overlay: null, loot: null, dialogueActor: null });
   }
 

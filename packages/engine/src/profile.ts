@@ -24,6 +24,17 @@ export interface Settings {
   volume: number;
 }
 
+/** Player character look (rendering only; persisted so you see the same survivor everywhere). */
+export interface PlayerLook {
+  sex: 'm' | 'f';
+  skin: number;
+  hair: string;
+  hairColor: number;
+  beard: boolean;
+}
+
+export const DEFAULT_LOOK: PlayerLook = { sex: 'm', skin: 0xe3b08e, hair: 'short', hairColor: 0x3a281b, beard: true };
+
 export interface Profile {
   version: number;
   id: string;
@@ -43,9 +54,10 @@ export interface Profile {
   companionEq: Record<string, Equipment>;
   lastFreeKit: number;
   settings: Settings;
+  look: PlayerLook;
 }
 
-export function createProfile(name = 'Survivor', id = randomId()): Profile {
+export function createProfile(name = 'Survivor', id = randomId(), look: PlayerLook = DEFAULT_LOOK): Profile {
   const stash = createGrid(10, 40, true);
   for (const [def, n] of [['a_9x18', 50], ['bandage', 1], ['crackers', 1], ['b_sling', 1], ['crowbar', 1]] as const) addItem(stash, createItem(def, { stack: n }));
   const npcs: Record<string, Relationship> = {};
@@ -68,6 +80,7 @@ export function createProfile(name = 'Survivor', id = randomId()): Profile {
     companionEq: {},
     lastFreeKit: 0,
     settings: { quality: 'auto', showPerf: false, volume: 0.7 },
+    look: { ...look },
   };
 }
 
@@ -88,6 +101,7 @@ export function migrateProfile(raw: unknown): Profile {
   for (const id of Object.keys(NPCS)) out.npcs[id] ??= { ...newRelationship(), affinity: INITIAL_AFFINITY[id] ?? 0 };
   out.settings ??= { quality: 'auto', showPerf: false, volume: 0.7 };
   out.rev ??= 0;
+  out.look ??= { ...DEFAULT_LOOK };
   return out;
 }
 

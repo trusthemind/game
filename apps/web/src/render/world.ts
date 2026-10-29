@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Rng, Tile, type GameMap, type LootContainer, type ContainerKind } from '@ashfall/engine';
 import { getTexture, type TexKind } from './textures';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
+import type { AssetLibrary } from './assets';
 
 export const WALL_H = 2.1;
 
@@ -50,7 +51,7 @@ export interface WorldMeshes {
  * Builds the static world. Everything that repeats is an InstancedMesh or a merged geometry, so the whole
  * town costs a few dozen draw calls regardless of size.
  */
-export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean): WorldMeshes {
+export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib: AssetLibrary | null): WorldMeshes {
   const group = new THREE.Group();
   const rng = new Rng(map.seed ^ 0x5eed);
   const materials: THREE.Material[] = [];
@@ -127,7 +128,8 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean): Wo
       else if (t === Tile.Window) windows.push([x, y, map.isSolid(x - 1, y) && map.isSolid(x + 1, y)]);
       else if (t === Tile.Fence) fences.push([x, y, map.get(x - 1, y) === Tile.Fence || map.get(x + 1, y) === Tile.Fence]);
       else if (t === Tile.Tree) trees.push([x, y]);
-      else if (t === Tile.Border && (x % 2 === 0) === (y % 2 === 0)) border.push([x, y]);
+      // Border forest: sparse, the dark outer ground + fog of war sells the density.
+      else if (t === Tile.Border && (x * 7 + y * 13) % 5 === 0) border.push([x, y]);
     }
 
   const m4 = new THREE.Matrix4();
@@ -182,44 +184,62 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean): Wo
     group.add(fence);
   }
 
-  // ── Trees: trunk + low-poly canopy (canopy dithers out around the player).
+  // ── Trees: Stylized Nature MegaKit models, instanced per sub-mesh (a forest is a handful of draw calls).
   const allTrees = [...trees.map((t) => [...t, 0] as const), ...border.map((t) => [...t, 1] as const)];
-  if (allTrees.length) {
-    const trunkMat = mat(new THREE.MeshStandardMaterial({ map: getTexture('bark'), roughness: 1 }));
-    const canopyMat = mat(new THREE.MeshStandardMaterial({ roughness: 0.9, flatShading: true }), 'canopy');
-    const trunk = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.12, 0.18, 1.6, 6)), trunkMat, allTrees.length);
-    const canopyGeo = geo(new THREE.IcosahedronGeometry(1, 0));
-    const pineGeo = geo(new THREE.ConeGeometry(1, 2.6, 7));
-    const leafy = allTrees.filter((t) => t[2] === 0);
-    const pines = allTrees.filter((t) => t[2] === 1);
-    const canopy = new THREE.InstancedMesh(canopyGeo, canopyMat, Math.max(1, leafy.length));
-    const pine = new THREE.InstancedMesh(pineGeo, canopyMat, Math.max(1, pines.length));
-    let li = 0;
-    let pi = 0;
-    allTrees.forEach(([x, y, isPine], i) => {
-      const s = rng.range(0.8, 1.25);
-      const ox = rng.range(-0.15, 0.15);
-      const oz = rng.range(-0.15, 0.15);
-      m4.compose(v.set(x + 0.5 + ox, 0.8 * s, y + 0.5 + oz), q.identity(), sc.set(s, s, s));
-      trunk.setMatrixAt(i, m4);
-      q.setFromEuler(new THREE.Euler(rng.range(0, 0.3), rng.range(0, Math.PI * 2), 0));
-      if (isPine) {
-        const ps = s * rng.range(0.6, 0.85);
-        m4.compose(v.set(x + 0.5 + ox, 2.2 * ps, y + 0.5 + oz), q.setFromAxisAngle(v.set(0, 1, 0), rng.range(0, 6)), sc.set(ps * 0.95, ps * 1.1, ps * 0.95));
-        m4.setPosition(x + 0.5 + ox, 2.4 * ps, y + 0.5 + oz);
-        pine.setMatrixAt(pi, m4);
-        pine.setColorAt(pi++, col.setHSL(0.3 + rng.range(-0.03, 0.03), 0.35, 0.16 + rng.range(-0.03, 0.03)));
-      } else {
-        const cs = s * rng.range(0.7, 0.95);
-        m4.compose(v.set(x + 0.5 + ox, 1.7 * s + 0.45, y + 0.5 + oz), q, sc.set(cs, cs * 0.85, cs));
-        canopy.setMatrixAt(li, m4);
-        canopy.setColorAt(li++, col.setHSL(0.22 + rng.range(-0.05, 0.06), 0.4, 0.2 + rng.range(-0.04, 0.05)));
-      }
-    });
-    canopy.count = leafy.length;
-    pine.count = pines.length;
-    trunk.castShadow = canopy.castShadow = pine.castShadow = shadows;
-    group.add(trunk, canopy, pine);
+  if (allTrees.length && lib) {
+    const leafyKinds = ['CommonTree_1', 'CommonTree_2', 'CommonTree_3', 'CommonTree_4', 'TwistedTree_1', 'DeadTree_1', 'Bush_Common'];
+    const pineKinds = ['Pine_1', 'Pine_2', 'Pine_3'];
+    // Bucket by model *and* 16×16-tile chunk so each InstancedMesh has a tight bounding sphere and
+    // whole chunks get frustum-culled (main and shadow passes).
+    const CHUNK = 16;
+    const buckets = new Map<string, THREE.Matrix4[]>();
+    for (const [x, y, isPine] of allTrees) {
+      const kind = isPine ? rng.pick(pineKinds) : rng.weighted(leafyKinds.map((k) => [k, k.startsWith('Common') ? 3 : k === 'Bush_Common' ? 1.5 : 1] as const));
+      const h = isPine ? rng.range(4.2, 6) : kind === 'Bush_Common' ? rng.range(0.8, 1.2) : rng.range(3.2, 4.6);
+      const t = new THREE.Matrix4().compose(
+        new THREE.Vector3(x + 0.5 + rng.range(-0.2, 0.2), 0, y + 0.5 + rng.range(-0.2, 0.2)),
+        new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng.range(0, Math.PI * 2)),
+        new THREE.Vector3(h, h, h),
+      );
+      const bucketKey = `${kind}|${Math.floor(x / CHUNK)},${Math.floor(y / CHUNK)}`;
+      let b = buckets.get(bucketKey);
+      if (!b) buckets.set(bucketKey, (b = []));
+      b.push(t);
+    }
+    const sharedMats = new Map<THREE.Material, THREE.Material>();
+    for (const [bucketKey, transforms] of buckets) {
+      const kind = bucketKey.split('|')[0]!;
+      const src = lib.nature.get(kind);
+      if (!src) continue;
+      src.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(src);
+      const unit = 1 / Math.max(0.001, box.max.y - box.min.y);
+      src.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const local = new THREE.Matrix4().makeScale(unit, unit, unit).multiply(mesh.matrixWorld);
+        const materials = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).map((m0) => {
+          const shared = sharedMats.get(m0);
+          if (shared) return shared;
+          const m = (m0 as THREE.MeshStandardMaterial).clone();
+          sharedMats.set(m0, m);
+          const leaves = /leaf|leaves/i.test(m.name) || !!m.alphaMap || m.transparent;
+          if (leaves) {
+            m.alphaTest = 0.5;
+            m.transparent = false;
+            m.side = THREE.DoubleSide;
+          }
+          return mat(m, leaves ? 'canopy' : undefined);
+        });
+        materials.forEach((m, i) => sharedMats.set((Array.isArray(mesh.material) ? mesh.material : [mesh.material])[i]!, m));
+        const inst = new THREE.InstancedMesh(mesh.geometry, materials.length === 1 ? materials[0]! : materials, transforms.length);
+        transforms.forEach((t, i) => inst.setMatrixAt(i, m4.multiplyMatrices(t, local)));
+        inst.castShadow = shadows;
+        inst.receiveShadow = shadows;
+        inst.computeBoundingSphere();
+        group.add(inst);
+      });
+    }
   }
 
   // ── Cars: pair adjacent car tiles into one vehicle.

@@ -26,9 +26,19 @@ export default defineConfig({
         icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
-        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        globPatterns: ['**/*.{js,css,html,svg,woff2,glb}'],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        // New SW takes over immediately so players get fresh builds without a second reload.
+        clientsClaim: true,
+        skipWaiting: true,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
+          {
+            // 3D models: cache-first, survive SW updates (separate cache from the precache manifest).
+            urlPattern: ({ url }) => url.pathname.startsWith('/models/'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'models', expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 * 30 } },
+          },
           {
             urlPattern: ({ url }) => url.origin === 'https://fonts.googleapis.com' || url.origin === 'https://fonts.gstatic.com',
             handler: 'CacheFirst',
@@ -45,7 +55,7 @@ export default defineConfig({
       output: {
         // Long-term cacheable vendor chunks: game code changes don't bust the three.js cache.
         manualChunks(id) {
-          if (id.includes('node_modules/three') || id.includes('node_modules/postprocessing')) return 'engine';
+          if (id.includes('node_modules/three') || id.includes('node_modules/postprocessing')) return 'three';
           if (id.includes('node_modules/react') || id.includes('node_modules/scheduler')) return 'react';
           return undefined;
         },

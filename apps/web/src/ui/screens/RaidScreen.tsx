@@ -6,6 +6,7 @@ import { useApp } from '../../state/appStore';
 import { useProfile } from '../../state/profileStore';
 import { api } from '../../state/api';
 import { detectQuality, type QualityLevel } from '../../render/quality';
+import { loadAssets } from '../../render/assets';
 import { Hud } from '../hud/Hud';
 import { Minimap } from '../hud/Minimap';
 import { DialogueBox } from '../components/DialogueBox';
@@ -16,6 +17,8 @@ import { makeRaidHost } from '../inventory/hosts';
 import './raid.css';
 
 export function resolveQuality(q: string): QualityLevel {
+  const forced = new URLSearchParams(location.search).get('quality');
+  if (forced === 'low' || forced === 'medium' || forced === 'high') return forced;
   return q === 'auto' ? detectQuality() : (q as QualityLevel);
 }
 
@@ -25,36 +28,41 @@ export function RaidScreen() {
   const labelsRef = useRef<HTMLDivElement>(null);
   const [session, setSession] = useState<GameSession | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    const profile = useProfile.getState().profile;
-    if (!profile || !canvasRef.current) return;
-    const draft = structuredClone(profile);
-    let s: GameSession;
-    try {
-      s = new GameSession({
-        canvas: canvasRef.current,
-        labelLayer: labelsRef.current,
-        seed,
-        profile: draft,
-        quality: resolveQuality(profile.settings.quality),
-        onEnd: (result) => finishRaid(result),
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      return;
-    }
-    // Your gear is now in the raid. Close the tab and it's gone — that's the deal.
-    useProfile.getState().mutate((d) => {
-      d.equipment = createEquipment();
-      d.companionEq = draft.companionEq;
-    });
-    void useProfile.getState().flush();
-    useRaidUi.setState({ overlay: null, hud: null, messages: [], loot: null, dialogueActor: null, showPerf: profile.settings.showPerf });
-    s.start();
-    setSession(s);
-    (window as unknown as { __ashfall?: GameSession }).__ashfall = s;
-    return () => s.dispose();
+    let s: GameSession | null = null;
+    let cancelled = false;
+    loadAssets(setProgress)
+      .then((assets) => {
+        const profile = useProfile.getState().profile;
+        if (cancelled || !profile || !canvasRef.current) return;
+        const draft = structuredClone(profile);
+        s = new GameSession({
+          canvas: canvasRef.current,
+          labelLayer: labelsRef.current,
+          seed,
+          profile: draft,
+          quality: resolveQuality(profile.settings.quality),
+          assets,
+          onEnd: (result) => finishRaid(result),
+        });
+        // Your gear is now in the raid. Close the tab and it's gone — that's the deal.
+        useProfile.getState().mutate((d) => {
+          d.equipment = createEquipment();
+          d.companionEq = draft.companionEq;
+        });
+        void useProfile.getState().flush();
+        useRaidUi.setState({ overlay: null, hud: null, messages: [], loot: null, dialogueActor: null, showPerf: profile.settings.showPerf });
+        s.start();
+        setSession(s);
+        (window as unknown as { __ashfall?: GameSession }).__ashfall = s;
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    return () => {
+      cancelled = true;
+      s?.dispose();
+    };
   }, [seed]);
 
   if (error) {
@@ -73,7 +81,16 @@ export function RaidScreen() {
     <div className="raid-screen">
       <canvas ref={canvasRef} className="raid-canvas" />
       <div ref={labelsRef} className="labels" />
-      {session && <RaidOverlays session={session} />}
+      {session ? (
+        <RaidOverlays session={session} />
+      ) : (
+        <div className="raid-loading">
+          <div className="h">Entering the zone</div>
+          <div className="bar">
+            <i style={{ width: `${Math.round(progress * 100)}%` }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
