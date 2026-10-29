@@ -1,0 +1,34 @@
+{
+  "name": "ashfall",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Ashfall — top-down extraction looter / survival exploration game (macOS-first, runs in the browser).",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "npm run dev -w @ashfall/web",
+    "build": "npm run build -w @ashfall/web",
+    "preview": "npm run preview -w @ashfall/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "npm run test --workspaces --if-present",
+    "bench": "npm run bench -w @ashfall/engine",
+    "e2e": "npm run e2e -w @ashfall/web",
+    "server": "cd server && go run ./cmd/ashfall",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5",
+    "@vitest/coverage-v8": "^5.0.5",
+    "@types/node": "^22.20.5"
+  }
+}

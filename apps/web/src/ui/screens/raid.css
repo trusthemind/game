@@ -1,0 +1,26 @@
+.raid-screen { position: fixed; inset: 0; background: #000; }
+.raid-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: none; }
+.labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.overlay { position: absolute; inset: 0; z-index: 200; background: rgba(4,5,5,.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.overlay.center { display: flex; align-items: center; justify-content: center; }
+.inv-overlay { padding: 28px; }
+.inv-layout { display: flex; gap: 16px; height: 100%; justify-content: center; }
+.inv-col { display: flex; flex-direction: column; max-height: 100%; min-width: 0; }
+.inv-scroll { padding: 14px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
+.loot-col { min-width: 300px; }
+.hint-col { width: 300px; }
+.hints { padding: 14px; display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+.gear-panel { display: flex; flex-direction: column; gap: 10px; }
+.gear-head { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; }
+.gear-head .h { font-size: 15px; color: var(--text); }
+.gear-cols { display: flex; gap: 18px; align-items: flex-start; }
+.gear-slots { display: flex; flex-direction: column; gap: 10px; }
+.gear-slots .row { display: flex; gap: 10px; align-items: flex-end; }
+.gear-grids { display: flex; flex-direction: column; gap: 10px; }
+.pause { width: 420px; }
+.pause-body { padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+.controls { margin-top: 10px; display: grid; grid-template-columns: 1fr; gap: 6px; font-size: 12.5px; }
+.controls div { display: flex; gap: 10px; align-items: center; }
+.map-panel { padding-bottom: 14px; }
+.map-panel canvas { margin: 14px; }
+.raid-error { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; text-align: center; }
