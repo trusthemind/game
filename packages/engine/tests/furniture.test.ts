@@ -18,13 +18,16 @@ describe('furniture', () => {
       for (const s of map.botSpawns) expect(map.isWalkable(Math.floor(s.x), Math.floor(s.y))).toBe(true);
       for (const c of map.containers) expect(saved[map.idx(c.x, c.y)]).toBe(0);
       // Pieces never overlap each other.
-      const boxes = map.furniture.map((f) => f.box);
+      // Sweep along x so this stays fast with ~1000 pieces.
+      const boxes = map.furniture.map((f) => f.box).sort((p, q) => p[0] - q[0]);
+      let overlaps = 0;
       for (let a = 0; a < boxes.length; a++)
-        for (let b = a + 1; b < boxes.length; b++) {
+        for (let b = a + 1; b < boxes.length && boxes[b]![0] < boxes[a]![2]; b++) {
           const p = boxes[a]!;
           const q = boxes[b]!;
-          expect(p[0] < q[2] && q[0] < p[2] && p[1] < q[3] && q[1] < p[3]).toBe(false);
+          if (p[1] < q[3] && q[1] < p[3]) overlaps++;
         }
+      expect(overlaps).toBe(0);
     });
   }
 
