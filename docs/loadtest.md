@@ -40,6 +40,34 @@ players finishing raids continuously would produce.
 
 Memory of the whole container at the end: 557 MB of 1 GB.
 
+### Railway, live (`ashfall-api-production.up.railway.app`, 30 Oct 2026)
+
+The same image on Railway (one service, MongoDB inside, data on a Railway Volume at `/data/db`), run
+from a home connection with `-steps 10,50 -dur 15s` so as not to disturb the live server.
+`REGISTER_PER_HOUR` was raised for the run and removed afterwards. Client-side numbers include the
+round trip over the internet; "server p95/p99" are Railway's own HTTP metrics for the same window.
+
+| Players at once | Profile | Saves/s | Save p50 | p95    | p99    | Errors |
+| --------------- | ------- | ------- | -------- | ------ | ------ | ------ |
+| 10              | 0.1 KB  | 43      | 104 ms   | 139 ms | 330 ms | 0      |
+| 50              | 0.1 KB  | 201     | 109 ms   | 167 ms | 354 ms | 0      |
+| 10              | 10 KB   | 15      | 184 ms   | 1.3 s  | 4.3 s  | 0      |
+| 50              | 10 KB   | 22      | 1.1 s    | 2.4 s  | 2.6 s  | 0      |
+
+| Endpoint, measured by Railway | Requests | p50   | p95   | p99    |
+| ----------------------------- | -------- | ----- | ----- | ------ |
+| `PUT /api/v1/profile`         | 4.3K     | 29 ms | 67 ms | 151 ms |
+| `POST /api/v1/raids`          | 4.3K     | 5 ms  | 10 ms | 25 ms  |
+| `GET /api/v1/leaderboard`     | 457      | 1 ms  | 8 ms  | 8 ms   |
+
+CPU peaked at 0.28 vCPU and memory at 300 MB (the plan allows 8 vCPU / 8 GB). 0 acknowledged saves
+lost.
+
+**Reading it:** the server was nowhere near its limit. With 10 KB profiles the client's upload link
+was the bottleneck (about 220 KB/s of saves), which is where the seconds of latency come from; the
+server itself answered saves in 67 ms at p95. The capacity numbers above (local, 1 vCPU) remain the
+ones to plan with; this run shows the deployed stack (proxy, volume, journaled writes) adds no errors.
+
 **Reading it:** no request failed at any level, including 1000 players saving at the same moment on
 one core. Past saturation the server queues instead of failing, so only latency grows (linearly with
 the queue). The client saves in the background with an 8 s timeout, so even 2–3 s at p99 is invisible

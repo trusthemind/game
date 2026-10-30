@@ -1,5 +1,6 @@
 # Ashfall backend with MongoDB in the same container. Build context is this directory (server/).
-# Without MONGODB_URI the entrypoint starts mongod on 127.0.0.1 (data in /data/db: mount a volume there);
+# Without MONGODB_URI the entrypoint starts mongod on 127.0.0.1 (data in /data/db: mount a volume there,
+# not declared here because Railway rejects VOLUME and wants its own Volumes);
 # with MONGODB_URI set it only runs the API. Dockerfile.slim is the API-only distroless image.
 FROM golang:1.25-alpine AS build
 WORKDIR /src
@@ -15,5 +16,4 @@ COPY deploy/start.sh /start.sh
 ENV GLIBC_TUNABLES=glibc.pthread.rseq=1 \
     PORT=8080
 EXPOSE 8080
-VOLUME ["/data/db"]
 ENTRYPOINT ["/start.sh"]
