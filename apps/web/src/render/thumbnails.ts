@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { getDef, type ItemInstance } from '@ashfall/engine';
 import { getAssets, loadAssets, type AssetLibrary } from './assets';
 import { buildGun, gunKey, MOD_MODEL } from './gunsmith';
+import { meleeModel } from './melee3d';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import {
   ammoModel,
@@ -115,7 +116,7 @@ export function itemModel(lib: AssetLibrary, item: ItemInstance): { obj: THREE.O
       return side(w);
     }
     case 'melee': {
-      const m = lib.melee.get(id)?.clone();
+      const m = meleeModel(id) ?? lib.melee.get(id)?.clone();
       if (!m) return null;
       const w = new THREE.Group();
       m.rotation.y = Math.PI / 2;

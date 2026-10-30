@@ -24,7 +24,7 @@ const SMALL_VAL: Table = [['chain', 6], ['rolex', 2], ['cpu', 2], ['flash', 2], 
 
 export const CONTAINERS: Record<ContainerKind, ContainerSpec> = {
   wardrobe: { label: 'Wardrobe', grid: [4, 4], rolls: [0, 3], searchTime: 0.7,
-    table: [['b_sling', 4], ['b_daypack', 2], ['r_scav', 4], ['bat', 1.2], ['knife', 1.5], ['paca', 1.5], ['ssh68', 2], ['roubles', 4], ['chain', 2], ['water', 1]] },
+    table: [['b_sling', 4], ['b_daypack', 2], ['r_scav', 4], ['bat', 1.2], ['knife', 1.5], ['hatchet', 0.8], ['paca', 1.5], ['ssh68', 2], ['roubles', 4], ['chain', 2], ['water', 1]] },
   fridge: { label: 'Fridge', grid: [3, 4], rolls: [1, 4], searchTime: 0.5, table: FOOD },
 
   drawer: { label: 'Drawer', grid: [4, 2], rolls: [0, 3], searchTime: 0.55,
@@ -33,11 +33,11 @@ export const CONTAINERS: Record<ContainerKind, ContainerSpec> = {
   register: { label: 'Cash register', grid: [3, 2], rolls: [1, 3], searchTime: 0.5, table: [['roubles', 20], ['chain', 2], ['flash', 1]] },
   medcabinet: { label: 'Medical cabinet', grid: [4, 3], rolls: [1, 4], searchTime: 0.6, table: [...MEDS, ['ledx', 0.15], ['salewa', 3], ['cms', 2], ['splint', 3]] },
   crate: { label: 'Wooden crate', grid: [5, 4], rolls: [1, 4], searchTime: 0.75, table: [...JUNK, ...FOOD, ['a_545ps', 3], ['a_762ps', 3], ['b_daypack', 1]] },
-  toolbox: { label: 'Toolbox', grid: [4, 3], rolls: [1, 3], searchTime: 0.6, table: [...JUNK, ['crowbar', 2], ['axe', 0.8], ['sledge', 0.4], ['cpu', 1], ['gpu', 0.12], ['brake', 0.6], ['fgrip', 0.6], ['tac_light', 0.6]] },
+  toolbox: { label: 'Toolbox', grid: [4, 3], rolls: [1, 3], searchTime: 0.6, table: [...JUNK, ['crowbar', 2], ['axe', 0.8], ['hatchet', 1.5], ['rebar', 1.5], ['cleaver', 0.8], ['shovel', 1], ['sledge', 0.4], ['cpu', 1], ['gpu', 0.12], ['brake', 0.6], ['fgrip', 0.6], ['tac_light', 0.6]] },
   weaponbox: { label: 'Weapon box', grid: [5, 4], rolls: [1, 2], searchTime: 1.1,
     table: [['pm', 4], ['mp443', 3], ['glock17', 2.5], ['toz', 3], ['rhino', 1.2], ['mp133', 4], ['saiga12', 1.2], ['pp19', 2.5], ['mp5', 1.6], ['vector', 0.4],
       ['aks74u', 3], ['sks', 3], ['vepr', 2.5], ['mosin', 2], ['akm', 1.5], ['ak74m', 1.3], ['aug', 0.6], ['m4a1', 0.6], ['rpk16', 0.4], ['hk416', 0.25], ['svd', 0.35],
-      ['sv98', 0.15], ['pkm', 0.1], ['machete', 1.5], ['karambit', 0.3], ...MODS.map(([id, w]) => [id, w * 0.35] as const)] },
+      ['sv98', 0.15], ['pkm', 0.1], ['machete', 1.5], ['bayonet', 1.5], ['kukri', 0.6], ['tomahawk', 0.4], ['karambit', 0.3], ...MODS.map(([id, w]) => [id, w * 0.35] as const)] },
   modbox: { label: 'Gun parts box', grid: [4, 3], rolls: [1, 3], searchTime: 0.8, table: MODS },
   airdrop: { label: 'Airdrop crate', grid: [6, 5], rolls: [5, 8], searchTime: 0.55,
     table: [['hk416', 1], ['sv98', 0.8], ['rpk16', 1], ['vector', 1], ['aug', 1.2], ['m4a1', 1.5], ['a_556m995', 2], ['a_545bs', 2], ['a_54r7n1', 1.5], ['a_762bp', 2],

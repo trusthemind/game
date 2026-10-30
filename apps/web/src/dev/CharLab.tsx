@@ -1,6 +1,15 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { ALL_ITEMS, createEquipment, createItem, getDef, installMod, modFits, modSlotsFor, type Actor } from '@ashfall/engine';
+import {
+  ALL_ITEMS,
+  createEquipment,
+  createItem,
+  getDef,
+  installMod,
+  modFits,
+  modSlotsFor,
+  type Actor,
+} from '@ashfall/engine';
 import { loadAssets } from '../render/assets';
 import { buildGun } from '../render/gunsmith';
 import { attachSkinned, cloneHuman } from '../render/human';
@@ -44,13 +53,31 @@ export function CharLab() {
       uFowOn: { value: 0 },
     };
     (u.uFow.value as THREE.DataTexture).needsUpdate = true;
-    const cast: { look: Appearance; eq: string[]; active: 'primary' | 'secondary' | 'melee'; speed: number; crouch?: boolean; modded?: boolean }[] = [
+    const cast: {
+      look: Appearance;
+      eq: string[];
+      active: 'primary' | 'secondary' | 'melee';
+      speed: number;
+      crouch?: boolean;
+      modded?: boolean;
+      use?: string;
+    }[] = [
       { look: lookFor(0, 'npc', 'lena'), eq: ['pm:secondary', 'b_daypack:backpack'], active: 'secondary', speed: 0 },
       { look: lookFor(0, 'npc', 'mykola'), eq: ['mp133:primary'], active: 'primary', speed: 1.4 },
-      { look: lookFor(3, 'raider'), eq: ['m4a1:primary', 'trooper:armor', 'zsh:helmet', 'r_alpha:rig', 'b_pilgrim:backpack'], active: 'primary', speed: 0 },
+      {
+        look: lookFor(3, 'raider'),
+        eq: ['m4a1:primary', 'trooper:armor', 'zsh:helmet', 'r_alpha:rig', 'b_pilgrim:backpack'],
+        active: 'primary',
+        speed: 0,
+      },
       { look: lookFor(9, 'scav'), eq: ['ak74m:primary', 'paca:armor', 'r_scav:rig'], active: 'primary', speed: 3.2 },
       { look: lookFor(0, 'npc', 'vera'), eq: ['axe:melee'], active: 'melee', speed: 0 },
-      { look: lookFor(2, 'boss'), eq: ['pkm:primary', 'slick6:armor', 'altyn:helmet', 'b_attack:backpack'], active: 'primary', speed: 0 },
+      {
+        look: lookFor(2, 'boss'),
+        eq: ['pkm:primary', 'slick6:armor', 'altyn:helmet', 'b_attack:backpack'],
+        active: 'primary',
+        speed: 0,
+      },
       { look: lookFor(11, 'scav'), eq: ['svd:primary'], active: 'primary', speed: 0, crouch: true },
       { look: lookFor(5, 'infected'), eq: [], active: 'melee', speed: 1.2 },
       { look: lookFor(14, 'scav'), eq: [], active: 'melee', speed: 0 },
@@ -66,14 +93,72 @@ export function CharLab() {
         ['akm:primary', '6b23:armor', 'r_bank:rig', 'b_daypack:backpack'],
         ['svd:primary', 'gzhel:armor', 'r_mbss:rig'],
       ];
-      kits.forEach((eq, i) => cast.push({ look: lookFor(i + 3, i % 2 ? 'raider' : 'scav'), eq, active: 'primary', speed: 0 }));
+      kits.forEach((eq, i) =>
+        cast.push({ look: lookFor(i + 3, i % 2 ? 'raider' : 'scav'), eq, active: 'primary', speed: 0 }),
+      );
       cam.position.set(0, 1.9, 5.2);
       cam.lookAt(0, 1.2, 0);
+    }
+    if (view === 'hats') {
+      // Headwear and prints up close.
+      cast.length = 0;
+      const hats: [string, number, string][] = [
+        ['beanie', 0x1e1e1e, 'stripes'],
+        ['cap', 0x2f3b2a, 'plaid'],
+        ['ushanka', 0x3b3f46, 'plain'],
+        ['bandana', 0x6a1f1c, 'stripes'],
+        ['beanie', 0x5a3a24, 'woodland'],
+      ];
+      hats.forEach(([hat, hatColor, pat], i) =>
+        cast.push({
+          look: {
+            ...lookFor(i + 80, 'scav'),
+            hat: hat as never,
+            hatColor,
+            topPattern: pat as never,
+            ...(pat === 'stripes' ? { top: 0x1d2c5a, accent: 0xe8e8e0 } : {}),
+          },
+          eq: [],
+          active: 'melee',
+          speed: 0,
+        }),
+      );
+      cam.position.set(0, 1.6, 2.9);
+      cam.lookAt(0, 1.35, 0);
+    }
+    if (view === 'treat') {
+      // Treating wounds: kneeling surgery, wrapping, injecting, drinking, and bandaging on the move.
+      cast.length = 0;
+      ['surv12', 'ifak', 'splint', 'morphine', 'water', 'bandage'].forEach((id, i) =>
+        cast.push({
+          look: lookFor(i + 90, 'scav'),
+          eq: ['ak74m:primary'],
+          active: 'primary',
+          speed: i === 5 ? 0.8 : 0,
+          use: id,
+        }),
+      );
+      cam.position.set(0, 1.7, 5.2);
+      cam.lookAt(0, 0.9, 0);
+    }
+    if (view === 'melee' || view === 'melee2') {
+      // Every melee weapon in a hand, to check the grip.
+      cast.length = 0;
+      const ids =
+        view === 'melee'
+          ? ['knife', 'bayonet', 'karambit', 'cleaver', 'machete', 'kukri', 'hatchet']
+          : ['tomahawk', 'axe', 'sledge', 'crowbar', 'bat', 'shovel', 'rebar'];
+      ids.forEach((id, i) =>
+        cast.push({ look: lookFor(i + 60, 'scav'), eq: [`${id}:melee`], active: 'melee', speed: 0 }),
+      );
+      cam.position.set(0, 1.55, 4.6);
+      cam.lookAt(0, 1.1, 0);
     }
     if (view === 'strafe' || view === 'strafetop') {
       // Everyone aims at the camera while walking forward / right / left / back / diagonal.
       cast.length = 0;
-      for (let i = 0; i < 5; i++) cast.push({ look: lookFor(i + 40, 'scav'), eq: ['ak74m:primary'], active: 'primary', speed: 0 });
+      for (let i = 0; i < 5; i++)
+        cast.push({ look: lookFor(i + 40, 'scav'), eq: ['ak74m:primary'], active: 'primary', speed: 0 });
       if (view === 'strafetop') cam.position.set(0, 7, 1.2);
       else cam.position.set(0, 2.6, 6.5);
       cam.lookAt(0, 0.9, 0);
@@ -83,7 +168,13 @@ export function CharLab() {
       cast.length = 0;
       ids.forEach((id, i) => {
         const sec = getDef(id).weapon!.cls === 'pistol' || id === 'toz';
-        cast.push({ look: lookFor(i + 20, 'scav'), eq: [`${id}:${sec ? 'secondary' : 'primary'}`], active: sec ? 'secondary' : 'primary', speed: 0, modded: i % 2 === 1 });
+        cast.push({
+          look: lookFor(i + 20, 'scav'),
+          eq: [`${id}:${sec ? 'secondary' : 'primary'}`],
+          active: sec ? 'secondary' : 'primary',
+          speed: 0,
+          modded: i % 2 === 1,
+        });
       });
       cam.position.set(0, 1.6, 26);
       cam.lookAt(0, 1.0, 0);
@@ -115,7 +206,9 @@ export function CharLab() {
         cast.length = 0;
         let i = 0;
         for (const sex of ['m', 'f'] as const)
-          for (const st of sex === 'm' ? ['Hair_SimpleParted', 'Hair_Buzzed', 'Hair_Beard'] : ['Hair_Long', 'Hair_Buns', 'Hair_BuzzedFemale']) {
+          for (const st of sex === 'm'
+            ? ['Hair_SimpleParted', 'Hair_Buzzed', 'Hair_Beard']
+            : ['Hair_Long', 'Hair_Buns', 'Hair_BuzzedFemale']) {
             const h = cloneHuman(lib, sex)!;
             attachSkinned(lib.hair.get(st)!, h.body);
             if (st === 'Hair_Beard') attachSkinned(lib.hair.get('Hair_SimpleParted')!, h.body);
@@ -172,22 +265,55 @@ export function CharLab() {
         }
         const v = new CharacterView(lib, c.look, u, true);
         const a = {
-          pos: { x: (i - (cast.length - 1) / 2) * (view === 'guns' || view === 'gear' ? 1.05 : 1.35), y: 0 },
-          vel: view.startsWith('strafe') ? { x: [0, 2.6, -2.6, 0, 1.9][i]!, y: [2.6, 0, 0, -2.0, 1.9][i]! } : { x: 0, y: c.speed },
-          facing: view === 'guns' ? 0 : view === 'gear' ? Math.PI / 2 + [-0.7, 0.7, 2.6, -0.4, 3.4][i % 5]! : Math.PI / 2,
+          pos: {
+            x:
+              (i - (cast.length - 1) / 2) *
+              (view === 'guns' || view === 'gear' || view.startsWith('melee') || view === 'hats'
+                ? view === 'hats'
+                  ? 0.55
+                  : view.startsWith('melee')
+                    ? 0.85
+                    : 1.05
+                : 1.35),
+            y: 0,
+          },
+          vel: view.startsWith('strafe')
+            ? { x: [0, 2.6, -2.6, 0, 1.9][i]!, y: [2.6, 0, 0, -2.0, 1.9][i]! }
+            : { x: 0, y: c.speed },
+          facing:
+            view === 'guns'
+              ? 0
+              : view.startsWith('melee')
+                ? Math.PI / 2 - 0.9
+                : view === 'gear'
+                  ? Math.PI / 2 + [-0.7, 0.7, 2.6, -0.4, 3.4][i % 5]!
+                  : Math.PI / 2,
           crouching: !!c.crouch,
           sprinting: false,
           eq,
           active: c.active,
           faction: 'npc',
+          useT: c.use ? 1e9 : 0,
+          useDef: c.use ?? null,
         } as unknown as Actor;
         scene.add(v.root);
         views.push({ v, a });
       });
-      for (const id of view === 'guns' || view === 'rack' || view === 'gear' || view.startsWith('strafe') ? [] : ['lena', 'mykola', 'vera']) {
+      for (const id of view === 'guns' ||
+      view === 'rack' ||
+      view === 'gear' ||
+      view.startsWith('strafe') ||
+      view.startsWith('melee') ||
+      view === 'hats' ||
+      view === 'treat'
+        ? []
+        : ['lena', 'mykola', 'vera']) {
         const img = document.createElement('img');
         img.src = renderPortrait(lib, lookFor(0, 'npc', id), 512);
-        img.style.cssText = 'position:fixed;top:12px;width:300px;height:300px;border:1px solid #555;left:' + (12 + ['lena', 'mykola', 'vera'].indexOf(id) * 310) + 'px';
+        img.style.cssText =
+          'position:fixed;top:12px;width:300px;height:300px;border:1px solid #555;left:' +
+          (12 + ['lena', 'mykola', 'vera'].indexOf(id) * 310) +
+          'px';
         document.body.appendChild(img);
       }
       (window as unknown as { __labReady?: boolean }).__labReady = true;

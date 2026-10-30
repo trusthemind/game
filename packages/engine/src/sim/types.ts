@@ -65,6 +65,8 @@ export interface Actor {
   bloom: number;
   useT: number;
   useUid: string | null;
+  /** Item definition being used (for the animation), null when idle. */
+  useDef: string | null;
   usePart: BodyPart | null;
   crouching: boolean;
   sprinting: boolean;

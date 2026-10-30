@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { Rng, getDef, type Actor, type Corpse, type Equipment } from '@ashfall/engine';
+import { Rng, getDef, type Actor, type Corpse, type Equipment, type ItemInstance } from '@ashfall/engine';
 import type { AssetLibrary } from './assets';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
 import { faceTexture, type FaceSpec } from './facePainter';
 import { buildGun, gunKey } from './gunsmith';
 import { armorModel, BACKPACK_TINT, hatModel, helmetModel, rigModel, slingModel } from './gear3d';
+import { HEAVY_MELEE, meleeModel, REVERSE_GRIP } from './melee3d';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
+import { itemModel } from './thumbnails';
 import { attachSkinned, cloneHuman, type HumanParts } from './human';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -686,8 +688,10 @@ function outfitMaterial(
   dead = false,
   pattern: Pattern = 'plain',
   accent = 0x202020,
+  /** Bind-space units → metres (the model's height scale), so prints have a real-world size. */
+  k = 1,
 ): THREE.MeshStandardMaterial {
-  const key = `${src.uuid}|outfit|${color}|${skin}|${dead}|${pattern}|${accent}`;
+  const key = `${src.uuid}|outfit|${color}|${skin}|${dead}|${pattern}|${accent}|${k.toFixed(4)}`;
   let m = humanMatCache.get(key);
   if (m) return m;
   m = src.clone();
@@ -701,9 +705,25 @@ function outfitMaterial(
       shader.uniforms.uDye2 = { value: acc };
       shader.uniforms.uDyeMix = { value: skin ? 1.0 : 0.82 };
       shader.uniforms.uPattern = { value: skin ? 0 : PATTERN_ID[pattern] };
+      shader.uniforms.uBindK = { value: k };
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vClothPos;\nvarying vec3 vClothNrm;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvClothPos = position;\nvClothNrm = normal;');
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform float uBindK;\nattribute vec3 aBind;\nattribute vec3 aBindN;\nvarying vec3 vClothPos;\nvarying vec3 vClothNrm;',
+        )
+        // Prints live in the skeleton's bind space (metres), shared by every outfit piece: the raw
+        // attribute is quantized per mesh, so using it directly stretched each piece differently (see bindSpace).
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          #ifdef USE_SKINNING
+            vClothPos = aBind * uBindK;
+            vClothNrm = normalize(aBindN);
+          #else
+            vClothPos = aBind * uBindK;
+            vClothNrm = normalize(aBindN);
+          #endif`,
+        );
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
@@ -721,9 +741,17 @@ function outfitMaterial(
                        mix(mix(h3(i + vec3(0,0,1)), h3(i + vec3(1,0,1)), f.x), mix(h3(i + vec3(0,1,1)), h3(i + vec3(1,1,1)), f.x), f.y), f.z);
           }
           float fbm(vec3 p) { return vn(p) * 0.6 + vn(p * 2.1) * 0.3 + vn(p * 4.3) * 0.1; }
+          // Box-filtered square wave (duty d): stripes fade to their average instead of shimmering into moiré.
+          float sqI(float t, float d) { return floor(t) * d + max(fract(t) - (1.0 - d), 0.0); }
+          float stripe(float x, float d) {
+            float w = max(fwidth(x), 1e-4);
+            return (sqI(x + 0.5 * w, d) - sqI(x - 0.5 * w, d)) / w;
+          }
           // Returns the cloth colour for the active print; 'base' is the dyed texture shading.
           vec3 clothPrint(vec3 base, float shade) {
             vec3 p = vClothPos * 1.0;
+            // Hands (gloves) stay plain: arms lie along X in the bind pose.
+            if (abs(p.x) > 0.6) return base;
             if (uPattern == 1) { // woodland camo: four blotch colours
               float a = fbm(p * 7.0); float b = fbm(p * 7.0 + 19.3);
               vec3 c = uDye;
@@ -744,19 +772,22 @@ function outfitMaterial(
               return c * shade;
             }
             if (uPattern == 4) { // telnyashka: horizontal stripes
-              float s = step(0.5, fract(p.y * 46.0));
+              // Around the body on the torso, around the arm on the sleeves (arms lie along X in the bind pose).
+              float coord = abs(p.x) > 0.21 ? abs(p.x) : p.y;
+              float s = stripe(coord * 36.0, 0.42);
+              if (p.y < 0.92) s = 1.0;
               return mix(uDye2, uDye, s) * shade;
             }
             if (uPattern == 5) { // flannel plaid
-              float x = step(0.72, fract(p.x * 14.0 + p.z * 14.0));
-              float y = step(0.72, fract(p.y * 14.0));
-              float t = step(0.93, fract(p.x * 42.0 + p.z * 42.0)) + step(0.93, fract(p.y * 42.0));
+              float x = stripe(p.x * 14.0 + p.z * 14.0, 0.28);
+              float y = stripe(p.y * 14.0, 0.28);
+              float t = stripe(p.x * 42.0 + p.z * 42.0, 0.07) + stripe(p.y * 42.0, 0.07);
               vec3 c = mix(uDye, uDye2, max(x, y) * 0.65);
-              return mix(c, vec3(0.85), min(t, 1.0) * 0.25) * shade;
+              return mix(c, vec3(0.85), min(t, 1.0) * 0.12) * shade;
             }
             if (uPattern == 6) { // tracksuit: two stripes down the outer sides
               float side = smoothstep(0.78, 0.92, abs(vClothNrm.x));
-              float bands = step(0.5, fract(p.z * 60.0 + p.y * 2.0));
+              float bands = stripe(p.z * 60.0 + p.y * 2.0, 0.5);
               return mix(uDye, uDye2, side * bands) * shade;
             }
             if (uPattern == 7) { // denim: twill noise
@@ -808,6 +839,40 @@ function outfitPieces(
     out.push({ src, color, pattern });
   }
   return out;
+}
+
+const bindDone = new WeakSet<THREE.BufferGeometry>();
+/**
+ * Adds aBind/aBindN: each vertex in the skeleton's rest-pose space. The packs' meshes are quantized and the
+ * de-quantization lives in the inverse bind matrices, so rest bone world × bone inverse recovers it.
+ */
+function bindSpace(src: THREE.SkinnedMesh): void {
+  const geo = src.geometry;
+  if (bindDone.has(geo)) return;
+  bindDone.add(geo);
+  const bone = src.skeleton.bones[0]!;
+  bone.updateWorldMatrix(true, false);
+  const d = new THREE.Matrix4()
+    .multiplyMatrices(bone.matrixWorld, src.skeleton.boneInverses[0]!)
+    .multiply(src.bindMatrix);
+  const nm = new THREE.Matrix3().getNormalMatrix(d);
+  const pos = geo.attributes.position!;
+  const nor = geo.attributes.normal;
+  const b = new Float32Array(pos.count * 3);
+  const bn = new Float32Array(pos.count * 3);
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i)
+      .applyMatrix4(d)
+      .toArray(b, i * 3);
+    if (nor)
+      v.fromBufferAttribute(nor, i)
+        .applyMatrix3(nm)
+        .normalize()
+        .toArray(bn, i * 3);
+  }
+  geo.setAttribute('aBind', new THREE.BufferAttribute(b, 3));
+  geo.setAttribute('aBindN', new THREE.BufferAttribute(bn, 3));
 }
 
 function shadeHex(c: number, k: number): number {
@@ -1057,6 +1122,9 @@ export class CharacterView {
   private held: THREE.Object3D | null = null;
   private heldKind: 'gun' | 'melee' | null = null;
   private heldLen = 0;
+  private reverseGrip = false;
+  /** index_01, middle_01, pinky_01, thumb_01 of the right hand: they define the fist the weapon sits in. */
+  private fingers: (THREE.Bone | null)[] = [];
   private handR: THREE.Bone | null = null;
   private handL: THREE.Bone | null = null;
   private aimT = 0;
@@ -1109,8 +1177,10 @@ export class CharacterView {
             : worldMat(m.material as THREE.MeshStandardMaterial, u, look.zombie ? 0xc8c0a0 : null);
         m.frustumCulled = false;
       }
-      this.model.scale.setScalar(heightScale(src, look.sex === 'f' ? 1.66 : 1.8));
+      const bindK = heightScale(src, look.sex === 'f' ? 1.66 : 1.8);
+      this.model.scale.setScalar(bindK);
       for (const piece of outfit ?? []) {
+        bindSpace(piece.src);
         const mats = Array.isArray(piece.src.material) ? piece.src.material : [piece.src.material];
         const dressed = mats.map((mt) => {
           const skin = /Regular/.test(mt.name);
@@ -1122,6 +1192,7 @@ export class CharacterView {
             false,
             piece.pattern,
             look.accent,
+            bindK,
           );
         });
         const worn = attachSkinned(
@@ -1136,6 +1207,9 @@ export class CharacterView {
     this.root.add(this.model);
     this.handR = this.skinned.skeleton.getBoneByName('hand_r') ?? null;
     this.handL = this.skinned.skeleton.getBoneByName('hand_l') ?? null;
+    this.fingers = ['index_01_r', 'middle_01_r', 'pinky_01_r', 'thumb_01_r'].map(
+      (n) => this.skinned.skeleton.getBoneByName(n) ?? null,
+    );
     this.mixer = new THREE.AnimationMixer(this.model);
     this.buildBody(shadows);
     this.root.add(this.gear);
@@ -1241,17 +1315,20 @@ export class CharacterView {
     const cs = chest.getSize(new THREE.Vector3());
 
     for (const m of this.outfitMeshes) if (/Hood/.test(m.name)) m.visible = !s.helmet;
-    const hat = !s.helmet && this.look.hat && !this.look.zombie ? this.look.hat : null;
+    // No hat over a raised hood.
+    const hat =
+      !s.helmet && this.look.hat && !this.look.zombie && this.look.topStyle !== 'hoodie' ? this.look.hat : null;
     // Hats and helmets sit over short hair; long hair stays (it hangs below the rim).
     for (const h of this.hairMeshes) h.visible = !(s.helmet || (hat && hat !== 'bandana')) || /Long/.test(h.name);
     if (hat) {
-      const brow = hc.y + hs.y * (hat === 'cap' ? 0.1 : 0.06);
-      const top = head.max.y + hs.y * (hat === 'bandana' ? -0.05 : 0.07);
+      // A bandana is a band round the forehead; the rest cover the crown.
+      const brow = hc.y + hs.y * (hat === 'cap' ? 0.1 : hat === 'bandana' ? 0.2 : 0.06);
+      const top = hat === 'bandana' ? brow + hs.y * 0.24 : head.max.y + hs.y * 0.07;
       add(
         /^head$/i,
         fit(
           hatModel(hat, this.look.hatColor ?? 0x2a2a2a),
-          new THREE.Vector3(hs.x * 1.22, top - brow, hs.z * 1.2),
+          new THREE.Vector3(hs.x * 1.16, top - brow, hs.z * 1.15),
           new THREE.Vector3(hc.x, brow, hc.z - hs.z * 0.03),
         ),
       );
@@ -1357,12 +1434,15 @@ export class CharacterView {
     this.heldKind = null;
     if (held) {
       const d = getDef(held.def);
-      const src = d.melee ? this.lib.melee.get(held.def) : this.lib.weapons.get(held.def);
+      const src = d.melee ? meleeModel(held.def) : this.lib.weapons.get(held.def);
       if (src) {
-        this.held = d.melee ? src.clone() : buildGun(this.lib, held)!;
+        this.held = d.melee ? src : buildGun(this.lib, held)!;
         this.heldKind = d.melee ? 'melee' : 'gun';
-        this.heavyMelee = /^(axe|sledge|bat|crowbar)$/.test(held.def);
-        this.heldLen = new THREE.Box3().setFromObject(src).getSize(tmpV).z;
+        this.heavyMelee = HEAVY_MELEE.has(held.def);
+        this.reverseGrip = REVERSE_GRIP.has(held.def);
+        const b = new THREE.Box3().setFromObject(src);
+        this.heldLen = d.melee ? b.max.z : b.getSize(tmpV).z;
+        if (d.melee) this.held.matrixAutoUpdate = false;
         this.gear.add(this.held);
       }
     }
@@ -1490,11 +1570,13 @@ export class CharacterView {
       this.oneShot.fadeOut(0.12);
       this.oneShot = null;
     }
-    // Treating wounds / eating: keep the consume gesture going while the use timer runs.
-    if (a.useT > 0 && !this.oneShot) this.consuming();
+    // Treating wounds / eating: a looping gesture for the whole use timer, weapon put away, item in hand.
+    const treat = this.updateTreat(a, moving);
     const gun = this.heldKind === 'gun';
     let stance: string | null = null;
-    if (zombie || talking || (sprint && moving)) stance = null;
+    if (treat === 'kneel') stance = null;
+    else if (treat) stance = treat;
+    else if (zombie || talking || (sprint && moving)) stance = null;
     else if (gun && (alerted || this.aimT > 0 || (a.faction === 'player' && a.aiming))) stance = 'Pistol_Aim_Neutral';
     else if (gun) stance = 'Pistol_Idle_Loop';
     else if (this.heldKind === 'melee' && (alerted || a.faction === 'player')) stance = 'Sword_Idle';
@@ -1502,7 +1584,8 @@ export class CharacterView {
     const upperBusy = !!this.upper || (!!this.oneShot && this.oneShotLayer === 'upper');
     const layer: 'lower' | 'full' = upperBusy ? 'lower' : 'full';
 
-    if (zombie) {
+    if (treat === 'kneel') this.setLower('Fixing_Kneeling', 1, 'full');
+    else if (zombie) {
       if (moving) this.setLower('Zombie_Walk_Fwd_Loop', speed / 1.2, layer);
       else this.setLower('Zombie_Idle_Loop', 1, layer);
     } else if (moving) {
@@ -1525,6 +1608,58 @@ export class CharacterView {
       this.twistLegs(a, dt, moving && !zombie && !sprint && !a.crouching ? along : null);
     }
     this.placeHeld(a);
+    this.placeTreatProp();
+  }
+
+  private treatDef: string | null = null;
+  private treatProp: THREE.Object3D | null = null;
+
+  /**
+   * Which gesture fits the item: surgery kits and splints are done kneeling (when standing still),
+   * dressings and tourniquets are wrapped at the waist, injectors are a jab, everything else goes to the mouth.
+   * Returns the upper-body clip, 'kneel' for the full-body kneel, or null when not using anything.
+   */
+  private updateTreat(a: Actor, moving: boolean): string | null {
+    const def = a.useT > 0 ? a.useDef : null;
+    if (def !== this.treatDef) {
+      this.treatDef = def;
+      if (this.treatProp) {
+        this.gear.remove(this.treatProp);
+        this.treatProp = null;
+      }
+      if (this.held) this.held.visible = !def;
+      if (def) {
+        const item = { uid: '', def, stack: 1 } as unknown as ItemInstance;
+        const m = itemModel(this.lib, item);
+        if (m) {
+          // Hand-sized: the longest side ~14 cm whatever the model's own size.
+          const size = new THREE.Box3().setFromObject(m.obj).getSize(tmpV);
+          m.obj.scale.multiplyScalar(Math.min(1, 0.14 / Math.max(size.x, size.y, size.z, 1e-3)));
+          this.treatProp = new THREE.Group().add(m.obj);
+          this.gear.add(this.treatProp);
+        }
+        if (this.oneShot) {
+          this.oneShot.fadeOut(0.1);
+          this.oneShot = null;
+        }
+      }
+    }
+    if (!def) return null;
+    const d = getDef(def);
+    const m = d.med;
+    if (m && (m.surgery || m.fixesFracture)) return moving ? 'Fixing_Kneeling' : 'kneel';
+    if (m && (m.stopsLight || m.stopsHeavy || m.resource > 0)) return moving ? 'Fixing_Kneeling' : 'kneel';
+    if (m && /morphine|stim|adren|propital|zagustin|etg|sj/.test(def)) return 'Interact';
+    return 'Consume';
+  }
+
+  private placeTreatProp(): void {
+    const p = this.treatProp;
+    if (!p || !this.handL) return;
+    this.handL.getWorldPosition(tmpV);
+    this.gear.worldToLocal(tmpV);
+    p.position.copy(tmpV);
+    p.position.y -= 0.02;
   }
 
   private legYaw = 0;
@@ -1577,14 +1712,46 @@ export class CharacterView {
       h.position.z += this.heldLen < 0.4 ? this.heldLen * 0.45 : this.heldLen * 0.22;
       h.position.y += 0.04;
       h.rotation.set(0, 0, 0);
-    } else {
-      this.gear.worldToLocal(tmpV);
-      h.position.copy(tmpV);
-      // Blade up and slightly forward; swing animation moves the hand.
-      h.rotation.set(-Math.PI / 2 + 0.5, 0, 0);
-      h.position.addScaledVector(new THREE.Vector3(0, 1, 0.5).normalize(), this.heldLen * 0.38);
-    }
+    } else this.placeInFist(h);
     void a;
+  }
+
+  /**
+   * Melee weapons sit in the closed fist: the grip runs across the palm from the little finger to the
+   * index knuckle, the edge faces where the knuckles point. Built from the hand and finger bones every
+   * frame, so the weapon follows wrist and finger animation instead of floating by the forearm.
+   */
+  private placeInFist(h: THREE.Object3D): void {
+    const [index, middle, pinky, thumb] = this.fingers;
+    if (!index || !middle || !pinky || !thumb) return;
+    const w = this.handR!.getWorldPosition(_fw);
+    const m = middle.getWorldPosition(_fm);
+    const across = index.getWorldPosition(_fa).sub(pinky.getWorldPosition(_fp));
+    const fwd = _ff.subVectors(m, w);
+    const palmLen = fwd.length();
+    fwd.normalize();
+    across.addScaledVector(fwd, -across.dot(fwd)).normalize();
+    // Palm normal: the side the thumb folds over.
+    const palm = _fn.crossVectors(fwd, across);
+    if (palm.dot(thumb.getWorldPosition(_ft).sub(w)) < 0) palm.negate();
+    // The haft crosses the palm diagonally, leaning towards the fingers.
+    const z = _fz
+      .copy(across)
+      .multiplyScalar(this.reverseGrip ? -1 : 1)
+      .addScaledVector(fwd, 0.35)
+      .normalize();
+    const y = _fy.copy(fwd).addScaledVector(z, -fwd.dot(z)).normalize();
+    const x = _fx.crossVectors(y, z);
+    const grip = _fg
+      .copy(w)
+      .addScaledVector(fwd, palmLen * 0.95)
+      .addScaledVector(palm, palmLen * 0.32);
+    _fq.setFromRotationMatrix(_fmat.makeBasis(x, y, z));
+    // Into gear space (gear is a child of the unscaled root).
+    this.gear.updateWorldMatrix(true, false);
+    _fmat.compose(grip, _fq, _one);
+    h.matrix.copy(this.gear.matrixWorld).invert().multiply(_fmat);
+    h.matrixWorldNeedsUpdate = true;
   }
 
   get muzzle(): THREE.Vector3 {
@@ -1633,6 +1800,20 @@ export class CharacterView {
   }
 }
 
+const _fw = new THREE.Vector3();
+const _fm = new THREE.Vector3();
+const _fa = new THREE.Vector3();
+const _fp = new THREE.Vector3();
+const _ft = new THREE.Vector3();
+const _ff = new THREE.Vector3();
+const _fn = new THREE.Vector3();
+const _fx = new THREE.Vector3();
+const _fy = new THREE.Vector3();
+const _fz = new THREE.Vector3();
+const _fg = new THREE.Vector3();
+const _fq = new THREE.Quaternion();
+const _fmat = new THREE.Matrix4();
+const _one = new THREE.Vector3(1, 1, 1);
 const _pq = new THREE.Quaternion();
 const _rq = new THREE.Quaternion();
 const _up = new THREE.Vector3(0, 1, 0);

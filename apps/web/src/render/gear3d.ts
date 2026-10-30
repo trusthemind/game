@@ -17,7 +17,13 @@ export function gearMat(color: number, rough = 0.8, metal = 0, emissive = 0): TH
   const k = `${color}|${rough}|${metal}|${emissive}`;
   let m = matCache.get(k);
   if (!m) {
-    m = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, emissive, emissiveIntensity: emissive ? 1 : 0 });
+    m = new THREE.MeshStandardMaterial({
+      color,
+      roughness: rough,
+      metalness: metal,
+      emissive,
+      emissiveIntensity: emissive ? 1 : 0,
+    });
     matCache.set(k, m);
   }
   return m;
@@ -39,7 +45,8 @@ function part(g: THREE.BufferGeometry, m: THREE.Material, pos: V3 = [0, 0, 0], r
   mesh.receiveShadow = true;
   return mesh;
 }
-const rbox = (w: number, h: number, d: number, r = Math.min(w, h, d) * 0.18) => new RoundedBoxGeometry(w, h, d, 4, Math.min(r, Math.min(w, h, d) / 2 - 1e-4));
+const rbox = (w: number, h: number, d: number, r = Math.min(w, h, d) * 0.18) =>
+  new RoundedBoxGeometry(w, h, d, 4, Math.min(r, Math.min(w, h, d) / 2 - 1e-4));
 /** Even 'boxes' get a slight bevel: hard 90° edges are what makes small props read as blocks. */
 const box = (w: number, h: number, d: number) => rbox(w, h, d, Math.min(w, h, d) * 0.12);
 const cyl = (rt: number, rb: number, h: number, seg = 32) => new THREE.CylinderGeometry(rt, rb, h, seg);
@@ -53,7 +60,12 @@ const lathe = (pts: [number, number][], seg = 40, phiStart = 0, phiLen = Math.PI
   );
 
 /** A flat panel with rounded corners and an optional neck scoop, extruded `t` thick (front faces +Z). */
-function panel(w: number, h: number, t: number, opts: { radius?: number; scoop?: number; scoopW?: number } = {}): THREE.BufferGeometry {
+function panel(
+  w: number,
+  h: number,
+  t: number,
+  opts: { radius?: number; scoop?: number; scoopW?: number } = {},
+): THREE.BufferGeometry {
   const r = opts.radius ?? Math.min(w, h) * 0.12;
   const s = new THREE.Shape();
   const x0 = -w / 2;
@@ -74,7 +86,14 @@ function panel(w: number, h: number, t: number, opts: { radius?: number; scoop?:
   s.quadraticCurveTo(x0, y1, x0, y1 - r);
   s.lineTo(x0, y0 + r);
   s.quadraticCurveTo(x0, y0, x0 + r, y0);
-  const g = new THREE.ExtrudeGeometry(s, { depth: t, bevelEnabled: true, bevelThickness: t * 0.25, bevelSize: Math.min(0.008, t * 0.4), bevelSegments: 3, curveSegments: 14 });
+  const g = new THREE.ExtrudeGeometry(s, {
+    depth: t,
+    bevelEnabled: true,
+    bevelThickness: t * 0.25,
+    bevelSize: Math.min(0.008, t * 0.4),
+    bevelSegments: 3,
+    curveSegments: 14,
+  });
   g.translate(0, 0, -t / 2);
   return g;
 }
@@ -97,7 +116,8 @@ export function shade(color: number, k: number): number {
 /** MOLLE: horizontal webbing rows across a panel face. */
 function molle(w: number, rows: number, y0: number, z: number, color: number): THREE.Group {
   const g = new THREE.Group();
-  for (let i = 0; i < rows; i++) g.add(part(box(w, 0.012, 0.004), gearMat(shade(color, 0.72), FABRIC), [0, y0 + i * 0.032, z]));
+  for (let i = 0; i < rows; i++)
+    g.add(part(box(w, 0.012, 0.004), gearMat(shade(color, 0.72), FABRIC), [0, y0 + i * 0.032, z]));
   return g;
 }
 
@@ -116,76 +136,378 @@ export function helmetModel(id: string): THREE.Group {
   if (id === 'ssh68') {
     // Soviet steel pot: deep dome, flared rim at the back.
     const m = gearMat(0x56603f, 0.6, 0.35);
-    g.add((g.userData.shell = part(lathe([[0, 0.205], [0.06, 0.2], [0.1, 0.18], [0.125, 0.14], [0.135, 0.09], [0.14, 0.05], [0.152, 0.025], [0.158, 0.02]], 48), m)));
-    g.add(part(new THREE.TorusGeometry(0.155, 0.006, 12, 48), gearMat(0x4a5236, 0.6, 0.4), [0, 0.022, 0], [Math.PI / 2, 0, 0]));
-    g.add(part(new THREE.TorusGeometry(0.11, 0.004, 12, 40, Math.PI), gearMat(0x2a2620, FABRIC), [0, 0.02, 0.0], [0, 0, Math.PI]));
+    g.add(
+      (g.userData.shell = part(
+        lathe(
+          [
+            [0, 0.205],
+            [0.06, 0.2],
+            [0.1, 0.18],
+            [0.125, 0.14],
+            [0.135, 0.09],
+            [0.14, 0.05],
+            [0.152, 0.025],
+            [0.158, 0.02],
+          ],
+          48,
+        ),
+        m,
+      )),
+    );
+    g.add(
+      part(
+        new THREE.TorusGeometry(0.155, 0.006, 12, 48),
+        gearMat(0x4a5236, 0.6, 0.4),
+        [0, 0.022, 0],
+        [Math.PI / 2, 0, 0],
+      ),
+    );
+    g.add(
+      part(
+        new THREE.TorusGeometry(0.11, 0.004, 12, 40, Math.PI),
+        gearMat(0x2a2620, FABRIC),
+        [0, 0.02, 0.0],
+        [0, 0, Math.PI],
+      ),
+    );
   } else if (id === 'zsh') {
     // ZSh-1-2M: rounded composite shell, ear cut-outs and a raised clear visor.
     const shell = gearMat(0x3e4636, 0.55, 0.1);
-    g.add((g.userData.shell = part(lathe([[0, 0.2], [0.07, 0.195], [0.11, 0.17], [0.13, 0.13], [0.138, 0.08], [0.14, 0.03]], 48), shell)));
+    g.add(
+      (g.userData.shell = part(
+        lathe(
+          [
+            [0, 0.2],
+            [0.07, 0.195],
+            [0.11, 0.17],
+            [0.13, 0.13],
+            [0.138, 0.08],
+            [0.14, 0.03],
+          ],
+          48,
+        ),
+        shell,
+      )),
+    );
     for (const sx of [-1, 1]) g.add(part(rbox(0.03, 0.08, 0.1, 0.012), shell, [sx * 0.135, 0.02, -0.01]));
-    const visor = new THREE.MeshStandardMaterial({ color: 0x9fb8c0, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.45 });
-    g.add(part(lathe([[0.146, 0.0], [0.15, 0.04], [0.148, 0.08]], 20, -0.9, 1.8), visor, [0, 0.11, 0.0], [-0.5, 0, 0]));
+    const visor = new THREE.MeshStandardMaterial({
+      color: 0x9fb8c0,
+      roughness: 0.1,
+      metalness: 0.2,
+      transparent: true,
+      opacity: 0.45,
+    });
+    g.add(
+      part(
+        lathe(
+          [
+            [0.146, 0.0],
+            [0.15, 0.04],
+            [0.148, 0.08],
+          ],
+          20,
+          -0.9,
+          1.8,
+        ),
+        visor,
+        [0, 0.11, 0.0],
+        [-0.5, 0, 0],
+      ),
+    );
     g.add(part(box(0.18, 0.012, 0.03), gearMat(0x1a1c1c, 0.4, 0.3), [0, 0.19, 0.1]));
   } else if (id === 'altyn') {
     // Altyn: titanium bowl + heavy faceplate with a vision slit.
     const shell = gearMat(0x4d563a, 0.5, 0.4);
-    g.add((g.userData.shell = part(lathe([[0, 0.21], [0.07, 0.205], [0.115, 0.175], [0.138, 0.13], [0.145, 0.07], [0.148, 0.01]], 48), shell)));
+    g.add(
+      (g.userData.shell = part(
+        lathe(
+          [
+            [0, 0.21],
+            [0.07, 0.205],
+            [0.115, 0.175],
+            [0.138, 0.13],
+            [0.145, 0.07],
+            [0.148, 0.01],
+          ],
+          48,
+        ),
+        shell,
+      )),
+    );
     const plate = new THREE.Group();
-    plate.add(part(new THREE.CylinderGeometry(0.155, 0.155, 0.17, 24, 1, true, -0.85, 1.7), gearMat(0x454d34, 0.45, 0.45), [0, 0, 0]));
+    plate.add(
+      part(
+        new THREE.CylinderGeometry(0.155, 0.155, 0.17, 24, 1, true, -0.85, 1.7),
+        gearMat(0x454d34, 0.45, 0.45),
+        [0, 0, 0],
+      ),
+    );
     plate.add(part(box(0.15, 0.016, 0.02), gearMat(0x0e0f0f, 0.3, 0.2), [0, 0.03, 0.15]));
     plate.position.set(0, 0.06, 0.0);
     g.add(plate);
-    for (const sx of [-1, 1]) g.add(part(cyl(0.012, 0.012, 0.012, 32), gearMat(0x1a1a1a, 0.4, 0.6), [sx * 0.14, 0.13, 0.04], [0, 0, Math.PI / 2]));
+    for (const sx of [-1, 1])
+      g.add(
+        part(cyl(0.012, 0.012, 0.012, 32), gearMat(0x1a1a1a, 0.4, 0.6), [sx * 0.14, 0.13, 0.04], [0, 0, Math.PI / 2]),
+      );
   } else {
-    g.add((g.userData.shell = part(lathe([[0, 0.2], [0.1, 0.18], [0.14, 0.1], [0.145, 0.02]], 48), gearMat(0x4a4a40, 0.6, 0.2))));
+    g.add(
+      (g.userData.shell = part(
+        lathe(
+          [
+            [0, 0.2],
+            [0.1, 0.18],
+            [0.14, 0.1],
+            [0.145, 0.02],
+          ],
+          48,
+        ),
+        gearMat(0x4a4a40, 0.6, 0.2),
+      )),
+    );
   }
   return g;
 }
 
 // ── Headwear ─────────────────────────────────────────────────────────────────
 
+const clothCache = new Map<string, THREE.MeshStandardMaterial>();
+/**
+ * Textile surfaces for headwear, all procedural in the shader: 'knit' (vertical rib with a purl row
+ * texture), 'twill' (fine diagonal weave, for caps), 'fur' (clumpy pile with lighter tips).
+ */
+function clothMat(color: number, kind: 'knit' | 'twill' | 'fur'): THREE.MeshStandardMaterial {
+  const key = `${kind}:${color}`;
+  let m = clothCache.get(key);
+  if (m) return m;
+  m = new THREE.MeshStandardMaterial({ color, roughness: kind === 'twill' ? 0.85 : 1, metalness: 0 });
+  const id = kind === 'knit' ? 0 : kind === 'twill' ? 1 : 2;
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCloth;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCloth = position;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        varying vec3 vCloth;
+        float ch(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+        float cn(vec3 p) {
+          vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(mix(ch(i), ch(i + vec3(1,0,0)), f.x), mix(ch(i + vec3(0,1,0)), ch(i + vec3(1,1,0)), f.x), f.y),
+                     mix(mix(ch(i + vec3(0,0,1)), ch(i + vec3(1,0,1)), f.x), mix(ch(i + vec3(0,1,1)), ch(i + vec3(1,1,1)), f.x), f.y), f.z);
+        }`,
+      )
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+        {
+          vec3 p = vCloth;
+          float a = atan(p.z, p.x);
+          float k = 1.0;
+          #if ${id} == 0
+            float rib = abs(sin(a * 48.0));
+            float purl = abs(sin(p.y * 260.0 + step(0.5, fract(a * 48.0 / 6.2832)) * 1.57));
+            k = 0.72 + 0.2 * rib + 0.1 * purl + 0.08 * cn(p * 90.0);
+          #elif ${id} == 1
+            k = 0.86 + 0.1 * abs(sin((p.x + p.y + p.z) * 900.0)) + 0.06 * cn(p * 120.0);
+          #else
+            float clump = cn(p * 70.0) * 0.6 + cn(p * 210.0) * 0.4;
+            k = 0.6 + 0.65 * clump;
+          #endif
+          diffuseColor.rgb *= k;
+        }`,
+      );
+  };
+  m.customProgramCacheKey = () => `cloth${id}`;
+  clothCache.set(key, m);
+  return m;
+}
+
 /** Civilian hats, same frame as helmets (rim at y=0, fitted by `userData.shell`). */
 export function hatModel(kind: string, color: number): THREE.Group {
   const g = new THREE.Group();
-  const knit = gearMat(color, 0.95);
   if (kind === 'beanie') {
-    // Knit dome with a turned-up ribbed cuff.
-    g.add((g.userData.shell = part(lathe([[0, 0.17], [0.05, 0.168], [0.09, 0.155], [0.118, 0.125], [0.132, 0.085], [0.136, 0.04], [0.136, 0.0]], 40), knit)));
-    const cuff = lathe([[0.139, -0.005], [0.145, 0.0], [0.146, 0.045], [0.14, 0.05]], 40);
-    g.add(part(cuff, gearMat(shade(color, 0.9), 0.95)));
-    for (let i = 0; i < 4; i++) g.add(part(new THREE.TorusGeometry(0.146, 0.0022, 6, 48), gearMat(shade(color, 0.8), 0.95), [0, 0.008 + i * 0.011, 0], [Math.PI / 2, 0, 0]));
+    // Slouchy knit: snug at the brow, crown drawn in, a thick folded ribbed cuff.
+    const knit = clothMat(color, 'knit');
+    g.add(
+      (g.userData.shell = part(
+        lathe(
+          [
+            [0, 0.162],
+            [0.035, 0.16],
+            [0.075, 0.15],
+            [0.105, 0.13],
+            [0.125, 0.1],
+            [0.135, 0.065],
+            [0.137, 0.03],
+            [0.136, 0.0],
+          ],
+          48,
+        ),
+        knit,
+      )),
+    );
+    const cuff = lathe(
+      [
+        [0.137, -0.006],
+        [0.146, -0.004],
+        [0.149, 0.012],
+        [0.149, 0.04],
+        [0.146, 0.05],
+        [0.138, 0.052],
+      ],
+      48,
+    );
+    g.add(part(cuff, clothMat(shade(color, 0.92), 'knit')));
   } else if (kind === 'cap') {
-    // Baseball cap: six-panel crown and a curved bill.
-    g.add((g.userData.shell = part(lathe([[0, 0.12], [0.06, 0.117], [0.1, 0.1], [0.125, 0.065], [0.136, 0.025], [0.138, 0.0]], 40), knit)));
-    const bill = new THREE.CylinderGeometry(0.11, 0.11, 0.008, 40, 1, false, -0.75, 1.5);
-    bill.translate(0, 0, 0);
-    const b = part(bill, gearMat(shade(color, 0.92), 0.85), [0, 0.006, 0.06], [-0.12, 0, 0]);
-    b.scale.set(1, 1, 1.15);
-    g.add(b);
-    g.add(part(new THREE.SphereGeometry(0.01, 12, 8), gearMat(shade(color, 0.85), 0.85), [0, 0.12, 0]));
-  } else if (kind === 'ushanka') {
-    // Fur crown, fur brim folded up at the front, ear flaps tied up on top.
-    const fur = gearMat(0x6a5440, 1);
-    g.add((g.userData.shell = part(lathe([[0, 0.15], [0.07, 0.148], [0.115, 0.12], [0.138, 0.08], [0.145, 0.03], [0.146, 0.0]], 40), knit)));
-    g.add(part(lathe([[0.15, -0.01], [0.168, 0.0], [0.17, 0.055], [0.15, 0.065]], 40, -1.0, 2.0), fur));
-    for (const sx of [-1, 1]) {
-      const flap = part(rbox(0.035, 0.11, 0.1, 0.02), fur, [sx * 0.15, 0.04, -0.01], [0, 0, sx * -0.35]);
-      g.add(flap);
+    // Six-panel cap: seams from the button, stitched curved bill, a sweatband edge.
+    const tw = clothMat(color, 'twill');
+    g.add(
+      (g.userData.shell = part(
+        lathe(
+          [
+            [0, 0.118],
+            [0.05, 0.115],
+            [0.092, 0.1],
+            [0.12, 0.068],
+            [0.134, 0.03],
+            [0.138, 0.0],
+          ],
+          48,
+        ),
+        tw,
+      )),
+    );
+    const seam = gearMat(shade(color, 0.6), 0.9);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+      const pts: THREE.Vector3[] = [];
+      for (let t = 0; t <= 1.0001; t += 0.1) {
+        const ang = t * 1.48;
+        pts.push(
+          new THREE.Vector3(
+            Math.cos(a) * Math.sin(ang) * 0.1395,
+            0.001 + Math.cos(ang) * 0.119,
+            Math.sin(a) * Math.sin(ang) * 0.1395,
+          ),
+        );
+      }
+      g.add(part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, 0.0018, 4), seam));
     }
-    g.add(part(rbox(0.26, 0.03, 0.12, 0.014), fur, [0, 0.13, -0.03]));
+    g.add(part(new THREE.SphereGeometry(0.011, 14, 10), tw, [0, 0.118, 0]));
+    // Bill: a curved band in front, slightly drooped.
+    const bill = new THREE.CylinderGeometry(0.12, 0.12, 0.007, 48, 1, false, -0.8, 1.6);
+    bill.rotateY(Math.PI / 2);
+    const pos = bill.attributes.position!;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      pos.setY(i, pos.getY(i) - x * x * 1.4);
+    }
+    bill.computeVertexNormals();
+    const b = part(bill, clothMat(shade(color, 0.95), 'twill'), [0, 0.008, 0.05], [-0.14, 0, 0]);
+    b.scale.set(1, 1, 1.2);
+    g.add(b);
+    for (const r of [0.135, 0.15, 0.165])
+      g.add(
+        part(
+          new THREE.TorusGeometry(r, 0.0012, 4, 40, 1.4),
+          seam,
+          [0, 0.0135, 0.05 - 0.002],
+          [Math.PI / 2 - 0.14, 0, Math.PI / 2 - 0.7],
+        ),
+      );
+  } else if (kind === 'ushanka') {
+    // Fur hat: cloth crown, deep fur brim turned up, ear flaps tied over the top.
+    const fur = clothMat(0x6a5440, 'fur');
+    g.add(
+      (g.userData.shell = part(
+        lathe(
+          [
+            [0, 0.15],
+            [0.07, 0.148],
+            [0.115, 0.122],
+            [0.138, 0.08],
+            [0.145, 0.03],
+            [0.146, 0.0],
+          ],
+          48,
+        ),
+        clothMat(color, 'twill'),
+      )),
+    );
+    g.add(
+      part(
+        lathe(
+          [
+            [0.148, -0.012],
+            [0.166, -0.006],
+            [0.172, 0.03],
+            [0.168, 0.064],
+            [0.15, 0.07],
+          ],
+          48,
+          -1.1,
+          2.2,
+        ),
+        fur,
+      ),
+    );
+    // Ear flaps down over the ears, the tie cords dangling.
+    for (const sx of [-1, 1]) {
+      const flap = part(new THREE.SphereGeometry(0.075, 20, 14), fur, [sx * 0.15, -0.025, -0.005], [0, 0, sx * 0.1]);
+      flap.scale.set(0.3, 1, 0.85);
+      g.add(flap);
+      g.add(
+        part(new THREE.CylinderGeometry(0.0025, 0.0025, 0.07, 6), gearMat(0x2a2218, 0.9), [sx * 0.155, -0.125, 0.01]),
+      );
+    }
+    // Back flap.
+    g.add(
+      part(
+        lathe(
+          [
+            [0.15, -0.06],
+            [0.165, -0.04],
+            [0.168, 0.0],
+            [0.15, 0.01],
+          ],
+          32,
+          Math.PI - 0.9,
+          1.8,
+        ),
+        fur,
+      ),
+    );
   } else {
-    // Bandana tied round the head.
-    g.add((g.userData.shell = part(lathe([[0.137, 0.0], [0.14, 0.02], [0.138, 0.05], [0.13, 0.075]], 40), knit)));
-    g.add(part(new THREE.SphereGeometry(0.018, 12, 10), knit, [0, 0.03, -0.14]));
-    for (const sx of [-1, 1]) g.add(part(rbox(0.02, 0.07, 0.008, 0.003), knit, [sx * 0.015, -0.01, -0.15], [0.2, 0, sx * 0.3]));
+    // Bandana tied round the head: a band with a knot and tails at the back.
+    const knit = clothMat(color, 'twill');
+    g.add(
+      (g.userData.shell = part(
+        lathe(
+          [
+            [0.137, 0.0],
+            [0.141, 0.02],
+            [0.139, 0.05],
+            [0.131, 0.075],
+          ],
+          48,
+        ),
+        knit,
+      )),
+    );
+    g.add(part(new THREE.SphereGeometry(0.018, 14, 10), knit, [0, 0.03, -0.14]));
+    for (const sx of [-1, 1])
+      g.add(part(rbox(0.024, 0.08, 0.006, 0.003), knit, [sx * 0.016, -0.015, -0.148], [0.25, 0, sx * 0.3]));
   }
   return g;
 }
 
 // ── Body armour & plate carriers ─────────────────────────────────────────────
 
-const ARMOR_LOOK: Record<string, { color: number; kind: 'soft' | 'vest' | 'carrier' | 'slick'; collar?: boolean; groin?: boolean; pouches?: number }> = {
+const ARMOR_LOOK: Record<
+  string,
+  { color: number; kind: 'soft' | 'vest' | 'carrier' | 'slick'; collar?: boolean; groin?: boolean; pouches?: number }
+> = {
   paca: { color: 0x3e4a56, kind: 'soft' },
   '6b23': { color: 0x5f6448, kind: 'vest', collar: true, groin: true },
   gzhel: { color: 0x4c5640, kind: 'vest', collar: true, groin: true, pouches: 2 },
@@ -205,19 +527,53 @@ export function armorModel(id: string): THREE.Group {
   const t = look.kind === 'soft' ? 0.022 : look.kind === 'vest' ? 0.04 : 0.032;
   const y0 = look.kind === 'slick' || look.kind === 'carrier' ? 0.1 : 0.0;
   // Front and back panels.
-  g.add(part(panel(W, H, t, { scoop: look.kind === 'soft' || look.kind === 'vest' ? 0.06 : 0.035, scoopW: 0.5 }), fabric, [0, y0, D / 2]));
+  g.add(
+    part(panel(W, H, t, { scoop: look.kind === 'soft' || look.kind === 'vest' ? 0.06 : 0.035, scoopW: 0.5 }), fabric, [
+      0,
+      y0,
+      D / 2,
+    ]),
+  );
   g.add(part(panel(W, H * 0.98, t, { scoop: 0.025, scoopW: 0.45 }), fabric, [0, y0, -D / 2]));
   // Sides (cummerbund) wrap round the ribs.
-  for (const sx of [-1, 1]) g.add(part(rbox(0.03, H * (look.kind === 'slick' ? 0.25 : 0.45), D * 0.9, 0.01), gearMat(shade(c, 0.85), FABRIC), [sx * (W / 2 - 0.005), y0 + H * 0.28, 0]));
+  for (const sx of [-1, 1])
+    g.add(
+      part(rbox(0.03, H * (look.kind === 'slick' ? 0.25 : 0.45), D * 0.9, 0.01), gearMat(shade(c, 0.85), FABRIC), [
+        sx * (W / 2 - 0.005),
+        y0 + H * 0.28,
+        0,
+      ]),
+    );
   // Shoulder straps.
-  for (const sx of [-1, 1]) g.add(part(shoulderStrap(D / 2, 0.03, 0.012), gearMat(shade(c, 0.9), FABRIC), [sx * W * 0.28, y0 + H - 0.02, 0], [0, Math.PI / 2, 0]));
+  for (const sx of [-1, 1])
+    g.add(
+      part(
+        shoulderStrap(D / 2, 0.03, 0.012),
+        gearMat(shade(c, 0.9), FABRIC),
+        [sx * W * 0.28, y0 + H - 0.02, 0],
+        [0, Math.PI / 2, 0],
+      ),
+    );
   if (look.kind === 'carrier' || look.kind === 'slick') {
     // Plates visible as stiff raised panels.
-    g.add(part(panel(W * 0.82, H * 0.8, 0.018, { radius: 0.04 }), gearMat(shade(c, 1.08), 0.75), [0, y0 + H * 0.12, D / 2 + t * 0.7]));
+    g.add(
+      part(panel(W * 0.82, H * 0.8, 0.018, { radius: 0.04 }), gearMat(shade(c, 1.08), 0.75), [
+        0,
+        y0 + H * 0.12,
+        D / 2 + t * 0.7,
+      ]),
+    );
     g.add(molle(W * 0.78, 3, y0 + H * 0.2, D / 2 + t * 0.7 + 0.012, c));
   }
   if (look.collar) {
-    g.add(part(new THREE.TorusGeometry(0.11, 0.025, 12, 40, Math.PI * 1.25), gearMat(shade(c, 0.9), FABRIC), [0, y0 + H + 0.01, -0.01], [Math.PI / 2, 0, Math.PI * -0.125 + Math.PI]));
+    g.add(
+      part(
+        new THREE.TorusGeometry(0.11, 0.025, 12, 40, Math.PI * 1.25),
+        gearMat(shade(c, 0.9), FABRIC),
+        [0, y0 + H + 0.01, -0.01],
+        [Math.PI / 2, 0, Math.PI * -0.125 + Math.PI],
+      ),
+    );
   }
   if (look.groin) g.add(part(panel(W * 0.42, 0.12, 0.02, { radius: 0.04 }), fabric, [0, y0 - 0.1, D / 2 + 0.005]));
   const n = look.pouches ?? 0;
@@ -265,12 +621,23 @@ export function rigModel(id: string): THREE.Group {
   }
   // Harness straps crossing over the shoulders.
   for (const sx of [-1, 1]) {
-    g.add(part(box(0.04, 0.42, 0.008), gearMat(shade(c, 0.85), FABRIC), [sx * 0.09, 0.26, D / 2 + 0.01], [0, 0, sx * 0.08]));
-    g.add(part(shoulderStrap(D / 2, 0.035, 0.01), gearMat(shade(c, 0.85), FABRIC), [sx * 0.09, 0.45, 0], [0, Math.PI / 2, 0]));
+    g.add(
+      part(box(0.04, 0.42, 0.008), gearMat(shade(c, 0.85), FABRIC), [sx * 0.09, 0.26, D / 2 + 0.01], [0, 0, sx * 0.08]),
+    );
+    g.add(
+      part(
+        shoulderStrap(D / 2, 0.035, 0.01),
+        gearMat(shade(c, 0.85), FABRIC),
+        [sx * 0.09, 0.45, 0],
+        [0, Math.PI / 2, 0],
+      ),
+    );
   }
   const y = look.kind === 'belt' ? -0.04 : 0.1;
   // Chest/belt panel with a row of mag pouches.
-  g.add(part(rbox(0.34, look.kind === 'belt' ? 0.06 : 0.14, 0.03, 0.01), gearMat(c, FABRIC), [0, y + 0.06, D / 2 + 0.02]));
+  g.add(
+    part(rbox(0.34, look.kind === 'belt' ? 0.06 : 0.14, 0.03, 0.01), gearMat(c, FABRIC), [0, y + 0.06, D / 2 + 0.02]),
+  );
   for (let i = 0; i < look.pouches; i++) {
     const p = pouch(0.07, 0.15, 0.045, c, shade(c, 0.85));
     p.position.set((i - (look.pouches - 1) / 2) * 0.08, y, D / 2 + 0.05);
@@ -290,7 +657,9 @@ export function slingModel(): THREE.Group {
   const g = new THREE.Group();
   g.add(part(rbox(0.26, 0.18, 0.09, 0.04), gearMat(0x4a4e3c, FABRIC), [0, 0.09, 0]));
   g.add(part(rbox(0.22, 0.06, 0.1, 0.02), gearMat(0x3c4030, FABRIC), [0, 0.16, 0.005]));
-  g.add(part(new THREE.TorusGeometry(0.2, 0.012, 12, 40, Math.PI), gearMat(0x2c2e24, FABRIC), [0, 0.17, 0], [0, 0, 0.6]));
+  g.add(
+    part(new THREE.TorusGeometry(0.2, 0.012, 12, 40, Math.PI), gearMat(0x2c2e24, FABRIC), [0, 0.17, 0], [0, 0, 0.6]),
+  );
   return g;
 }
 
@@ -316,31 +685,80 @@ const ROUNDS: Record<string, Round> = {
   '7.62x54': { len: 0.077, case: 0.0122, neck: 0.0085, bullet: 0.032, caseColor: BRASS },
   '12g': { len: 0.07, case: 0.0185, neck: 0.0185, bullet: 0, caseColor: BRASS, shell: 0xa2382c },
 };
-const AMMO_TIP: Record<string, number> = { a_545bs: 0x111111, a_762bp: 0xb02a20, a_556m995: 0x111111, a_9x19ap: 0x2a2a2a, a_54r7n1: 0xd6d6d6, a_12slug: 0x3a6a3a };
+const AMMO_TIP: Record<string, number> = {
+  a_545bs: 0x111111,
+  a_762bp: 0xb02a20,
+  a_556m995: 0x111111,
+  a_9x19ap: 0x2a2a2a,
+  a_54r7n1: 0xd6d6d6,
+  a_12slug: 0x3a6a3a,
+};
 
 function cartridge(r: Round, tip?: number): THREE.Group {
   const g = new THREE.Group();
   if (r.shell) {
     // Shotgun shell: plastic hull on a brass head.
-    g.add(part(cyl(r.case / 2, r.case / 2, r.len * 0.78, 32), gearMat(tip ?? r.shell, 0.55), [0, r.len * 0.22 + r.len * 0.39, 0]));
-    g.add(part(cyl(r.case / 2 * 1.06, r.case / 2 * 1.06, r.len * 0.22, 32), gearMat(BRASS, 0.3, 0.9), [0, r.len * 0.11, 0]));
+    g.add(
+      part(cyl(r.case / 2, r.case / 2, r.len * 0.78, 32), gearMat(tip ?? r.shell, 0.55), [
+        0,
+        r.len * 0.22 + r.len * 0.39,
+        0,
+      ]),
+    );
+    g.add(
+      part(cyl((r.case / 2) * 1.06, (r.case / 2) * 1.06, r.len * 0.22, 32), gearMat(BRASS, 0.3, 0.9), [
+        0,
+        r.len * 0.11,
+        0,
+      ]),
+    );
     return g;
   }
   const caseLen = r.len - r.bullet * 0.75;
   const R = r.case / 2;
   const N = r.neck / 2;
-  const caseG = lathe([[0, 0], [R * 1.02, 0], [R * 1.02, 0.0012], [R * 0.86, 0.0018], [R * 0.86, 0.0028], [R, 0.0034], [R * 0.97, caseLen * 0.78], [N, caseLen * 0.88], [N, caseLen]], 32);
+  const caseG = lathe(
+    [
+      [0, 0],
+      [R * 1.02, 0],
+      [R * 1.02, 0.0012],
+      [R * 0.86, 0.0018],
+      [R * 0.86, 0.0028],
+      [R, 0.0034],
+      [R * 0.97, caseLen * 0.78],
+      [N, caseLen * 0.88],
+      [N, caseLen],
+    ],
+    32,
+  );
   g.add(part(caseG, gearMat(r.caseColor, 0.32, 0.85)));
   const bl = r.bullet;
   // Tangent ogive: straight bearing surface, then a smooth curve to the point.
-  const ogive: [number, number][] = [[N * 0.98, 0], [N * 0.98, bl * 0.42]];
+  const ogive: [number, number][] = [
+    [N * 0.98, 0],
+    [N * 0.98, bl * 0.42],
+  ];
   for (let i = 1; i <= 10; i++) {
     const t = i / 10;
     ogive.push([N * 0.98 * Math.sqrt(Math.max(0, 1 - t * t)) * (1 - t * 0.08), bl * (0.42 + 0.58 * t)]);
   }
   const bulletG = lathe(ogive, 32);
   g.add(part(bulletG, gearMat(0xa86a3a, 0.35, 0.8), [0, caseLen - bl * 0.25, 0]));
-  if (tip) g.add(part(lathe([[N * 0.45, 0], [N * 0.38, bl * 0.06], [0, bl * 0.12]], 24), gearMat(tip, 0.5, 0.2), [0, caseLen - bl * 0.25 + bl * 0.88, 0]));
+  if (tip)
+    g.add(
+      part(
+        lathe(
+          [
+            [N * 0.45, 0],
+            [N * 0.38, bl * 0.06],
+            [0, bl * 0.12],
+          ],
+          24,
+        ),
+        gearMat(tip, 0.5, 0.2),
+        [0, caseLen - bl * 0.25 + bl * 0.88, 0],
+      ),
+    );
   return g;
 }
 
@@ -406,7 +824,8 @@ export function medModel(id: string): THREE.Group {
     case 'surv12': {
       const c = id === 'cms' ? 0x6a7050 : 0x2d3a4a;
       g.add(part(cyl(0.05, 0.05, 0.2, 32), gearMat(c, FABRIC), [0, 0.05, 0], [0, 0, Math.PI / 2]));
-      for (const x of [-0.06, 0.06]) g.add(part(cyl(0.052, 0.052, 0.012, 32), gearMat(shade(c, 0.7), FABRIC), [x, 0.05, 0], [0, 0, Math.PI / 2]));
+      for (const x of [-0.06, 0.06])
+        g.add(part(cyl(0.052, 0.052, 0.012, 32), gearMat(shade(c, 0.7), FABRIC), [x, 0.05, 0], [0, 0, Math.PI / 2]));
       g.add(cross(0.04, 0xf2f0e8, 0.0505).translateY(0.05));
       break;
     }
@@ -416,13 +835,23 @@ export function medModel(id: string): THREE.Group {
       break;
     }
     case 'splint': {
-      for (const x of [-0.025, 0.025]) g.add(part(rbox(0.03, 0.26, 0.012, 0.004), gearMat(0xd6c9a0, 0.7), [x, 0.13, 0]));
+      for (const x of [-0.025, 0.025])
+        g.add(part(rbox(0.03, 0.26, 0.012, 0.004), gearMat(0xd6c9a0, 0.7), [x, 0.13, 0]));
       for (const y of [0.06, 0.18]) g.add(part(box(0.09, 0.025, 0.02), gearMat(0xe8e8e0, 0.8), [0, y, 0]));
       break;
     }
     case 'analgin': {
       g.add(part(rbox(0.1, 0.05, 0.006, 0.002), gearMat(0xc8ccd0, 0.3, 0.6), [0, 0.025, 0]));
-      for (let i = 0; i < 5; i++) for (const y of [0.014, 0.036]) g.add(part(new THREE.SphereGeometry(0.0055, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2), gearMat(0xf0f0ea, 0.4), [-0.036 + i * 0.018, y, 0.003], [Math.PI / 2, 0, 0]));
+      for (let i = 0; i < 5; i++)
+        for (const y of [0.014, 0.036])
+          g.add(
+            part(
+              new THREE.SphereGeometry(0.0055, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+              gearMat(0xf0f0ea, 0.4),
+              [-0.036 + i * 0.018, y, 0.003],
+              [Math.PI / 2, 0, 0],
+            ),
+          );
       break;
     }
     case 'morphine':
@@ -483,7 +912,15 @@ export function miscModel(id: string): THREE.Group | null {
       return g;
     }
     case 'wires': {
-      for (let i = 0; i < 3; i++) g.add(part(new THREE.TorusGeometry(0.05 - i * 0.004, 0.006, 12, 40), gearMat([0xb03020, 0x2a5aa0, 0xd8a020][i]!, 0.5), [i * 0.006, 0.006 + i * 0.008, 0], [Math.PI / 2, 0, 0]));
+      for (let i = 0; i < 3; i++)
+        g.add(
+          part(
+            new THREE.TorusGeometry(0.05 - i * 0.004, 0.006, 12, 40),
+            gearMat([0xb03020, 0x2a5aa0, 0xd8a020][i]!, 0.5),
+            [i * 0.006, 0.006 + i * 0.008, 0],
+            [Math.PI / 2, 0, 0],
+          ),
+        );
       g.add(part(cyl(0.002, 0.002, 0.05, 6), gearMat(0xd88a4a, 0.3, 0.9), [0.06, 0.01, 0], [0, 0, Math.PI / 2]));
       return g;
     }
@@ -504,7 +941,8 @@ export function miscModel(id: string): THREE.Group | null {
       g.add(part(rbox(0.25, 0.03, 0.1, 0.006), gearMat(0x1c1e20, 0.4, 0.5), [0, 0.02, 0]));
       for (const x of [-0.06, 0.06]) {
         g.add(part(cyl(0.04, 0.04, 0.004, 32), gearMat(0x0e0e10, 0.6), [x, 0.036, 0]));
-        for (let b = 0; b < 7; b++) g.add(part(box(0.034, 0.002, 0.008), gearMat(0x2a2a2e, 0.5), [x, 0.039, 0], [0, (b / 7) * Math.PI * 2, 0.3]));
+        for (let b = 0; b < 7; b++)
+          g.add(part(box(0.034, 0.002, 0.008), gearMat(0x2a2a2e, 0.5), [x, 0.039, 0], [0, (b / 7) * Math.PI * 2, 0.3]));
       }
       g.add(part(box(0.08, 0.008, 0.004), gearMat(BRASS, 0.3, 0.9), [0.02, 0.0, 0.057]));
       return g;
@@ -525,22 +963,51 @@ export function miscModel(id: string): THREE.Group | null {
       const m = gearMat(0xd8a830, 0.25, 1);
       for (let i = 0; i < 14; i++) {
         const a = (i / 14) * Math.PI * 2;
-        g.add(part(new THREE.TorusGeometry(0.009, 0.0025, 12, 40), m, [Math.cos(a) * 0.05, 0.004, Math.sin(a) * 0.04], [Math.PI / 2 + (i % 2) * Math.PI / 2, 0, a]));
+        g.add(
+          part(
+            new THREE.TorusGeometry(0.009, 0.0025, 12, 40),
+            m,
+            [Math.cos(a) * 0.05, 0.004, Math.sin(a) * 0.04],
+            [Math.PI / 2 + ((i % 2) * Math.PI) / 2, 0, a],
+          ),
+        );
       }
       return g;
     }
     case 'bitcoin': {
       g.add(part(cyl(0.02, 0.02, 0.004, 32), gearMat(0xe0a830, 0.25, 1), [0, 0.002, 0]));
-      g.add(part(new THREE.TorusGeometry(0.018, 0.0012, 12, 40), gearMat(0xb07a18, 0.3, 1), [0, 0.0045, 0], [Math.PI / 2, 0, 0]));
+      g.add(
+        part(
+          new THREE.TorusGeometry(0.018, 0.0012, 12, 40),
+          gearMat(0xb07a18, 0.3, 1),
+          [0, 0.0045, 0],
+          [Math.PI / 2, 0, 0],
+        ),
+      );
       g.add(part(box(0.004, 0.0015, 0.018), gearMat(0xb07a18, 0.3, 1), [-0.003, 0.0045, 0]));
-      g.add(part(new THREE.TorusGeometry(0.0045, 0.0015, 12, 40, Math.PI), gearMat(0xb07a18, 0.3, 1), [0.0, 0.0045, -0.004], [Math.PI / 2, 0, -Math.PI / 2]));
-      g.add(part(new THREE.TorusGeometry(0.005, 0.0015, 12, 40, Math.PI), gearMat(0xb07a18, 0.3, 1), [0.0, 0.0045, 0.0045], [Math.PI / 2, 0, -Math.PI / 2]));
+      g.add(
+        part(
+          new THREE.TorusGeometry(0.0045, 0.0015, 12, 40, Math.PI),
+          gearMat(0xb07a18, 0.3, 1),
+          [0.0, 0.0045, -0.004],
+          [Math.PI / 2, 0, -Math.PI / 2],
+        ),
+      );
+      g.add(
+        part(
+          new THREE.TorusGeometry(0.005, 0.0015, 12, 40, Math.PI),
+          gearMat(0xb07a18, 0.3, 1),
+          [0.0, 0.0045, 0.0045],
+          [Math.PI / 2, 0, -Math.PI / 2],
+        ),
+      );
       return g;
     }
     case 'rolex': {
       g.add(part(cyl(0.019, 0.019, 0.01, 28), gearMat(0xd8b040, 0.2, 1), [0, 0.012, 0]));
       g.add(part(cyl(0.016, 0.016, 0.002, 28), gearMat(0x1a2a4a, 0.2, 0.4), [0, 0.018, 0]));
-      for (const z of [-1, 1]) g.add(part(rbox(0.022, 0.006, 0.05, 0.002), gearMat(0xc8a040, 0.25, 1), [0, 0.008, z * 0.04], [z * 0.3, 0, 0]));
+      for (const z of [-1, 1])
+        g.add(part(rbox(0.022, 0.006, 0.05, 0.002), gearMat(0xc8a040, 0.25, 1), [0, 0.008, z * 0.04], [z * 0.3, 0, 0]));
       g.add(part(box(0.002, 0.001, 0.012), gearMat(0xf0f0f0, 0.3), [0.0, 0.0195, 0.004]));
       return g;
     }
@@ -556,13 +1023,29 @@ export function miscModel(id: string): THREE.Group | null {
       g.add(part(new THREE.CapsuleGeometry(0.03, 0.08, 8, 20), m, [0, 0.07, 0], [0, 0, Math.PI / 2]));
       g.add(part(new THREE.SphereGeometry(0.038, 24, 16), m, [0.06, 0.1, 0]));
       g.add(part(new THREE.SphereGeometry(0.022, 24, 16), m, [0.085, 0.1, 0]));
-      for (const [x, z] of [[-0.04, -0.02], [-0.04, 0.02], [0.04, -0.02], [0.04, 0.02]]) g.add(part(cyl(0.01, 0.012, 0.045, 32), m, [x!, 0.045, z!]));
+      for (const [x, z] of [
+        [-0.04, -0.02],
+        [-0.04, 0.02],
+        [0.04, -0.02],
+        [0.04, 0.02],
+      ])
+        g.add(part(cyl(0.01, 0.012, 0.045, 32), m, [x!, 0.045, z!]));
       g.add(part(new THREE.TorusGeometry(0.03, 0.005, 12, 40, Math.PI), m, [-0.07, 0.09, 0], [0, 0, Math.PI / 2]));
       return g;
     }
     case 'bohdan_claw': {
-      g.add(part(new THREE.TorusGeometry(0.06, 0.0025, 12, 40), gearMat(0x3a2a1a, 0.9), [0, 0.003, 0], [Math.PI / 2, 0, 0]));
-      for (let i = -1; i <= 1; i++) g.add(part(new THREE.ConeGeometry(0.008, 0.045, 20), gearMat(0xe0d8c0, 0.5), [i * 0.018, 0.006, 0.07], [Math.PI / 2 + 0.2, 0, i * 0.3]));
+      g.add(
+        part(new THREE.TorusGeometry(0.06, 0.0025, 12, 40), gearMat(0x3a2a1a, 0.9), [0, 0.003, 0], [Math.PI / 2, 0, 0]),
+      );
+      for (let i = -1; i <= 1; i++)
+        g.add(
+          part(
+            new THREE.ConeGeometry(0.008, 0.045, 20),
+            gearMat(0xe0d8c0, 0.5),
+            [i * 0.018, 0.006, 0.07],
+            [Math.PI / 2 + 0.2, 0, i * 0.3],
+          ),
+        );
       return g;
     }
     case 'kostia_ring': {
@@ -579,7 +1062,15 @@ export function miscModel(id: string): THREE.Group | null {
       return g;
     }
     case 'roubles': {
-      for (let i = 0; i < 6; i++) g.add(part(box(0.15, 0.002, 0.07), gearMat(i % 2 ? 0x6a8a5a : 0x5a7a4a, 0.85), [i * 0.002, 0.001 + i * 0.002, i * 0.001], [0, i * 0.04, 0]));
+      for (let i = 0; i < 6; i++)
+        g.add(
+          part(
+            box(0.15, 0.002, 0.07),
+            gearMat(i % 2 ? 0x6a8a5a : 0x5a7a4a, 0.85),
+            [i * 0.002, 0.001 + i * 0.002, i * 0.001],
+            [0, i * 0.04, 0],
+          ),
+        );
       g.add(part(box(0.02, 0.016, 0.072), gearMat(0xd8c890, 0.8), [0, 0.008, 0]));
       return g;
     }
@@ -588,8 +1079,16 @@ export function miscModel(id: string): THREE.Group | null {
     case 'sc_gamma': {
       const c = id === 'sc_alpha' ? 0x5a5e60 : id === 'sc_beta' ? 0x4a5638 : 0x8a7650;
       g.add(part(rbox(0.3, 0.1, 0.22, 0.02), gearMat(c, 0.45, 0.3), [0, 0.05, 0]));
-      for (const x of [-0.1, 0, 0.1]) g.add(part(box(0.012, 0.102, 0.222), gearMat(shade(c, 0.8), 0.45, 0.3), [x, 0.05, 0]));
-      g.add(part(new THREE.TorusGeometry(0.04, 0.008, 12, 40, Math.PI), gearMat(0x1a1a1a, 0.5), [0, 0.05, 0.12], [Math.PI / 2, 0, 0]));
+      for (const x of [-0.1, 0, 0.1])
+        g.add(part(box(0.012, 0.102, 0.222), gearMat(shade(c, 0.8), 0.45, 0.3), [x, 0.05, 0]));
+      g.add(
+        part(
+          new THREE.TorusGeometry(0.04, 0.008, 12, 40, Math.PI),
+          gearMat(0x1a1a1a, 0.5),
+          [0, 0.05, 0.12],
+          [Math.PI / 2, 0, 0],
+        ),
+      );
       for (const x of [-0.1, 0.1]) g.add(part(box(0.03, 0.03, 0.01), gearMat(STEEL, 0.3, 0.9), [x, 0.07, 0.112]));
       return g;
     }
@@ -614,14 +1113,22 @@ export function magModel(id: string): THREE.Group | null {
     g.add(part(rbox(0.04, 0.08, 0.035, 0.006), gearMat(0x1c1e1e, 0.5, 0.4), [-0.02, 0.14, 0]));
     return g;
   }
-  const len = id === 'mag_stanag60' ? 0.22 : id === 'mag_ak45' || id === 'mag_akm40' ? 0.25 : id === 'mag_sks20' ? 0.1 : 0.2;
+  const len =
+    id === 'mag_stanag60' ? 0.22 : id === 'mag_ak45' || id === 'mag_akm40' ? 0.25 : id === 'mag_sks20' ? 0.1 : 0.2;
   const color = id === 'mag_ak45' ? 0x6a3a22 : id === 'mag_stanag60' ? 0x2a2c2c : 0x1e2020;
   const curve = id.startsWith('mag_ak') ? 0.6 : 0.15;
   const segs = 6;
   for (let i = 0; i < segs; i++) {
     const t = i / segs;
     const a = t * curve;
-    g.add(part(rbox(0.035, len / segs + 0.004, 0.025, 0.004), gearMat(color, 0.5, 0.3), [Math.sin(a) * len * 0.3, (t + 0.5 / segs) * len, 0], [0, 0, -a]));
+    g.add(
+      part(
+        rbox(0.035, len / segs + 0.004, 0.025, 0.004),
+        gearMat(color, 0.5, 0.3),
+        [Math.sin(a) * len * 0.3, (t + 0.5 / segs) * len, 0],
+        [0, 0, -a],
+      ),
+    );
   }
   return g;
 }

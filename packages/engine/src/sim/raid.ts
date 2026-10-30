@@ -329,6 +329,7 @@ export class Raid {
       bloom: 0,
       useT: 0,
       useUid: null,
+      useDef: null,
       usePart: null,
       aiming: false,
       crouching: false,
@@ -1062,12 +1063,14 @@ export class Raid {
     }
     a.useT = t;
     a.useUid = uid;
+    a.useDef = found.item.def;
     a.reloadT = 0;
   }
 
   private finishUse(a: Actor): void {
     const uid = a.useUid;
     a.useUid = null;
+    a.useDef = null;
     if (!uid) return;
     const found = this.findCarried(a, uid);
     if (!found) return;

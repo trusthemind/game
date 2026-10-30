@@ -28,7 +28,7 @@ const KITS: Record<BotArchetype, ArchetypeKit> = {
   scav: {
     primary: [[null, 3], ['mp133', 4], ['aks74u', 3], ['sks', 3], ['vepr', 2], ['mosin', 1.5], ['pp19', 2], ['akm', 0.8], ['saiga12', 0.6]],
     secondary: [[null, 6], ['pm', 3], ['toz', 1.5], ['mp443', 0.7], ['glock17', 0.6]],
-    melee: [[null, 3], ['knife', 3], ['crowbar', 2], ['bat', 1.5], ['axe', 0.5]],
+    melee: [[null, 3], ['knife', 3], ['crowbar', 2], ['bat', 1.5], ['axe', 0.5], ['cleaver', 1.5], ['hatchet', 1.5], ['rebar', 1.5], ['shovel', 1]],
     armor: [[null, 5], ['paca', 3], ['6b23', 1.2]],
     helmet: [[null, 6], ['ssh68', 3], ['zsh', 0.4]],
     rig: [['r_scav', 5], ['r_mbss', 2]],
@@ -40,7 +40,7 @@ const KITS: Record<BotArchetype, ArchetypeKit> = {
   raider: {
     primary: [['ak74m', 4], ['m4a1', 3], ['akm', 3], ['mp5', 2], ['aug', 1.5], ['vector', 1], ['rpk16', 0.8], ['svd', 0.8], ['hk416', 0.6], ['sv98', 0.4]],
     secondary: [[null, 2], ['mp443', 3], ['glock17', 2], ['rhino', 0.8]],
-    melee: [['knife', 2], ['machete', 2], ['karambit', 0.4]],
+    melee: [['knife', 1], ['bayonet', 2], ['machete', 2], ['kukri', 1], ['tomahawk', 1], ['shovel', 1], ['karambit', 0.4]],
     armor: [['trooper', 4], ['gzhel', 2.5], ['6b23', 2]],
     helmet: [['zsh', 5], [null, 1], ['altyn', 0.4]],
     rig: [['r_alpha', 4], ['r_bank', 2]],
@@ -52,7 +52,7 @@ const KITS: Record<BotArchetype, ArchetypeKit> = {
   guard: {
     primary: [['akm', 3], ['ak74m', 3], ['m4a1', 2], ['rpk16', 1.5], ['saiga12', 1.5], ['pkm', 0.4]],
     secondary: [['mp443', 1]],
-    melee: [['machete', 1], ['axe', 1]],
+    melee: [['machete', 1], ['axe', 1], ['tomahawk', 0.8], ['kukri', 0.6]],
     armor: [['gzhel', 4], ['trooper', 3]],
     helmet: [['zsh', 4], ['altyn', 1]],
     rig: [['r_bank', 1]],
