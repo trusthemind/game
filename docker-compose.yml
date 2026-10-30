@@ -1,0 +1,16 @@
+# Backend with MongoDB inside the same container (see server/Dockerfile). Data lives in the named volume.
+#   docker compose up --build        → http://localhost:8080/api/v1/health
+services:
+  api:
+    build: ./server
+    ports:
+      - '8080:8080'
+    environment:
+      ALLOWED_ORIGINS: '*'
+      MONGO_CACHE_GB: '0.5'
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+    stop_grace_period: 20s
+volumes:
+  mongo-data:

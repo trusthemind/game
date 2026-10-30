@@ -43,12 +43,22 @@ export const useProfile = create<ProfileState>((set, getState) => {
       set({ serverRev: rev, sync: 'synced' });
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
-        // Another device saved first: newer server copy wins.
+        // The server has another revision: another device saved, or our last save landed but its reply
+        // was lost. Whichever copy is newer wins — never throw away a fresher local one (raid loot).
         const remote = await api.getProfile(auth);
-        if (remote.profile) {
+        const local = getState().profile;
+        if (remote.profile && (!local || (remote.profile.updatedAt ?? 0) >= local.updatedAt)) {
           const p = migrateProfile(remote.profile);
           set({ profile: p, serverRev: remote.rev, sync: 'synced' });
           await saveLocalProfile(p);
+        } else if (local) {
+          set({ serverRev: remote.rev });
+          try {
+            const { rev } = await api.putProfile(auth, local, remote.rev);
+            set({ serverRev: rev, sync: 'synced' });
+          } catch {
+            set({ sync: 'error' });
+          }
         }
         return;
       }

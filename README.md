@@ -189,22 +189,73 @@ Set `MONGODB_TEST_URI=mongodb://localhost:27017` to run the store tests against 
 | Variable | Default | |
 |---|---|---|
 | `PORT` | `8080` | Railway sets this |
-| `MONGODB_URI` | (none, in-memory) | Mongo connection string |
+| `MONGODB_URI` | (none) | Mongo connection string. In the Docker image, leaving it empty starts MongoDB inside the container; with `npm run server` it means in-memory |
 | `MONGODB_DB` | `ashfall` | Database name |
+| `MONGODB_POOL` | `100` | Max connections in the driver's pool |
+| `MONGO_CACHE_GB` | `0.5` | WiredTiger cache for the embedded MongoDB (keep it ≤ half the container's RAM) |
 | `ALLOWED_ORIGINS` | any origin | Comma-separated CORS origins; `*.vercel.app` wildcards work |
+| `REGISTER_PER_HOUR` | `10` | New accounts per client IP per hour |
+
+### One container with MongoDB inside
+
+`server/Dockerfile` is built on the official `mongo:8.0` image. When `MONGODB_URI` is not set, the
+entrypoint (`server/deploy/start.sh`) starts `mongod` on `127.0.0.1` with its data in `/data/db`, waits
+until it answers, then starts the API. On `SIGTERM` it stops the API first (in-flight saves finish) and
+then `mongod` (journal flushed). Mount a volume at `/data/db`, or the data goes with the container.
+
+```bash
+docker compose up --build
+```
+
+`server/Dockerfile.slim` is the API alone on distroless (about 15 MB), for a MongoDB that runs elsewhere.
+
+Player data (profiles, accounts, raids) is written with `j: true`: a save is acknowledged only once it
+is in MongoDB's journal, so a crash can't lose a raid's loot that the client was told is saved.
 
 ### Deploying to Railway
 
-1. Create a project and add a **MongoDB** service. If it crash-loops with "Linux kernel versions 6.19 and
-   newer has a known incompatibility", add the variable `GLIBC_TUNABLES=glibc.pthread.rseq=1` to the
-   MongoDB service and redeploy it (MongoDB issue SERVER-121912).
-2. Add a service from this GitHub repo and set its **Root Directory** to `server`. Railway picks up
+**A. One service, database inside (simplest):**
+
+1. Add a service from this GitHub repo and set its **Root Directory** to `server`. Railway picks up
    `server/railway.json`, which builds the Dockerfile and health-checks `/api/v1/health`.
-3. In that service's variables, set `MONGODB_URI` to `${{MongoDB.MONGO_URL}}` and `ALLOWED_ORIGINS` to
-   `https://ashfall-two.vercel.app,*.vercel.app`.
-4. Generate a public domain for the service.
-5. In Vercel, set `VITE_API_URL` to that domain (for example `https://ashfall-api.up.railway.app`) and
-   redeploy. The hideout's Stats tab then shows the leaderboard and device linking.
+2. Attach a **Volume** to the service, mounted at `/data/db`.
+3. Variables: `ALLOWED_ORIGINS=https://ashfall-two.vercel.app,*.vercel.app` (leave `MONGODB_URI` unset).
+4. Generate a public domain. From a terminal with the Railway CLI instead:
+
+```bash
+railway link
+```
+
+```bash
+railway up --service ashfall-api
+```
+
+**B. Separate MongoDB service** (scales the database on its own):
+
+1. Add a **MongoDB** service. If it crash-loops with "Linux kernel versions 6.19 and newer has a known
+   incompatibility", set `GLIBC_TUNABLES=glibc.pthread.rseq=1` on it and redeploy (SERVER-121912).
+2. Same API service as above, but set `MONGODB_URI` to `${{MongoDB.MONGO_URL}}`; no volume is needed.
+
+Then in Vercel set `VITE_API_URL` to the service's domain (for example `https://ashfall-api.up.railway.app`)
+and redeploy. The hideout's Stats tab then shows the leaderboard and device linking.
+
+### Load test
+
+`server/cmd/loadtest` replays the end-of-raid save: `PUT /profile` with a full profile, `POST /raids`,
+and a leaderboard read for one player in ten, with no think time between rounds. Results, method and a
+crash test are in [docs/loadtest.md](docs/loadtest.md). In short, with MongoDB in the same container:
+
+| Machine | Players saving at once | Saves/s | Save p95 | Errors |
+|---|---|---|---|---|
+| 4 vCPU (shared with the load generator) | 100 | 936 | 145 ms | 0 |
+| 4 vCPU | 1000 | 1140 | 735 ms | 0 |
+| 1 vCPU, 1 GB | 50 | 397 | 174 ms | 0 |
+| 1 vCPU, 1 GB | 250 | 422 | 578 ms | 0 |
+| 1 vCPU, 1 GB, 110 KB profiles | 250 | 184 | 1.7 s | 0 |
+
+```bash
+cd server && go run ./cmd/loadtest -url http://localhost:8080 -steps 25,100,250 -dur 20s
+```
 
 ## Credits
 

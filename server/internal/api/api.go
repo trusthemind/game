@@ -11,6 +11,7 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -23,6 +24,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/trusthemind/game/server/internal/cache"
 	"github.com/trusthemind/game/server/internal/store"
 )
 
@@ -41,12 +43,23 @@ type Server struct {
 	register *limiter
 	claim    *limiter
 	now      func() time.Time
+	// Token hash → player, so authenticated calls skip a database read. A token pushed out by a ninth
+	// device stays usable for at most authTTL on instances that had it cached.
+	auth  *cache.TTL[string, store.Player]
+	board *cache.TTL[struct{}, []boardEntry]
 }
+
+const (
+	authTTL  = time.Minute
+	boardTTL = 5 * time.Second
+)
 
 type Options struct {
 	// AllowedOrigins for CORS; empty or "*" allows any origin (tokens are bearer headers, not cookies).
 	AllowedOrigins []string
 	Logger         *slog.Logger
+	// RegisterPerHour caps new accounts per client IP (default 10). Raise it for load tests.
+	RegisterPerHour int
 }
 
 func New(s store.Store, o Options) *Server {
@@ -58,9 +71,11 @@ func New(s store.Store, o Options) *Server {
 		store:    s,
 		log:      log,
 		origins:  o.AllowedOrigins,
-		register: newLimiter(10, time.Hour),
+		register: newLimiter(cmp.Or(o.RegisterPerHour, 10), time.Hour),
 		claim:    newLimiter(20, 10*time.Minute),
 		now:      time.Now,
+		auth:     cache.New[string, store.Player](authTTL, 200_000),
+		board:    cache.New[struct{}, []boardEntry](boardTTL, 1),
 	}
 }
 
@@ -203,6 +218,8 @@ func (s *Server) claimCode(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, "claim token", err)
 		return
 	}
+	// A new device may have pushed the oldest token out: forget this player's cached tokens here.
+	s.auth.DeleteFunc(func(p store.Player) bool { return p.ID == id })
 	writeJSON(w, http.StatusOK, map[string]string{"playerId": id, "token": token})
 }
 
@@ -235,14 +252,19 @@ type boardEntry struct {
 }
 
 func (s *Server) leaderboard(w http.ResponseWriter, r *http.Request) {
-	players, err := s.store.Leaderboard(r.Context(), leaderboardSize)
-	if err != nil {
-		s.fail(w, "leaderboard", err)
-		return
-	}
-	entries := make([]boardEntry, 0, len(players))
-	for _, p := range players {
-		entries = append(entries, boardEntry{Name: p.Name, Level: LevelFromXP(p.XP), XP: p.XP, Survived: p.Survived, Kills: p.Kills})
+	now := s.now()
+	entries, ok := s.board.Get(struct{}{}, now)
+	if !ok {
+		players, err := s.store.Leaderboard(r.Context(), leaderboardSize)
+		if err != nil {
+			s.fail(w, "leaderboard", err)
+			return
+		}
+		entries = make([]boardEntry, 0, len(players))
+		for _, p := range players {
+			entries = append(entries, boardEntry{Name: p.Name, Level: LevelFromXP(p.XP), XP: p.XP, Survived: p.Survived, Kills: p.Kills})
+		}
+		s.board.Set(struct{}{}, entries, now)
 	}
 	w.Header().Set("Cache-Control", "public, max-age=30")
 	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
@@ -259,14 +281,21 @@ func (s *Server) authed(h authedHandler) http.HandlerFunc {
 			writeErr(w, http.StatusUnauthorized, "missing or malformed token")
 			return
 		}
-		p, err := s.store.PlayerByTokenHash(r.Context(), hashToken(token))
-		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusUnauthorized, "unknown token")
-			return
-		}
-		if err != nil {
-			s.fail(w, "auth", err)
-			return
+		hash := hashToken(token)
+		now := s.now()
+		p, ok := s.auth.Get(hash, now)
+		if !ok {
+			var err error
+			p, err = s.store.PlayerByTokenHash(r.Context(), hash)
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusUnauthorized, "unknown token")
+				return
+			}
+			if err != nil {
+				s.fail(w, "auth", err)
+				return
+			}
+			s.auth.Set(hash, p, now)
 		}
 		h(w, r, p)
 	}
@@ -416,9 +445,11 @@ func clamp(v, lo, hi int64) int64 {
 
 // clientIP: Railway (and most PaaS) put the caller first in X-Forwarded-For.
 func clientIP(r *http.Request) string {
+	// The edge proxy (Railway) appends the address it saw, so the last entry is the one we can trust;
+	// anything to its left came from the client and could be forged to dodge the rate limits.
 	if f := r.Header.Get("X-Forwarded-For"); f != "" {
-		ip, _, _ := strings.Cut(f, ",")
-		return strings.TrimSpace(ip)
+		parts := strings.Split(f, ",")
+		return strings.TrimSpace(parts[len(parts)-1])
 	}
 	host := r.RemoteAddr
 	if i := strings.LastIndexByte(host, ':'); i > 0 {

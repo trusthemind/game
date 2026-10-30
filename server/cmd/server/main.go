@@ -6,6 +6,8 @@
 //	MONGODB_URI      Mongo connection string; without it the server keeps data in memory
 //	MONGODB_DB       database name (default "ashfall")
 //	ALLOWED_ORIGINS  comma-separated CORS origins, e.g. "https://ashfall-two.vercel.app,*.vercel.app"
+//	MONGODB_POOL     max connections in the Mongo pool (default 100)
+//	REGISTER_PER_HOUR new accounts allowed per client IP per hour (default 10)
 package main
 
 import (
@@ -15,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -39,7 +42,7 @@ func run(log *slog.Logger) error {
 	if uri := os.Getenv("MONGODB_URI"); uri != "" {
 		db := envOr("MONGODB_DB", "ashfall")
 		cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		m, err := store.NewMongo(cctx, uri, db)
+		m, err := store.NewMongo(cctx, uri, db, uint64(envInt("MONGODB_POOL", 100)))
 		cancel()
 		if err != nil {
 			return err
@@ -59,7 +62,7 @@ func run(log *slog.Logger) error {
 	}
 	srv := &http.Server{
 		Addr:              ":" + envOr("PORT", "8080"),
-		Handler:           api.New(st, api.Options{AllowedOrigins: origins, Logger: log}).Handler(),
+		Handler:           api.New(st, api.Options{AllowedOrigins: origins, Logger: log, RegisterPerHour: envInt("REGISTER_PER_HOUR", 10)}).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -85,6 +88,13 @@ func run(log *slog.Logger) error {
 
 func envOr(k, def string) string {
 	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
+func envInt(k string, def int) int {
+	if v, err := strconv.Atoi(os.Getenv(k)); err == nil && v > 0 {
 		return v
 	}
 	return def

@@ -18,7 +18,7 @@ func stores(t *testing.T) map[string]Store {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		db := fmt.Sprintf("ashfall_test_%d", time.Now().UnixNano())
-		m, err := NewMongo(ctx, uri, db)
+		m, err := NewMongo(ctx, uri, db, 50)
 		if err != nil {
 			t.Fatalf("mongo: %v", err)
 		}

@@ -52,6 +52,18 @@ jobs:
         env:
           MONGODB_TEST_URI: mongodb://localhost:27017
       - run: docker build -t ashfall-server .
+      - run: docker build -f Dockerfile.slim -t ashfall-server-slim .
+      # The bundled image must bring its own MongoDB up, then save and read back a profile, under load.
+      - name: Bundled container smoke + load test
+        run: |
+          docker run -d --name api -p 18080:8080 -e REGISTER_PER_HOUR=100000 ashfall-server
+          for i in $(seq 1 60); do curl -sf localhost:18080/api/v1/health | grep -q '"db":"mongo"' && break; sleep 1; done
+          curl -sf localhost:18080/api/v1/health
+          go run ./cmd/loadtest -url http://localhost:18080 -steps 20,100 -dur 10s | tee loadtest.txt
+          ! grep -E '^[0-9]+ +(save|raid) ' loadtest.txt | awk '$8 != 0 { found=1 } END { exit !found }'
+          grep -q 'acknowledged saves lost so far: 0' loadtest.txt
+      - if: failure()
+        run: docker logs api || true
 
   e2e:
     runs-on: ubuntu-latest

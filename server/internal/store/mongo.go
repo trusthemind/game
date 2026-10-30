@@ -10,6 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo/writeconcern"
 )
 
 // Mongo stores everything in four collections: players, profiles, linkcodes, raids.
@@ -36,8 +37,8 @@ type codeDoc struct {
 	Expires  time.Time `bson:"expires"`
 }
 
-func NewMongo(ctx context.Context, uri, db string) (*Mongo, error) {
-	client, err := mongo.Connect(options.Client().ApplyURI(uri).SetServerSelectionTimeout(10 * time.Second))
+func NewMongo(ctx context.Context, uri, db string, pool uint64) (*Mongo, error) {
+	client, err := mongo.Connect(options.Client().ApplyURI(uri).SetServerSelectionTimeout(10 * time.Second).SetMaxPoolSize(pool))
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +47,10 @@ func NewMongo(ctx context.Context, uri, db string) (*Mongo, error) {
 		return nil, fmt.Errorf("ping: %w", err)
 	}
 	d := client.Database(db)
-	m := &Mongo{client: client, players: d.Collection("players"), profiles: d.Collection("profiles"), codes: d.Collection("linkcodes"), raids: d.Collection("raids")}
+	// Saves are what players lose if a write vanishes: wait for the journal before acknowledging them
+	// (by default a crash of the host can drop the last ~100 ms of acknowledged writes).
+	durable := options.Collection().SetWriteConcern(writeconcern.Journaled())
+	m := &Mongo{client: client, players: d.Collection("players", durable), profiles: d.Collection("profiles", durable), codes: d.Collection("linkcodes"), raids: d.Collection("raids", durable)}
 	if err := m.ensureIndexes(ctx); err != nil {
 		_ = client.Disconnect(ctx)
 		return nil, err
