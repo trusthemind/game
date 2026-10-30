@@ -79,7 +79,15 @@ function prepare(body: THREE.SkinnedMesh): Prepared {
   }
   const size = box.getSize(new THREE.Vector3());
   // Waist sits a little below the spine_02 region; the neck base at its top.
-  const frame: Frame = { cx: (box.min.x + box.max.x) / 2, cz: (box.min.z + box.max.z) / 2, hw: size.x / 2, hd: size.z / 2, y0: box.min.y - size.y * 0.55, y1: box.max.y, k: size.x / 0.34 };
+  const frame: Frame = {
+    cx: (box.min.x + box.max.x) / 2,
+    cz: (box.min.z + box.max.z) / 2,
+    hw: size.x / 2,
+    hd: size.z / 2,
+    y0: box.min.y - size.y * 0.55,
+    y1: box.max.y,
+    k: size.x / 0.34,
+  };
   const out = { geo, dominant, frame };
   prepared.set(body.geometry, out);
   return out;
@@ -133,7 +141,11 @@ export function buildShell(body: THREE.SkinnedMesh, key: string, cut: Cut): Shel
     const b = index[t + 1]!;
     const c = index[t + 2]!;
     // Decide by the centroid so edges follow the cut's curves, not the triangle soup.
-    tmp.fromBufferAttribute(pos, a).add(new THREE.Vector3().fromBufferAttribute(pos, b)).add(new THREE.Vector3().fromBufferAttribute(pos, c)).multiplyScalar(1 / 3);
+    tmp
+      .fromBufferAttribute(pos, a)
+      .add(new THREE.Vector3().fromBufferAttribute(pos, b))
+      .add(new THREE.Vector3().fromBufferAttribute(pos, c))
+      .multiplyScalar(1 / 3);
     if (!(TORSO.test(dominant[a]!) && TORSO.test(dominant[b]!) && TORSO.test(dominant[c]!))) continue;
     if (cut.cover(uvOf(f, tmp.x, tmp.y, tmp.z)) === null) continue;
     coverAt(a);
@@ -284,7 +296,8 @@ export function buildShell(body: THREE.SkinnedMesh, key: string, cut: Cut): Shel
       const next = arr.slice();
       for (const [vtx, ns] of nbr) {
         if (ns.length !== 2) continue;
-        for (let c = 0; c < 3; c++) next[vtx * 3 + c] = arr[vtx * 3 + c]! * 0.5 + (arr[ns[0]! * 3 + c]! + arr[ns[1]! * 3 + c]!) * 0.25;
+        for (let c = 0; c < 3; c++)
+          next[vtx * 3 + c] = arr[vtx * 3 + c]! * 0.5 + (arr[ns[0]! * 3 + c]! + arr[ns[1]! * 3 + c]!) * 0.25;
       }
       arr.set(next);
     }
@@ -297,8 +310,38 @@ export function buildShell(body: THREE.SkinnedMesh, key: string, cut: Cut): Shel
       skinI[j * 4 + c] = si.getComponent(srcOf[j]!, c);
       skinW[j * 4 + c] = sw.getComponent(srcOf[j]!, c);
     }
+  // Distance from the hem along the surface (metres): drives the binding tape and stitch lines.
+  const edgeDist = new Float32Array(n).fill(1e9);
+  for (const j of onEdge) edgeDist[j] = 0;
+  for (let it = 0; it < 40; it++) {
+    let changed = false;
+    for (let j = 0; j < n; j++) {
+      for (const m of adj[j]!) {
+        const d =
+          Math.hypot(
+            outer[j * 3]! - outer[m * 3]!,
+            outer[j * 3 + 1]! - outer[m * 3 + 1]!,
+            outer[j * 3 + 2]! - outer[m * 3 + 2]!,
+          ) / k;
+        if (edgeDist[m]! + d < edgeDist[j]!) {
+          edgeDist[j] = edgeDist[m]! + d;
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  const torso = new Float32Array(n * 2);
+  for (let j = 0; j < n; j++) {
+    tmp.fromBufferAttribute(pos, srcOf[j]!);
+    // Angle round the torso + height (quilting runs along height).
+    torso[j * 2] = Math.atan2((tmp.x - f.cx) / f.hw, (tmp.z - f.cz) / f.hd);
+    torso[j * 2 + 1] = uvOf(f, tmp.x, tmp.y, tmp.z).v;
+  }
   const surfaceGeo = new THREE.BufferGeometry();
   surfaceGeo.setAttribute('position', new THREE.BufferAttribute(outer, 3));
+  surfaceGeo.setAttribute('aEdge', new THREE.BufferAttribute(edgeDist, 1));
+  surfaceGeo.setAttribute('aTorso', new THREE.BufferAttribute(torso, 2));
   surfaceGeo.setAttribute('skinIndex', new THREE.BufferAttribute(skinI, 4));
   surfaceGeo.setAttribute('skinWeight', new THREE.BufferAttribute(skinW, 4));
   surfaceGeo.setIndex(idx);
@@ -306,6 +349,7 @@ export function buildShell(body: THREE.SkinnedMesh, key: string, cut: Cut): Shel
 
   // Rim: two copies of every boundary vertex (outer/inner) → quads.
   const rimPos: number[] = [];
+  const rimTorso: number[] = [];
   const rimSI: number[] = [];
   const rimSW: number[] = [];
   const rimIdx: number[] = [];
@@ -314,7 +358,15 @@ export function buildShell(body: THREE.SkinnedMesh, key: string, cut: Cut): Shel
     let r = rimVert.get(j);
     if (r) return r;
     const o = rimPos.length / 3;
-    rimPos.push(outer[j * 3]!, outer[j * 3 + 1]!, outer[j * 3 + 2]!, inner[j * 3]!, inner[j * 3 + 1]!, inner[j * 3 + 2]!);
+    rimPos.push(
+      outer[j * 3]!,
+      outer[j * 3 + 1]!,
+      outer[j * 3 + 2]!,
+      inner[j * 3]!,
+      inner[j * 3 + 1]!,
+      inner[j * 3 + 2]!,
+    );
+    rimTorso.push(torso[j * 2]!, torso[j * 2 + 1]!, torso[j * 2]!, torso[j * 2 + 1]!);
     for (let rep = 0; rep < 2; rep++)
       for (let c = 0; c < 4; c++) {
         rimSI.push(skinI[j * 4 + c]!);
@@ -333,6 +385,8 @@ export function buildShell(body: THREE.SkinnedMesh, key: string, cut: Cut): Shel
   rim.setAttribute('position', new THREE.Float32BufferAttribute(rimPos, 3));
   rim.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(rimSI, 4));
   rim.setAttribute('skinWeight', new THREE.Float32BufferAttribute(rimSW, 4));
+  rim.setAttribute('aEdge', new THREE.Float32BufferAttribute(new Array(rimPos.length / 3).fill(0), 1));
+  rim.setAttribute('aTorso', new THREE.Float32BufferAttribute(rimTorso, 2));
   rim.setIndex(rimIdx);
   rim.computeVertexNormals();
 
@@ -350,7 +404,10 @@ export function buildShell(body: THREE.SkinnedMesh, key: string, cut: Cut): Shel
       }
     }
     if (best < 0) return null;
-    return { p: new THREE.Vector3(outer[best * 3]!, outer[best * 3 + 1]!, outer[best * 3 + 2]!), n: new THREE.Vector3().fromBufferAttribute(sn, best).normalize() };
+    return {
+      p: new THREE.Vector3(outer[best * 3]!, outer[best * 3 + 1]!, outer[best * 3 + 2]!),
+      n: new THREE.Vector3().fromBufferAttribute(sn, best).normalize(),
+    };
   };
   const shell: Shell = { geometry: surfaceGeo, rim, frame: f, surface };
   byKey.set(key, shell);
@@ -365,14 +422,25 @@ const smooth = (e0: number, e1: number, x: number) => {
 };
 
 /** Armhole: the sides are cut away from `from` (v) upward, deeper the further out you go. */
-const armhole = (p: TorsoUV, from: number, width = 0.62) => Math.abs(p.u) > width && p.v > from + (1 - Math.abs(p.u)) * 0.6;
+const armhole = (p: TorsoUV, from: number, width = 0.62) =>
+  Math.abs(p.u) > width && p.v > from + (1 - Math.abs(p.u)) * 0.6;
 /** Neckline: a scoop at the front (and a shallower one at the back). */
-const neck = (p: TorsoUV, front: number, back: number) => Math.abs(p.u) < 0.42 && p.v > 1 - (p.front ? front : back) * (1 - (Math.abs(p.u) / 0.42) ** 2);
+const neck = (p: TorsoUV, front: number, back: number) =>
+  Math.abs(p.u) < 0.42 && p.v > 1 - (p.front ? front : back) * (1 - (Math.abs(p.u) / 0.42) ** 2);
+
+export type ArmorPrint = 'plain' | 'flora' | 'multicam' | 'digital';
 
 export interface ArmorSpec {
   cut: Cut;
   color: number;
   rim: number;
+  /** Fabric print and its dark accent colour. */
+  print?: ArmorPrint;
+  accent?: number;
+  /** Quilting: horizontal stitched channels every 1/n of the torso height (soft armour panels). */
+  quilt?: number;
+  /** Raised panels (plate pockets) built as their own shells, so they get their own edge and stitching. */
+  layers?: { key: string; cut: Cut; color?: number }[];
   pouches?: { u: number; v: number; w: number; h: number; d: number; color?: number; front?: boolean }[];
   /** Horizontal webbing rows: v positions within |u| < width. */
   molle?: { v: number[]; width: number };
@@ -387,23 +455,46 @@ export const ARMOR_SPECS: Record<string, ArmorSpec> = {
   paca: {
     color: 0x3e4a56,
     rim: 0x23292f,
-    cut: { offset: 0.018, thick: 0.012, rigid: 0.45, cover: (p) => (p.v < 0.08 || p.v > 1.02 || armhole(p, 0.55) || neck(p, 0.2, 0.06) ? null : 0) },
+    quilt: 7,
+    cut: {
+      offset: 0.018,
+      thick: 0.012,
+      rigid: 0.45,
+      cover: (p) => (p.v < 0.08 || p.v > 1.02 || armhole(p, 0.55) || neck(p, 0.2, 0.06) ? null : 0),
+    },
   },
   // Russian infantry vest: thick, high collar, groin flap, covers the whole torso.
   '6b23': {
-    color: 0x5f6448,
+    color: 0x6a7a52,
     rim: 0x3a3d2c,
+    print: 'flora',
+    accent: 0x3e4a2e,
+    quilt: 6,
     collar: true,
     groin: true,
-    cut: { offset: 0.022, thick: 0.026, rigid: 0.8, cover: (p) => (p.v < 0.0 || p.v > 1.04 || armhole(p, 0.6, 0.66) || neck(p, 0.16, 0.05) ? null : 0.004 * smooth(0.2, 0.6, p.v)) },
+    cut: {
+      offset: 0.022,
+      thick: 0.026,
+      rigid: 0.8,
+      cover: (p) =>
+        p.v < 0.0 || p.v > 1.04 || armhole(p, 0.6, 0.66) || neck(p, 0.16, 0.05) ? null : 0.004 * smooth(0.2, 0.6, p.v),
+    },
     molle: { v: [0.3, 0.38, 0.46], width: 0.5 },
   },
   gzhel: {
-    color: 0x4c5640,
+    color: 0x5a6448,
     rim: 0x2c3326,
+    print: 'digital',
+    accent: 0x2e3324,
+    quilt: 6,
     collar: true,
     groin: true,
-    cut: { offset: 0.022, thick: 0.028, rigid: 0.8, cover: (p) => (p.v < 0.0 || p.v > 1.04 || armhole(p, 0.6, 0.66) || neck(p, 0.16, 0.05) ? null : 0.004) },
+    cut: {
+      offset: 0.022,
+      thick: 0.028,
+      rigid: 0.8,
+      cover: (p) => (p.v < 0.0 || p.v > 1.04 || armhole(p, 0.6, 0.66) || neck(p, 0.16, 0.05) ? null : 0.004),
+    },
     pouches: [
       { u: -0.32, v: 0.18, w: 0.075, h: 0.13, d: 0.05 },
       { u: 0, v: 0.18, w: 0.075, h: 0.13, d: 0.05 },
@@ -414,40 +505,77 @@ export const ARMOR_SPECS: Record<string, ArmorSpec> = {
   trooper: {
     color: 0x8a7552,
     rim: 0x5e4f36,
+    print: 'multicam',
+    accent: 0x4f5a3c,
     cut: {
       offset: 0.022,
       thick: 0.02,
       rigid: 0.8,
       cover: (p) => {
-        const plate = Math.abs(p.u) < 0.64 && p.v > 0.26 && p.v < 0.93 - Math.max(0, Math.abs(p.u) - 0.3) * 0.5;
+        const plate = Math.abs(p.u) < 0.66 && p.v > 0.24 && p.v < 0.94 - Math.max(0, Math.abs(p.u) - 0.3) * 0.5;
         const band = p.v > 0.22 && p.v < 0.46;
         const strap = Math.abs(Math.abs(p.u) - 0.42) < 0.11 && p.v >= 0.9;
-        return plate || band || strap ? (plate && Math.abs(p.c) > 0.5 ? 0.012 : 0) : null;
+        return plate || band || strap ? 0 : null;
       },
     },
-    molle: { v: [0.36, 0.43, 0.5, 0.57], width: 0.52 },
+    // The plate pockets stand proud of the carrier with their own seams.
+    layers: [
+      {
+        key: 'plates',
+        cut: {
+          offset: 0.036,
+          thick: 0.016,
+          rigid: 0.9,
+          cover: (p) =>
+            Math.abs(p.c) > 0.45 &&
+            Math.abs(p.u) < 0.58 &&
+            p.v > 0.3 &&
+            p.v < 0.9 - Math.max(0, Math.abs(p.u) - 0.28) * 0.6
+              ? 0
+              : null,
+        },
+      },
+    ],
+    molle: { v: [0.4, 0.47, 0.54, 0.61], width: 0.48 },
     pouches: [
       { u: -0.3, v: 0.27, w: 0.075, h: 0.14, d: 0.05 },
       { u: 0, v: 0.27, w: 0.075, h: 0.14, d: 0.05 },
       { u: 0.3, v: 0.27, w: 0.075, h: 0.14, d: 0.05 },
-      { u: 0, v: 0.62, w: 0.15, h: 0.08, d: 0.025 },
+      { u: 0, v: 0.68, w: 0.15, h: 0.08, d: 0.025 },
     ],
   },
   // Slick carrier: plates and straps, nothing else.
   slick6: {
     color: 0x3a3e40,
-    rim: 0x222527,
+    rim: 0x1c1e20,
     cut: {
       offset: 0.02,
       thick: 0.018,
       rigid: 0.8,
       cover: (p) => {
-        const plate = Math.abs(p.u) < 0.6 && p.v > 0.32 && p.v < 0.92 - Math.max(0, Math.abs(p.u) - 0.3) * 0.5;
+        const plate = Math.abs(p.u) < 0.62 && p.v > 0.3 && p.v < 0.93 - Math.max(0, Math.abs(p.u) - 0.3) * 0.5;
         const band = p.v > 0.3 && p.v < 0.42;
         const strap = Math.abs(Math.abs(p.u) - 0.42) < 0.09 && p.v >= 0.88;
-        return plate || band || strap ? (plate ? 0.01 : 0) : null;
+        return plate || band || strap ? 0 : null;
       },
     },
+    layers: [
+      {
+        key: 'plates',
+        cut: {
+          offset: 0.032,
+          thick: 0.016,
+          rigid: 0.92,
+          cover: (p) =>
+            Math.abs(p.c) > 0.45 &&
+            Math.abs(p.u) < 0.55 &&
+            p.v > 0.36 &&
+            p.v < 0.89 - Math.max(0, Math.abs(p.u) - 0.26) * 0.6
+              ? 0
+              : null,
+        },
+      },
+    ],
   },
 };
 
@@ -456,7 +584,15 @@ export const RIG_SPECS: Record<string, ArmorSpec> = {
   r_scav: {
     color: 0x6a5a3e,
     rim: 0x45392a,
-    cut: { offset: 0.034, thick: 0.01, rigid: 0.4, cover: (p) => (p.v < 0.12 || p.v > 1.0 || armhole(p, 0.6) || neck(p, 0.3, 0.05) || (p.front && Math.abs(p.u) < 0.09) ? null : 0) },
+    cut: {
+      offset: 0.034,
+      thick: 0.01,
+      rigid: 0.4,
+      cover: (p) =>
+        p.v < 0.12 || p.v > 1.0 || armhole(p, 0.6) || neck(p, 0.3, 0.05) || (p.front && Math.abs(p.u) < 0.09)
+          ? null
+          : 0,
+    },
     pouches: [
       { u: -0.42, v: 0.22, w: 0.1, h: 0.09, d: 0.03 },
       { u: 0.42, v: 0.22, w: 0.1, h: 0.09, d: 0.03 },
@@ -466,8 +602,10 @@ export const RIG_SPECS: Record<string, ArmorSpec> = {
   },
   // Chest rigs: a chest panel of mag pouches, X-harness at the back.
   r_bank: {
-    color: 0x3e4634,
+    color: 0x6a7a52,
     rim: 0x262b20,
+    print: 'flora',
+    accent: 0x3e4a2e,
     cut: {
       offset: 0.044,
       thick: 0.012,
@@ -482,8 +620,10 @@ export const RIG_SPECS: Record<string, ArmorSpec> = {
     pouches: [-0.45, -0.15, 0.15, 0.45].map((u) => ({ u, v: 0.3, w: 0.07, h: 0.15, d: 0.045 })),
   },
   r_alpha: {
-    color: 0x55604a,
-    rim: 0x353c2c,
+    color: 0x8a7552,
+    rim: 0x4a3f2c,
+    print: 'multicam',
+    accent: 0x4f5a3c,
     cut: {
       offset: 0.044,
       thick: 0.012,
@@ -517,14 +657,21 @@ export const RIG_SPECS: Record<string, ArmorSpec> = {
 
 // ── Sewn-on details ──────────────────────────────────────────────────────────
 
-const rbox = (w: number, h: number, d: number, r: number) => new RoundedBoxGeometry(w, h, d, 4, Math.min(r, Math.min(w, h, d) / 2 - 1e-4));
+const rbox = (w: number, h: number, d: number, r: number) =>
+  new RoundedBoxGeometry(w, h, d, 4, Math.min(r, Math.min(w, h, d) / 2 - 1e-4));
 
 function shade(c: number, k: number): number {
   return new THREE.Color(c).multiplyScalar(k).getHex();
 }
 
 /** A pouch with a flap and a webbing strip, its back on the shell surface, facing out along the normal. */
-export function pouchMesh(w: number, h: number, d: number, color: number, mat: (c: number) => THREE.Material): THREE.Group {
+export function pouchMesh(
+  w: number,
+  h: number,
+  d: number,
+  color: number,
+  mat: (c: number) => THREE.Material,
+): THREE.Group {
   const g = new THREE.Group();
   const body = new THREE.Mesh(rbox(w, h, d, Math.min(w, d) * 0.3), mat(color));
   body.position.set(0, 0, d / 2);
@@ -574,10 +721,19 @@ export function details(shell: Shell, spec: ArmorSpec, mat: (c: number) => THREE
     }
     for (let i = 0; i <= 8; i++) {
       const s = shell.surface(0.42 - (i / 8) * 0.84, 1.0, false);
-      if (s) pts.push(s.p.clone().addScaledVector(s.n, 0.012 * k).setY(s.p.y + 0.02 * k));
+      if (s)
+        pts.push(
+          s.p
+            .clone()
+            .addScaledVector(s.n, 0.012 * k)
+            .setY(s.p.y + 0.02 * k),
+        );
     }
     if (pts.length > 6) {
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true, 'centripetal'), 48, 0.024 * k, 10, true), mat(shade(spec.color, 0.9)));
+      const tube = new THREE.Mesh(
+        new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true, 'centripetal'), 48, 0.024 * k, 10, true),
+        mat(shade(spec.color, 0.9)),
+      );
       tube.castShadow = true;
       out.push(tube);
     }
@@ -603,3 +759,77 @@ export function details(shell: Shell, spec: ArmorSpec, mat: (c: number) => THREE
 }
 
 export { OD };
+
+// ── Fabric shader ────────────────────────────────────────────────────────────
+
+const PRINT_ID: Record<ArmorPrint, number> = { plain: 0, flora: 1, multicam: 2, digital: 3 };
+
+/**
+ * Turns a MeshStandardMaterial into armour fabric: camo print, Cordura weave, dark binding tape along
+ * every edge with a dashed stitch line beside it, and quilted channels on soft panels. Everything comes
+ * from the shell's attributes (aEdge, aTorso), so it's crisp at any distance without textures.
+ */
+export function shellShader(
+  shader: { uniforms: Record<string, { value: unknown }>; vertexShader: string; fragmentShader: string },
+  spec: ArmorSpec,
+  k: number,
+  color = spec.color,
+): void {
+  shader.uniforms.uInvK = { value: 1 / k };
+  shader.uniforms.uBase = { value: new THREE.Color(color) };
+  shader.uniforms.uAccent = { value: new THREE.Color(spec.accent ?? shade(color, 0.6)) };
+  shader.uniforms.uTape = { value: new THREE.Color(spec.rim) };
+  shader.uniforms.uPrint = { value: PRINT_ID[spec.print ?? 'plain'] };
+  shader.uniforms.uQuilt = { value: spec.quilt ?? 0 };
+  shader.vertexShader = shader.vertexShader
+    .replace(
+      '#include <common>',
+      '#include <common>\nattribute float aEdge;\nattribute vec2 aTorso;\nvarying float vEdge;\nvarying vec2 vTorso;\nvarying vec3 vSPos;',
+    )
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvEdge = aEdge;\nvTorso = aTorso;\nvSPos = position;');
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      '#include <common>',
+      `#include <common>
+      uniform vec3 uBase; uniform vec3 uAccent; uniform vec3 uTape; uniform int uPrint; uniform float uQuilt; uniform float uInvK;
+      varying float vEdge; varying vec2 vTorso; varying vec3 vSPos;
+      float sh3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+      float svn(vec3 p) {
+        vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(sh3(i), sh3(i + vec3(1,0,0)), f.x), mix(sh3(i + vec3(0,1,0)), sh3(i + vec3(1,1,0)), f.x), f.y),
+                   mix(mix(sh3(i + vec3(0,0,1)), sh3(i + vec3(1,0,1)), f.x), mix(sh3(i + vec3(0,1,1)), sh3(i + vec3(1,1,1)), f.x), f.y), f.z);
+      }`,
+    )
+    .replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+      vec3 col = uBase;
+      vec3 p = vSPos * uInvK;
+      if (uPrint == 1) { float s = svn(vec3(p.x * 22.0, p.y * 3.0, p.z * 22.0)) * 0.7 + svn(p * 40.0) * 0.3; col = s > 0.58 ? uAccent : s < 0.36 ? mix(uBase, vec3(0.2, 0.15, 0.08), 0.5) : uBase; }
+      if (uPrint == 2) { float a = svn(p * 9.0) * 0.65 + svn(p * 23.0) * 0.35; float b = svn(p * 14.0 + 7.3);
+        col = a > 0.6 ? uAccent : a < 0.33 ? mix(uBase, vec3(0.32, 0.26, 0.17), 0.45) : uBase; if (b > 0.72) col = vec3(0.045, 0.035, 0.025); }
+      if (uPrint == 3) { vec3 q = floor(p * 70.0) / 70.0; float a = svn(q * 11.0); col = a > 0.6 ? uAccent : a < 0.35 ? mix(uBase, vec3(0.22, 0.2, 0.14), 0.45) : uBase; }
+      // Cordura weave.
+      float weave = svn(vec3(p.x * 520.0 + p.z * 520.0, p.y * 520.0, 0.0));
+      col *= 0.93 + weave * 0.12;
+      // Quilted channels (stitched seams across soft panels).
+      if (uQuilt > 0.0) { float q = abs(fract(vTorso.y * uQuilt) - 0.5); col *= 1.0 - (1.0 - smoothstep(0.0, 0.035, 0.5 - q)) * 0.35; }
+      // Binding tape on the hem, then a dashed stitch line beside it.
+      float tape = 1.0 - smoothstep(0.011, 0.014, vEdge);
+      col = mix(col, uTape, tape);
+      float dash = step(0.42, fract((p.x + p.y * 1.3 + p.z) * 70.0));
+      float stitch = (smoothstep(0.019, 0.021, vEdge) - smoothstep(0.024, 0.026, vEdge)) * dash;
+      col = mix(col, uTape * 0.6, stitch * 0.8);
+      // A touch of occlusion near edges so panels read as separate pieces.
+      col *= 0.8 + 0.2 * smoothstep(0.0, 0.045, vEdge);
+      diffuseColor.rgb = col;`,
+    );
+}
+
+/** The shell plus its raised layers (plate pockets), each with its own colour. */
+export function shellParts(body: THREE.SkinnedMesh, id: string, spec: ArmorSpec): { shell: Shell; color: number }[] {
+  const out = [{ shell: buildShell(body, id, spec.cut), color: spec.color }];
+  for (const l of spec.layers ?? [])
+    out.push({ shell: buildShell(body, `${id}:${l.key}`, l.cut), color: l.color ?? spec.color });
+  return out;
+}

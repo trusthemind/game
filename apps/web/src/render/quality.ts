@@ -12,7 +12,7 @@ export interface QualityPreset {
 
 export const QUALITY: Record<QualityLevel, QualityPreset> = {
   low: { pixelRatio: 1, shadows: false, shadowSize: 512, post: false, smaa: false, flashlightShadow: false, muzzleLights: false },
-  medium: { pixelRatio: 1.25, shadows: true, shadowSize: 1024, post: true, smaa: false, flashlightShadow: false, muzzleLights: true },
+  medium: { pixelRatio: 1.5, shadows: true, shadowSize: 1024, post: true, smaa: true, flashlightShadow: false, muzzleLights: true },
   high: { pixelRatio: 2, shadows: true, shadowSize: 2048, post: true, smaa: true, flashlightShadow: true, muzzleLights: true },
 };
 

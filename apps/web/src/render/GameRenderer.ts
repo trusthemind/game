@@ -17,6 +17,7 @@ import type { Interactable, Raid, RaidEvent } from '@ashfall/engine';
 import { CharacterView, disposeCharacterCaches, lookFor, type Appearance } from './character';
 import type { AssetLibrary } from './assets';
 import { Effects } from './effects';
+import { SharpenEffect } from './sharpen';
 import { QUALITY, type QualityLevel, type QualityPreset } from './quality';
 import { addContainerInstance, buildWorld, markContainerSearched, type WorldMeshes } from './world';
 import type { WorldUniforms } from './patches';
@@ -38,9 +39,42 @@ interface Lighting {
 }
 
 const LIGHTING: Record<Raid['timeOfDay'], Lighting> = {
-  day: { bg: 0x0a0c0b, fog: 0x9aa7ad, fogDensity: 0.01, hemiSky: 0xd8e4ea, hemiGround: 0x4a4636, hemi: 1.5, sun: 2.6, sunColor: 0xfff1d8, sunDir: [-0.5, 1, 0.35], flashlight: 0 },
-  dusk: { bg: 0x050506, fog: 0x3a2c30, fogDensity: 0.018, hemiSky: 0xd9906a, hemiGround: 0x2a2228, hemi: 0.75, sun: 1.5, sunColor: 0xff9a5a, sunDir: [-1, 0.45, 0.2], flashlight: 60 },
-  night: { bg: 0x030405, fog: 0x0a0e16, fogDensity: 0.016, hemiSky: 0x5a6a9a, hemiGround: 0x14141c, hemi: 0.42, sun: 0.75, sunColor: 0x8fa6ff, sunDir: [0.4, 1, -0.3], flashlight: 120 },
+  day: {
+    bg: 0x0a0c0b,
+    fog: 0x9aa7ad,
+    fogDensity: 0.01,
+    hemiSky: 0xd8e4ea,
+    hemiGround: 0x4a4636,
+    hemi: 1.5,
+    sun: 2.6,
+    sunColor: 0xfff1d8,
+    sunDir: [-0.5, 1, 0.35],
+    flashlight: 0,
+  },
+  dusk: {
+    bg: 0x050506,
+    fog: 0x3a2c30,
+    fogDensity: 0.018,
+    hemiSky: 0xd9906a,
+    hemiGround: 0x2a2228,
+    hemi: 0.75,
+    sun: 1.5,
+    sunColor: 0xff9a5a,
+    sunDir: [-1, 0.45, 0.2],
+    flashlight: 60,
+  },
+  night: {
+    bg: 0x030405,
+    fog: 0x0a0e16,
+    fogDensity: 0.016,
+    hemiSky: 0x5a6a9a,
+    hemiGround: 0x14141c,
+    hemi: 0.42,
+    sun: 0.75,
+    sunColor: 0x8fa6ff,
+    sunDir: [0.4, 1, -0.3],
+    flashlight: 120,
+  },
 };
 
 export interface RendererStats {
@@ -98,7 +132,12 @@ export class GameRenderer {
     private playerLook: Appearance,
   ) {
     this.preset = QUALITY[quality];
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.preset.post, powerPreference: 'high-performance', stencil: false });
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: !this.preset.post,
+      powerPreference: 'high-performance',
+      stencil: false,
+    });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.preset.pixelRatio));
     this.renderer.shadowMap.enabled = this.preset.shadows;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -160,7 +199,13 @@ export class GameRenderer {
 
     this.highlight = new THREE.Mesh(
       new THREE.RingGeometry(0.42, 0.5, 32).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0xf0c46a, transparent: true, opacity: 0.8, toneMapped: false, depthWrite: false }),
+      new THREE.MeshBasicMaterial({
+        color: 0xf0c46a,
+        transparent: true,
+        opacity: 0.8,
+        toneMapped: false,
+        depthWrite: false,
+      }),
     );
     this.highlight.visible = false;
     this.scene.add(this.highlight);
@@ -173,15 +218,24 @@ export class GameRenderer {
   private setupPost(): void {
     this.composer = new EffectComposer(this.renderer, { frameBufferType: THREE.HalfFloatType, multisampling: 0 });
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    const bloom = new BloomEffect({ mipmapBlur: true, intensity: 1.15, luminanceThreshold: 0.82, luminanceSmoothing: 0.2, radius: 0.7 });
-    this.vignette = new VignetteEffect({ darkness: 0.62, offset: 0.28 });
+    // Bloom only on genuinely bright things (muzzle flashes, lamps, extraction beams) and a light grain:
+    // both used to soften the whole picture.
+    const bloom = new BloomEffect({
+      mipmapBlur: true,
+      intensity: 0.8,
+      luminanceThreshold: 0.9,
+      luminanceSmoothing: 0.15,
+      radius: 0.5,
+    });
+    this.vignette = new VignetteEffect({ darkness: 0.55, offset: 0.3 });
     const noise = new NoiseEffect({ blendFunction: BlendFunction.OVERLAY, premultiply: false });
-    noise.blendMode.opacity.value = 0.12;
+    noise.blendMode.opacity.value = 0.04;
     this.hue = new HueSaturationEffect({ saturation: -0.08 });
     const tone = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC });
     const effects = [bloom, this.hue, this.vignette, noise, tone];
     if (this.preset.smaa) effects.unshift(new SMAAEffect({ preset: SMAAPreset.HIGH }) as never);
     this.composer.addPass(new EffectPass(this.camera, ...effects));
+    this.composer.addPass(new EffectPass(this.camera, new SharpenEffect(0.6)));
   }
 
   resize(): void {
@@ -217,13 +271,18 @@ export class GameRenderer {
   screenToWorld(ndcX: number, ndcY: number): { x: number; y: number } {
     this.raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
     const p = new THREE.Vector3();
-    if (!this.raycaster.ray.intersectPlane(this.aimPlane, p)) return { x: this.raid.player.pos.x, y: this.raid.player.pos.y };
+    if (!this.raycaster.ray.intersectPlane(this.aimPlane, p))
+      return { x: this.raid.player.pos.x, y: this.raid.player.pos.y };
     return { x: p.x, y: p.z };
   }
 
   worldToScreen(x: number, y: number, h = 1.6): { x: number; y: number; visible: boolean } {
     const v = new THREE.Vector3(x, h, y).project(this.camera);
-    return { x: (v.x * 0.5 + 0.5) * this.canvas.clientWidth, y: (-v.y * 0.5 + 0.5) * this.canvas.clientHeight, visible: v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1 };
+    return {
+      x: (v.x * 0.5 + 0.5) * this.canvas.clientWidth,
+      y: (-v.y * 0.5 + 0.5) * this.canvas.clientHeight,
+      visible: v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1,
+    };
   }
 
   handleEvents(events: RaidEvent[]): void {
@@ -242,7 +301,8 @@ export class GameRenderer {
         }
         case 'swing': {
           this.views.get(e.actor)?.swung();
-          if (e.actor === pid || this.raid.isVisibleToPlayer(e.x, e.y)) this.effects.swing(e.x, e.y, e.facing, e.weapon === 'claws' ? 0x9adf7a : 0xffffff);
+          if (e.actor === pid || this.raid.isVisibleToPlayer(e.x, e.y))
+            this.effects.swing(e.x, e.y, e.facing, e.weapon === 'claws' ? 0x9adf7a : 0xffffff);
           break;
         }
         case 'hit': {
@@ -291,7 +351,8 @@ export class GameRenderer {
     const p = raid.player;
 
     this.updateFog(dt);
-    if (this.frameNo % 3 === 0) updateRoofs(this.roofs, raid.map, p.pos.x, p.pos.y, raid.playerFov, raid.explored, dt * 3);
+    if (this.frameNo % 3 === 0)
+      updateRoofs(this.roofs, raid.map, p.pos.x, p.pos.y, raid.playerFov, raid.explored, dt * 3);
 
     // Pre-placed bodies (your grave from the last death).
     for (const c of raid.corpses) {
@@ -318,11 +379,15 @@ export class GameRenderer {
         this.scene.add(v.root);
       }
       if (v.dead) {
-        v.updateCorpse(dt, raid.explored[raid.map.idx(Math.floor(v.root.position.x), Math.floor(v.root.position.z))] === 1);
+        v.updateCorpse(
+          dt,
+          raid.explored[raid.map.idx(Math.floor(v.root.position.x), Math.floor(v.root.position.z))] === 1,
+        );
         continue;
       }
       const visible = a === p || !!a.companion || raid.isVisibleToPlayer(a.pos.x, a.pos.y);
-      const alerted = !!a.brain && (a.brain.state === 'engage' || a.brain.state === 'cover' || a.brain.state === 'search');
+      const alerted =
+        !!a.brain && (a.brain.state === 'engage' || a.brain.state === 'cover' || a.brain.state === 'search');
       v.update(a, dt, visible, alerted, this.talkingActor === a.id || (a === p && this.talkingActor !== null));
       if (a === p) {
         const looting = this.raid.loot !== null;
@@ -334,7 +399,8 @@ export class GameRenderer {
 
     // Containers: new ground piles + searched tint (scanned a few times per second).
     if (raid.map.containers.length !== this.containerCount) {
-      for (const c of raid.map.containers) addContainerInstance(this.world.containers, this.world.containerIndex, raid.map, c);
+      for (const c of raid.map.containers)
+        addContainerInstance(this.world.containers, this.world.containerIndex, raid.map, c);
       this.containerCount = raid.map.containers.length;
     }
     if (this.frameNo % 20 === 0)
@@ -351,7 +417,8 @@ export class GameRenderer {
       (this.highlight.material as THREE.MeshBasicMaterial).opacity = 0.5 + Math.sin(this.time * 6) * 0.3;
     } else this.highlight.visible = false;
 
-    for (const b of this.world.extractionBeams) (b.material as THREE.MeshBasicMaterial).opacity = 0.09 + Math.sin(this.time * 2) * 0.03;
+    for (const b of this.world.extractionBeams)
+      (b.material as THREE.MeshBasicMaterial).opacity = 0.09 + Math.sin(this.time * 2) * 0.03;
 
     // Camera: follow the player, lead towards the aim point (peek), with shake.
     const aimX = p.intent.aimX;
@@ -409,7 +476,12 @@ export class GameRenderer {
     else this.renderer.render(this.scene, this.camera);
 
     const info = this.renderer.info;
-    return { calls: info.render.calls, triangles: info.render.triangles, geometries: info.memory.geometries, textures: info.memory.textures };
+    return {
+      calls: info.render.calls,
+      triangles: info.render.triangles,
+      geometries: info.memory.geometries,
+      textures: info.memory.textures,
+    };
   }
 
   /** Smoothly blend the fog-of-war texture towards the sim's current FOV. */

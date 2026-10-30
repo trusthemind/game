@@ -40,12 +40,13 @@ export class PerfMonitor {
   adapt(scale: number, dt: number): number {
     const avg = this.avgMs;
     if (this.filled < 60) return scale;
-    if (avg > 19) {
+    // Floor at 0.75: below that the picture turns to mush; better a few fps less than a blurry game.
+    if (avg > 21) {
       this.overT += dt;
       this.underT = 0;
-      if (this.overT > 1.5 && scale > 0.55) {
+      if (this.overT > 2 && scale > 0.75) {
         this.overT = 0;
-        return Math.max(0.55, scale - 0.12);
+        return Math.max(0.75, scale - 0.08);
       }
     } else if (avg < 12.5) {
       this.underT += dt;

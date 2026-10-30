@@ -2,8 +2,19 @@ import * as THREE from 'three';
 import { getDef, type ItemInstance } from '@ashfall/engine';
 import { getAssets, loadAssets, type AssetLibrary } from './assets';
 import { buildGun, gunKey, MOD_MODEL } from './gunsmith';
-import { ARMOR_SPECS, buildShell, details, RIG_SPECS, type ArmorSpec } from './armorShell';
-import { ammoModel, armorModel, BACKPACK_TINT, foodModel, helmetModel, magModel, medModel, miscModel, rigModel, slingModel } from './gear3d';
+import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
+import {
+  ammoModel,
+  armorModel,
+  BACKPACK_TINT,
+  foodModel,
+  helmetModel,
+  magModel,
+  medModel,
+  miscModel,
+  rigModel,
+  slingModel,
+} from './gear3d';
 
 /**
  * Inventory pictures for every item, rendered from 3D models in a tiny offscreen WebGL context: guns with
@@ -169,12 +180,18 @@ function shellModel(lib: AssetLibrary, id: string, spec: ArmorSpec | undefined):
   let body: THREE.SkinnedMesh | null = null;
   lib.humanM.scene.traverse((o) => {
     const m = o as THREE.SkinnedMesh;
-    if (m.isSkinnedMesh && (!body || m.geometry.attributes.position!.count > body.geometry.attributes.position!.count)) body = m;
+    if (m.isSkinnedMesh && (!body || m.geometry.attributes.position!.count > body.geometry.attributes.position!.count))
+      body = m;
   });
   if (!body) return null;
-  const shell = buildShell(body, id, spec.cut);
+  const parts = shellParts(body, id, spec);
   const g = new THREE.Group();
-  g.add(new THREE.Mesh(shell.geometry, thumbMat(spec.color)), new THREE.Mesh(shell.rim, thumbMat(spec.rim)));
+  for (const { shell, color } of parts) {
+    const m = new THREE.MeshStandardMaterial({ color, roughness: 0.9, side: THREE.DoubleSide });
+    m.onBeforeCompile = (sh) => shellShader(sh, spec, shell.frame.k, color);
+    g.add(new THREE.Mesh(shell.geometry, m), new THREE.Mesh(shell.rim, m));
+  }
+  const shell = parts[0]!.shell;
   for (const d of details(shell, spec, thumbMat)) g.add(d);
   return g;
 }
