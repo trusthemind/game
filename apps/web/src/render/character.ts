@@ -5,7 +5,8 @@ import type { AssetLibrary } from './assets';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
 import { faceTexture, type FaceSpec } from './facePainter';
 import { buildGun, gunKey } from './gunsmith';
-import { armorModel, BACKPACK_TINT, helmetModel, rigModel, slingModel } from './gear3d';
+import { armorModel, BACKPACK_TINT, hatModel, helmetModel, rigModel, slingModel } from './gear3d';
+import { ARMOR_SPECS, buildShell, details, RIG_SPECS, type ArmorSpec } from './armorShell';
 import { attachSkinned, cloneHuman, type HumanParts } from './human';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -14,6 +15,10 @@ import { attachSkinned, cloneHuman, type HumanParts } from './human';
 
 export type HairStyle = 'bald' | 'buzz' | 'short' | 'messy' | 'long' | 'ponytail' | 'bob' | 'bun';
 export type TopStyle = 'tee' | 'jacket' | 'hoodie' | 'coat';
+/** Fabric print, drawn in the outfit shader from object-space position (no textures). */
+export type Pattern = 'plain' | 'woodland' | 'flora' | 'digital' | 'stripes' | 'plaid' | 'tracksuit' | 'denim';
+export const PATTERN_ID: Record<Pattern, number> = { plain: 0, woodland: 1, flora: 2, digital: 3, stripes: 4, plaid: 5, tracksuit: 6, denim: 7 };
+export type Hat = 'beanie' | 'cap' | 'ushanka' | 'bandana';
 
 export interface Appearance {
   sex: 'm' | 'f';
@@ -30,6 +35,15 @@ export interface Appearance {
   eyes?: number;
   age?: 0 | 1 | 2;
   scars?: boolean;
+  /** Clothing variety: print on the top / trousers, a second colour for it, which pack the trousers and
+   * footwear come from (mix and match), and headwear. */
+  topPattern?: Pattern;
+  pantsPattern?: Pattern;
+  accent?: number;
+  legs?: 'ranger' | 'peasant';
+  feet?: 'ranger' | 'peasant';
+  hat?: Hat | null;
+  hatColor?: number;
 }
 
 export const SKIN_TONES = [0xf1c8a8, 0xe3b08e, 0xc99069, 0x9a6544, 0x6b4430];
@@ -61,16 +75,39 @@ export function lookFor(seed: number, archetype: string, npcId?: string, bossId?
     age: rng.weighted([[0, 3], [1, 4], [2, 2]] as const),
     scars: rng.chance(archetype === 'raider' || archetype === 'guard' ? 0.35 : 0.1),
   };
+  // Clothing: mix pack pieces and prints so a crowd doesn't look like clones.
+  const civ = (): Partial<Appearance> => {
+    const style = rng.weighted([['gopnik', 3], ['sailor', 2], ['flannel', 2], ['work', 3], ['hoodie', 2]] as const);
+    switch (style) {
+      case 'gopnik':
+        return { topStyle: 'jacket', top: rng.pick([0x1c1f2a, 0x1f3a6a, 0x5a1c1c, 0x1e1e1e]), topPattern: 'tracksuit', pants: rng.pick([0x1c1f2a, 0x1e1e1e]), pantsPattern: 'tracksuit', accent: 0xe8e8e0, legs: 'ranger', feet: 'peasant', hat: rng.chance(0.5) ? 'cap' : null, hatColor: 0x1e1e1e };
+      case 'sailor':
+        return { topStyle: 'tee', top: 0x1d2c5a, topPattern: 'stripes', accent: 0xe8e8e0, pantsPattern: 'denim', pants: 0x2c3e5e, hat: rng.chance(0.4) ? 'beanie' : null, hatColor: rng.pick([0x1e1e1e, 0x2c3e5e]) };
+      case 'flannel':
+        return { topStyle: 'tee', top: rng.pick([0x8a2a22, 0x2a5a3a, 0x2a3a6a]), topPattern: 'plaid', accent: 0x1e1e1e, pantsPattern: rng.chance(0.6) ? 'denim' : 'plain', pants: rng.pick([0x2c3e5e, 0x3a3a30]), hat: rng.chance(0.3) ? 'ushanka' : null, hatColor: 0x5a4632 };
+      case 'hoodie':
+        return { topStyle: 'hoodie', topPattern: 'plain', pantsPattern: rng.chance(0.5) ? 'denim' : 'plain', pants: rng.pick([0x2c3e5e, 0x2e3324]) };
+      default:
+        return { topStyle: rng.pick(['jacket', 'coat'] as TopStyle[]), topPattern: 'plain', pantsPattern: rng.chance(0.4) ? 'denim' : 'plain', legs: rng.chance(0.5) ? 'peasant' : 'ranger', hat: rng.weighted([[null, 4], ['beanie', 3], ['ushanka', 1], ['bandana', 1]] as const), hatColor: rng.pick([0x2a2a2a, 0x4a3b2b, 0x3d4a3a, 0x6a2a22]) };
+    }
+  };
+  const camo = (): Partial<Appearance> => {
+    const p = rng.pick(['woodland', 'flora', 'digital'] as Pattern[]);
+    const base = p === 'flora' ? 0x6a7a52 : p === 'digital' ? 0x5a6448 : 0x55603e;
+    return { topStyle: rng.pick(['jacket', 'jacket', 'coat'] as TopStyle[]), top: base, topPattern: p, pants: base, pantsPattern: rng.chance(0.75) ? p : 'plain', accent: p === 'flora' ? 0x3a4a2a : 0x2e2a20, legs: 'ranger', feet: 'ranger', hat: rng.chance(0.35) ? 'beanie' : null, hatColor: 0x2a2d22 };
+  };
   switch (archetype) {
     case 'raider':
     case 'guard':
-      return { ...base, top: rng.pick([0x2a2d2f, 0x3a3a2c, 0x23272b, 0x4a4936]), pants: rng.pick([0x2a2d2f, 0x3d3c30]), topStyle: 'jacket', gloves: 0x1a1a1a, boots: 0x1a1816 };
+      return { ...base, ...camo(), gloves: 0x1a1a1a, boots: 0x1a1816 };
     case 'boss':
       return { ...base, top: 0x3b2622, topStyle: 'coat', pants: 0x1f1f22, beard: true, hair: 'buzz', gloves: 0x1a1a1a };
-    case 'infected':
-      return { ...base, zombie: true, skin: rng.pick([0x8c9a7a, 0x7d8b6c, 0x9aa088, 0x6f7a62]), top: rng.pick(DRAB_TOPS) & 0x7f7f7f, pants: rng.pick(DRAB_PANTS) & 0x7f7f7f };
+    case 'infected': {
+      const c = civ();
+      return { ...base, ...c, zombie: true, hat: null, skin: rng.pick([0x8c9a7a, 0x7d8b6c, 0x9aa088, 0x6f7a62]), top: (c.top ?? base.top) & 0x7f7f7f, pants: (c.pants ?? base.pants) & 0x7f7f7f };
+    }
     default:
-      return base;
+      return { ...base, ...civ() };
   }
 }
 
@@ -258,6 +295,19 @@ function flatMat(color: number, opts: { rough?: number; metal?: number; side?: b
   return m;
 }
 
+const gearSkinCache = new Map<string, THREE.MeshStandardMaterial>();
+/** Smooth-shaded fabric for armour shells and sewn-on parts (works for skinned and plain meshes). */
+function gearSkinMat(color: number, rough: number, u: WorldUniforms): THREE.MeshStandardMaterial {
+  const key = `${color}:${rough}`;
+  let m = gearSkinCache.get(key);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0, side: THREE.DoubleSide });
+    patchWorldMaterial(m, u);
+    gearSkinCache.set(key, m);
+  }
+  return m;
+}
+
 // ── Modelled humans ─────────────────────────────────────────────────────────
 
 /** Average skin colour of the pack's body textures (sRGB #a67350); skin tones are applied relative to it. */
@@ -340,26 +390,93 @@ function humanBodyMaterial(src: THREE.MeshStandardMaterial, a: Appearance, u: Wo
  * Clothing from the outfit pack, re-dyed per character: the texture's shading and stitching stay, its hue
  * mostly gives way to the character's palette. Skin parts (bare forearms, hands) take the skin tone.
  */
-function outfitMaterial(src: THREE.MeshStandardMaterial, color: number, skin: boolean, u: WorldUniforms, dead = false): THREE.MeshStandardMaterial {
-  const key = `${src.uuid}|outfit|${color}|${skin}|${dead}`;
+function outfitMaterial(src: THREE.MeshStandardMaterial, color: number, skin: boolean, u: WorldUniforms, dead = false, pattern: Pattern = 'plain', accent = 0x202020): THREE.MeshStandardMaterial {
+  const key = `${src.uuid}|outfit|${color}|${skin}|${dead}|${pattern}|${accent}`;
   let m = humanMatCache.get(key);
   if (m) return m;
   m = src.clone();
-  m.roughness = skin ? 0.7 : 0.88;
+  m.roughness = skin ? 0.7 : pattern === 'tracksuit' ? 0.6 : 0.88;
   m.metalness = 0;
   const tint = new THREE.Color(color).multiplyScalar(dead ? 0.7 : 1);
+  const acc = new THREE.Color(accent).multiplyScalar(dead ? 0.7 : 1);
   patchWorldMaterial(m, u, {
     pre: (shader) => {
       shader.uniforms.uDye = { value: tint };
+      shader.uniforms.uDye2 = { value: acc };
       shader.uniforms.uDyeMix = { value: skin ? 1.0 : 0.82 };
+      shader.uniforms.uPattern = { value: skin ? 0 : PATTERN_ID[pattern] };
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vClothPos;\nvarying vec3 vClothNrm;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvClothPos = position;\nvClothNrm = normal;');
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform vec3 uDye;\nuniform float uDyeMix;')
+        .replace(
+          '#include <common>',
+          `#include <common>
+          uniform vec3 uDye;
+          uniform vec3 uDye2;
+          uniform float uDyeMix;
+          uniform int uPattern;
+          varying vec3 vClothPos;
+          varying vec3 vClothNrm;
+          float h3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+          float vn(vec3 p) {
+            vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+            return mix(mix(mix(h3(i), h3(i + vec3(1,0,0)), f.x), mix(h3(i + vec3(0,1,0)), h3(i + vec3(1,1,0)), f.x), f.y),
+                       mix(mix(h3(i + vec3(0,0,1)), h3(i + vec3(1,0,1)), f.x), mix(h3(i + vec3(0,1,1)), h3(i + vec3(1,1,1)), f.x), f.y), f.z);
+          }
+          float fbm(vec3 p) { return vn(p) * 0.6 + vn(p * 2.1) * 0.3 + vn(p * 4.3) * 0.1; }
+          // Returns the cloth colour for the active print; 'base' is the dyed texture shading.
+          vec3 clothPrint(vec3 base, float shade) {
+            vec3 p = vClothPos * 1.0;
+            if (uPattern == 1) { // woodland camo: four blotch colours
+              float a = fbm(p * 7.0); float b = fbm(p * 7.0 + 19.3);
+              vec3 c = uDye;
+              if (a > 0.55) c = uDye2;
+              if (b > 0.62) c = vec3(0.17, 0.15, 0.11);
+              if (a < 0.32) c = mix(uDye, vec3(0.55, 0.5, 0.36), 0.55);
+              return c * shade;
+            }
+            if (uPattern == 2) { // flora: vertical green/brown brush strokes
+              float s = fbm(vec3(p.x * 18.0, p.y * 2.5, p.z * 18.0));
+              vec3 c = s > 0.6 ? uDye2 : s < 0.38 ? mix(uDye, vec3(0.45, 0.36, 0.22), 0.6) : uDye;
+              return c * shade;
+            }
+            if (uPattern == 3) { // digital: pixelated blobs
+              vec3 q = floor(p * 55.0) / 55.0;
+              float a = fbm(q * 9.0);
+              vec3 c = a > 0.58 ? uDye2 : a < 0.36 ? mix(uDye, vec3(0.6, 0.58, 0.48), 0.5) : uDye;
+              return c * shade;
+            }
+            if (uPattern == 4) { // telnyashka: horizontal stripes
+              float s = step(0.5, fract(p.y * 46.0));
+              return mix(uDye2, uDye, s) * shade;
+            }
+            if (uPattern == 5) { // flannel plaid
+              float x = step(0.72, fract(p.x * 14.0 + p.z * 14.0));
+              float y = step(0.72, fract(p.y * 14.0));
+              float t = step(0.93, fract(p.x * 42.0 + p.z * 42.0)) + step(0.93, fract(p.y * 42.0));
+              vec3 c = mix(uDye, uDye2, max(x, y) * 0.65);
+              return mix(c, vec3(0.85), min(t, 1.0) * 0.25) * shade;
+            }
+            if (uPattern == 6) { // tracksuit: two stripes down the outer sides
+              float side = smoothstep(0.78, 0.92, abs(vClothNrm.x));
+              float bands = step(0.5, fract(p.z * 60.0 + p.y * 2.0));
+              return mix(uDye, uDye2, side * bands) * shade;
+            }
+            if (uPattern == 7) { // denim: twill noise
+              float tw = vn(vec3((p.x + p.y) * 160.0, (p.x - p.y) * 18.0, p.z * 160.0));
+              return uDye * (0.88 + tw * 0.22) * shade;
+            }
+            return base;
+          }`,
+        )
         .replace(
           '#include <map_fragment>',
           `#include <map_fragment>
           float l = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
           vec3 dyed = uDye * (0.45 + 1.5 * l);
-          diffuseColor.rgb = mix(diffuseColor.rgb, min(dyed, vec3(1.0)), uDyeMix);`,
+          vec3 cloth = clothPrint(min(dyed, vec3(1.0)), 0.45 + 1.5 * l);
+          diffuseColor.rgb = mix(diffuseColor.rgb, min(cloth, vec3(1.0)), uDyeMix);`,
         );
     },
     key: 'outfit',
@@ -369,18 +486,27 @@ function outfitMaterial(src: THREE.MeshStandardMaterial, color: number, skin: bo
 }
 
 /** Which outfit pieces to wear and what colour each takes. Null = no outfit (painted body only). */
-function outfitPieces(lib: AssetLibrary, a: Appearance): { src: THREE.SkinnedMesh; color: number }[] | null {
+function outfitPieces(lib: AssetLibrary, a: Appearance): { src: THREE.SkinnedMesh; color: number; pattern: Pattern }[] | null {
   const kind = a.topStyle === 'tee' ? 'peasant' : 'ranger';
-  const list = lib.outfits.get(`${a.sex}_${kind}`);
-  if (!list?.length) return null;
-  const out: { src: THREE.SkinnedMesh; color: number }[] = [];
-  for (const src of list) {
+  const top = lib.outfits.get(`${a.sex}_${kind}`);
+  if (!top?.length) return null;
+  const legs = lib.outfits.get(`${a.sex}_${a.legs ?? kind}`) ?? top;
+  const feet = lib.outfits.get(`${a.sex}_${a.feet ?? kind}`) ?? top;
+  const out: { src: THREE.SkinnedMesh; color: number; pattern: Pattern }[] = [];
+  const pick = (list: THREE.SkinnedMesh[], re: RegExp) => list.filter((m) => re.test(m.name));
+  for (const src of [...pick(top, /Body|Arms|Hood/), ...pick(legs, /Legs|Belt/), ...pick(feet, /Feet/)]) {
     const n = src.name;
     // Fantasy extras that don't belong in a post-Soviet town.
     if (/Pauldron|Bracer/.test(n)) continue;
     if (/Hood/.test(n) && a.topStyle !== 'hoodie') continue;
-    const color = /Legs/.test(n) ? a.pants : /Feet/.test(n) ? a.boots : /Belt/.test(n) ? 0x3a2c20 : /Hood/.test(n) ? shadeHex(a.top, 0.85) : a.top;
-    out.push({ src, color });
+    if (/Belt/.test(n)) {
+      out.push({ src, color: 0x3a2c20, pattern: 'plain' });
+      continue;
+    }
+    const isLegs = /Legs/.test(n);
+    const color = isLegs ? a.pants : /Feet/.test(n) ? a.boots : /Hood/.test(n) ? shadeHex(a.top, 0.85) : a.top;
+    const pattern = isLegs ? (a.pantsPattern ?? 'plain') : /Feet/.test(n) ? 'plain' : (a.topPattern ?? 'plain');
+    out.push({ src, color, pattern });
   }
   return out;
 }
@@ -581,6 +707,7 @@ export class CharacterView {
   private bodyMeshes: THREE.SkinnedMesh[] = [];
   /** Clothing pieces bound to the body skeleton. */
   private outfitMeshes: THREE.SkinnedMesh[] = [];
+  private hairMeshes: THREE.SkinnedMesh[] = [];
   private mixer: THREE.AnimationMixer;
   private lower: THREE.AnimationAction | null = null;
   private lowerName = '';
@@ -644,7 +771,7 @@ export class CharacterView {
         const mats = Array.isArray(piece.src.material) ? piece.src.material : [piece.src.material];
         const dressed = mats.map((mt) => {
           const skin = /Regular/.test(mt.name);
-          return outfitMaterial(mt as THREE.MeshStandardMaterial, skin ? (look.gloves ?? look.skin) : piece.color, skin, u);
+          return outfitMaterial(mt as THREE.MeshStandardMaterial, skin ? (look.gloves ?? look.skin) : piece.color, skin, u, false, piece.pattern, look.accent);
         });
         const worn = attachSkinned(piece.src, human.body, dressed.length === 1 ? dressed[0] : (dressed as unknown as THREE.Material));
         worn.castShadow = shadows;
@@ -673,7 +800,11 @@ export class CharacterView {
       const hooded = clothed && a.topStyle === 'hoodie';
       const style = HAIR_MODEL[a.sex][a.hair];
       const hm = hairMaterialFor(this.lib, a.zombie ? 0x3a3530 : a.hairColor, this.u);
-      if (style && !hooded && this.lib.hair.get(style)) attachSkinned(this.lib.hair.get(style)!, this.human.body, hm).castShadow = shadows;
+      if (style && !hooded && this.lib.hair.get(style)) {
+        const h = attachSkinned(this.lib.hair.get(style)!, this.human.body, hm);
+        h.castShadow = shadows;
+        this.hairMeshes.push(h);
+      }
       if (a.beard && a.sex === 'm' && this.lib.hair.get('Hair_Beard')) attachSkinned(this.lib.hair.get('Hair_Beard')!, this.human.body, hm);
       if (!clothed && (a.topStyle === 'hoodie' || a.topStyle === 'coat')) this.addCollar(rig, a);
       return;
@@ -741,6 +872,14 @@ export class CharacterView {
     const cs = chest.getSize(new THREE.Vector3());
 
     for (const m of this.outfitMeshes) if (/Hood/.test(m.name)) m.visible = !s.helmet;
+    const hat = !s.helmet && this.look.hat && !this.look.zombie ? this.look.hat : null;
+    // Hats and helmets sit over short hair; long hair stays (it hangs below the rim).
+    for (const h of this.hairMeshes) h.visible = !(s.helmet || (hat && hat !== 'bandana')) || /Long/.test(h.name);
+    if (hat) {
+      const brow = hc.y + hs.y * (hat === 'cap' ? 0.1 : 0.06);
+      const top = head.max.y + hs.y * (hat === 'bandana' ? -0.05 : 0.07);
+      add(/^head$/i, fit(hatModel(hat, this.look.hatColor ?? 0x2a2a2a), new THREE.Vector3(hs.x * 1.22, top - brow, hs.z * 1.2), new THREE.Vector3(hc.x, brow, hc.z - hs.z * 0.03)));
+    }
     if (s.helmet) {
       const id = s.helmet.def;
       // Rim just above the brow, dome over the crown; the Altyn's faceplate hangs lower.
@@ -748,11 +887,30 @@ export class CharacterView {
       const top = head.max.y + hs.y * 0.06;
       add(/^head$/i, fit(helmetModel(id), new THREE.Vector3(hs.x * 1.32, top - brow, hs.z * 1.3), new THREE.Vector3(hc.x, brow, hc.z - hs.z * 0.03)));
     }
-    if (s.armor) {
+    // Armour and rigs: shells cut from this body's own torso, skinned to its skeleton (see armorShell.ts).
+    const wear = (id: string, spec: ArmorSpec | undefined): boolean => {
+      const body = this.human?.body;
+      if (!spec || !body) return false;
+      const shell = buildShell(body, id, spec.cut);
+      for (const [geo, color, rough] of [
+        [shell.geometry, spec.color, 0.9],
+        [shell.rim, spec.rim, 0.85],
+      ] as const) {
+        const m = new THREE.SkinnedMesh(geo, gearSkinMat(color, rough, this.u));
+        m.bind(body.skeleton, body.bindMatrix);
+        m.castShadow = true;
+        m.frustumCulled = false;
+        body.parent!.add(m);
+        this.gearAttachments.push(m);
+      }
+      for (const d of details(shell, spec, (c) => gearSkinMat(c, 0.9, this.u))) add(/^spine_03$/, d);
+      return true;
+    };
+    if (s.armor && !wear(s.armor.def, ARMOR_SPECS[s.armor.def])) {
       const bottom = chest.min.y - cs.y * 0.62;
       add(/^spine_03$/, fit(armorModel(s.armor.def), new THREE.Vector3(cs.x * 1.12, chest.max.y + cs.y * 0.06 - bottom, cs.z * 1.32), new THREE.Vector3(cc.x, bottom, cc.z)));
     }
-    if (s.rig) {
+    if (s.rig && !wear(s.rig.def, RIG_SPECS[s.rig.def])) {
       const bottom = chest.min.y - cs.y * 0.55;
       add(/^spine_03$/, fit(rigModel(s.rig.def), new THREE.Vector3(cs.x * (s.armor ? 1.18 : 1.1), chest.max.y + cs.y * 0.04 - bottom, cs.z * (s.armor ? 1.55 : 1.35)), new THREE.Vector3(cc.x, bottom, cc.z + cs.z * 0.02)));
     }

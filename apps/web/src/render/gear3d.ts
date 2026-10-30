@@ -143,6 +143,46 @@ export function helmetModel(id: string): THREE.Group {
   return g;
 }
 
+// ── Headwear ─────────────────────────────────────────────────────────────────
+
+/** Civilian hats, same frame as helmets (rim at y=0, fitted by `userData.shell`). */
+export function hatModel(kind: string, color: number): THREE.Group {
+  const g = new THREE.Group();
+  const knit = gearMat(color, 0.95);
+  if (kind === 'beanie') {
+    // Knit dome with a turned-up ribbed cuff.
+    g.add((g.userData.shell = part(lathe([[0, 0.17], [0.05, 0.168], [0.09, 0.155], [0.118, 0.125], [0.132, 0.085], [0.136, 0.04], [0.136, 0.0]], 40), knit)));
+    const cuff = lathe([[0.139, -0.005], [0.145, 0.0], [0.146, 0.045], [0.14, 0.05]], 40);
+    g.add(part(cuff, gearMat(shade(color, 0.9), 0.95)));
+    for (let i = 0; i < 4; i++) g.add(part(new THREE.TorusGeometry(0.146, 0.0022, 6, 48), gearMat(shade(color, 0.8), 0.95), [0, 0.008 + i * 0.011, 0], [Math.PI / 2, 0, 0]));
+  } else if (kind === 'cap') {
+    // Baseball cap: six-panel crown and a curved bill.
+    g.add((g.userData.shell = part(lathe([[0, 0.12], [0.06, 0.117], [0.1, 0.1], [0.125, 0.065], [0.136, 0.025], [0.138, 0.0]], 40), knit)));
+    const bill = new THREE.CylinderGeometry(0.11, 0.11, 0.008, 40, 1, false, -0.75, 1.5);
+    bill.translate(0, 0, 0);
+    const b = part(bill, gearMat(shade(color, 0.92), 0.85), [0, 0.006, 0.06], [-0.12, 0, 0]);
+    b.scale.set(1, 1, 1.15);
+    g.add(b);
+    g.add(part(new THREE.SphereGeometry(0.01, 12, 8), gearMat(shade(color, 0.85), 0.85), [0, 0.12, 0]));
+  } else if (kind === 'ushanka') {
+    // Fur crown, fur brim folded up at the front, ear flaps tied up on top.
+    const fur = gearMat(0x6a5440, 1);
+    g.add((g.userData.shell = part(lathe([[0, 0.15], [0.07, 0.148], [0.115, 0.12], [0.138, 0.08], [0.145, 0.03], [0.146, 0.0]], 40), knit)));
+    g.add(part(lathe([[0.15, -0.01], [0.168, 0.0], [0.17, 0.055], [0.15, 0.065]], 40, -1.0, 2.0), fur));
+    for (const sx of [-1, 1]) {
+      const flap = part(rbox(0.035, 0.11, 0.1, 0.02), fur, [sx * 0.15, 0.04, -0.01], [0, 0, sx * -0.35]);
+      g.add(flap);
+    }
+    g.add(part(rbox(0.26, 0.03, 0.12, 0.014), fur, [0, 0.13, -0.03]));
+  } else {
+    // Bandana tied round the head.
+    g.add((g.userData.shell = part(lathe([[0.137, 0.0], [0.14, 0.02], [0.138, 0.05], [0.13, 0.075]], 40), knit)));
+    g.add(part(new THREE.SphereGeometry(0.018, 12, 10), knit, [0, 0.03, -0.14]));
+    for (const sx of [-1, 1]) g.add(part(rbox(0.02, 0.07, 0.008, 0.003), knit, [sx * 0.015, -0.01, -0.15], [0.2, 0, sx * 0.3]));
+  }
+  return g;
+}
+
 // ── Body armour & plate carriers ─────────────────────────────────────────────
 
 const ARMOR_LOOK: Record<string, { color: number; kind: 'soft' | 'vest' | 'carrier' | 'slick'; collar?: boolean; groin?: boolean; pouches?: number }> = {

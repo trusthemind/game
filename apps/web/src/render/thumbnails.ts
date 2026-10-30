@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { getDef, type ItemInstance } from '@ashfall/engine';
 import { getAssets, loadAssets, type AssetLibrary } from './assets';
 import { buildGun, gunKey, MOD_MODEL } from './gunsmith';
+import { ARMOR_SPECS, buildShell, details, RIG_SPECS, type ArmorSpec } from './armorShell';
 import { ammoModel, armorModel, BACKPACK_TINT, foodModel, helmetModel, magModel, medModel, miscModel, rigModel, slingModel } from './gear3d';
 
 /**
@@ -125,9 +126,9 @@ export function itemModel(lib: AssetLibrary, item: ItemInstance): { obj: THREE.O
     case 'helmet':
       return front(helmetModel(id));
     case 'armor':
-      return front(armorModel(id));
+      return front(shellModel(lib, id, ARMOR_SPECS[id]) ?? armorModel(id));
     case 'rig':
-      return front(rigModel(id));
+      return front(shellModel(lib, id, RIG_SPECS[id]) ?? rigModel(id));
     case 'backpack': {
       if (id === 'b_sling') return front(slingModel());
       const bp = lib.props.get('backpack');
@@ -153,6 +154,29 @@ export function itemModel(lib: AssetLibrary, item: ItemInstance): { obj: THREE.O
       return m ? top(m) : null;
     }
   }
+}
+
+const thumbMats = new Map<number, THREE.MeshStandardMaterial>();
+const thumbMat = (c: number) => {
+  let m = thumbMats.get(c);
+  if (!m) thumbMats.set(c, (m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.88, side: THREE.DoubleSide })));
+  return m;
+};
+
+/** Armour / rig picture: the same body-conforming shell the characters wear, cut from the base male body. */
+function shellModel(lib: AssetLibrary, id: string, spec: ArmorSpec | undefined): THREE.Object3D | null {
+  if (!spec || !lib.humanM) return null;
+  let body: THREE.SkinnedMesh | null = null;
+  lib.humanM.scene.traverse((o) => {
+    const m = o as THREE.SkinnedMesh;
+    if (m.isSkinnedMesh && (!body || m.geometry.attributes.position!.count > body.geometry.attributes.position!.count)) body = m;
+  });
+  if (!body) return null;
+  const shell = buildShell(body, id, spec.cut);
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(shell.geometry, thumbMat(spec.color)), new THREE.Mesh(shell.rim, thumbMat(spec.rim)));
+  for (const d of details(shell, spec, thumbMat)) g.add(d);
+  return g;
 }
 
 function render(lib: AssetLibrary, item: ItemInstance): string | null {
