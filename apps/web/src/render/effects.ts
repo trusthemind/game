@@ -123,7 +123,8 @@ export class Effects {
   muzzleFlash(x: number, z: number, y = 0.95, suppressed = false): void {
     const f = this.flashes.next();
     f.life = suppressed ? 0.03 : 0.06;
-    f.light.position.set(x, y + 0.15, z);
+    // Above the muzzle, clear of the gun and hands: an inverse-square light right on a surface overflows.
+    f.light.position.set(x, y + 0.35, z);
     f.light.intensity = suppressed ? 3 : 25;
     f.sprite.position.set(x, y, z);
     f.sprite.scale.setScalar(suppressed ? 0.25 : f.sprite.userData.baseScale ?? (f.sprite.userData.baseScale = f.sprite.scale.x));

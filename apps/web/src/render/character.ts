@@ -2216,7 +2216,8 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256):
   const key = JSON.stringify(look) + size;
   const hit = portraitCache.get(key);
   if (hit) return hit;
-  portraitRenderer ??= new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  if (!portraitRenderer || portraitRenderer.getContext().isContextLost())
+    portraitRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   const r = portraitRenderer;
   r.setSize(size, size, false);
   r.setPixelRatio(1);

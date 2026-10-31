@@ -203,7 +203,8 @@ function render(lib: AssetLibrary, item: ItemInstance): string | null {
   if (!model) return null;
   const W = d.w * PX;
   const H = d.h * PX;
-  renderer ??= new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  // The browser may drop this context when too many are open; start a fresh one rather than caching blanks.
+  if (!renderer || renderer.getContext().isContextLost()) renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(1);
   renderer.setSize(W, H, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;

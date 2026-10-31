@@ -17,7 +17,7 @@ import type { Interactable, Raid, RaidEvent } from '@ashfall/engine';
 import { CharacterView, disposeCharacterCaches, lookFor, type Appearance } from './character';
 import type { AssetLibrary } from './assets';
 import { Effects } from './effects';
-import { SharpenEffect } from './sharpen';
+import { SanitizeEffect, SharpenEffect } from './sharpen';
 import { QUALITY, type QualityLevel, type QualityPreset } from './quality';
 import { addContainerInstance, buildWorld, markContainerSearched, type WorldMeshes } from './world';
 import type { WorldUniforms } from './patches';
@@ -124,7 +124,10 @@ export class GameRenderer {
   private extractOpen = new Map<number, number>();
   /** Seconds since you extracted: you walk out of the map while the banner shows. */
   private exitT = 0;
+  private torchOn: boolean | null = null;
   private exitPos: { x: number; y: number } | null = null;
+  /** Every shader the raid will need has been compiled (see prewarm). */
+  private warmed = false;
   private time = 0;
   private labels = new Map<number, HTMLDivElement>();
   private raycaster = new THREE.Raycaster();
@@ -227,6 +230,8 @@ export class GameRenderer {
   private setupPost(): void {
     this.composer = new EffectComposer(this.renderer, { frameBufferType: THREE.HalfFloatType, multisampling: 0 });
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    // Its own pass, so bloom (which reads the pass input directly) only ever sees clean, bounded colour.
+    this.composer.addPass(new EffectPass(this.camera, new SanitizeEffect()));
     // Bloom only on genuinely bright things (muzzle flashes, lamps, extraction beams) and a light grain:
     // both used to soften the whole picture.
     const bloom = new BloomEffect({
@@ -245,6 +250,30 @@ export class GameRenderer {
     if (this.preset.smaa) effects.unshift(new SMAAEffect({ preset: SMAAPreset.HIGH }) as never);
     this.composer.addPass(new EffectPass(this.camera, ...effects));
     this.composer.addPass(new EffectPass(this.camera, new SharpenEffect(0.6)));
+  }
+
+  /**
+   * Compile every shader up front. three.js compiles a material the first time it's drawn, which takes from a
+   * few hundred milliseconds to over a second per batch — a bot with a new body walking into view, the first
+   * muzzle flash, a loot pile — and the browser can show a black or white frame while it waits. On the first
+   * frame (all actor views already exist) show everything, compile, draw one frame, then restore visibility.
+   */
+  private prewarm(): void {
+    this.warmed = true;
+    const hidden: THREE.Object3D[] = [];
+    // Lights stay exactly as they are: the light count is part of every lit program's key, so compiling with
+    // an extra light on would build programs the real frames never use.
+    this.scene.traverse((o) => {
+      if (!o.visible && !(o as THREE.Light).isLight) {
+        hidden.push(o);
+        o.visible = true;
+      }
+    });
+    this.renderer.compile(this.scene, this.camera);
+    // One real draw also builds the shadow-pass and post-processing programs.
+    if (this.composer) this.composer.render(0);
+    else this.renderer.render(this.scene, this.camera);
+    for (const o of hidden) o.visible = false;
   }
 
   resize(): void {
@@ -505,7 +534,17 @@ export class GameRenderer {
     this.sun.target.position.set(cx, 0, cz);
     const fx = Math.cos(p.facing);
     const fz = Math.sin(p.facing);
-    this.flashlight.visible = p.flashlight && p.alive;
+    // On/off by intensity, never by visibility: a light appearing or vanishing changes the light count and
+    // three.js recompiles every lit shader (a visible freeze). Its shadow map only updates while it is on.
+    const torch = p.flashlight && p.alive;
+    this.flashlight.intensity = torch ? LIGHTING[this.raid.timeOfDay].flashlight : 0;
+    this.flashlight.shadow.autoUpdate = torch;
+    // An off light still samples its shadow map (0 × NaN = NaN): a never-rendered map poisons every lit pixel
+    // and the frame goes black. Render it once whenever the torch switches, including the first frame.
+    if (torch !== this.torchOn) {
+      this.flashlight.shadow.needsUpdate = true;
+      this.torchOn = torch;
+    }
     this.flashlight.position.set(p.pos.x + fx * 0.3, 1.25, p.pos.y + fz * 0.3);
     this.flashlight.target.position.set(p.pos.x + fx * 8, 0, p.pos.y + fz * 8);
     this.playerGlow.position.set(p.pos.x, 1.6, p.pos.y);
@@ -518,6 +557,7 @@ export class GameRenderer {
     this.effects.update(dt, this.camTarget);
     this.events.update(this.raid, dt);
 
+    if (!this.warmed) this.prewarm();
     this.renderer.info.reset();
     if (this.composer) this.composer.render(dt);
     else this.renderer.render(this.scene, this.camera);
@@ -600,5 +640,6 @@ export class GameRenderer {
     disposeCharacterCaches();
     disposeTextures();
     this.renderer.dispose();
+    this.renderer.forceContextLoss();
   }
 }

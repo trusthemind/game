@@ -11,9 +11,14 @@ import { useProfile } from '../../state/profileStore';
  * One small WebGL canvas, paused while the tab is hidden.
  */
 export function CharacterPreview() {
-  const ref = useRef<HTMLCanvasElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const canvas = ref.current!;
+    // A fresh canvas per mount: the context is released on cleanup (forceContextLoss), and a canvas whose
+    // context was lost can't host a new renderer (Fast Refresh re-runs this effect on the same DOM).
+    const canvas = document.createElement('canvas');
+    canvas.className = 'char-preview';
+    canvas.title = 'Drag to turn';
+    ref.current!.appendChild(canvas);
     let disposed = false;
     let raf = 0;
     let cleanup = () => {};
@@ -125,12 +130,16 @@ export function CharacterPreview() {
         canvas.removeEventListener('pointerup', up);
         view?.dispose();
         renderer.dispose();
+        // dispose() keeps the WebGL context alive; without this every visit to the stash leaked one, and past
+        // ~16 the browser starts killing the oldest (item pictures, portraits, this view): white flashes.
+        renderer.forceContextLoss();
       };
     });
     return () => {
       disposed = true;
       cleanup();
+      canvas.remove();
     };
   }, []);
-  return <canvas ref={ref} className="char-preview" title="Drag to turn" />;
+  return <div ref={ref} style={{ display: 'contents' }} />;
 }

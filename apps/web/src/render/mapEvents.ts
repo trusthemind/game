@@ -35,12 +35,20 @@ export class MapEventView {
   private built = new Set<number>();
   private drops = new Map<number, { crate: THREE.Group; chute: THREE.Mesh }>();
   private fireLights: THREE.PointLight[] = [];
+  private spareLights: THREE.PointLight[] = [];
   private time = 0;
   private mats: THREE.Material[] = [];
   private geos: THREE.BufferGeometry[] = [];
   private smokeMat = new THREE.SpriteMaterial({ map: radialTexture('rgba(255,255,255,0.55)', 'rgba(255,255,255,0)'), depthWrite: false, transparent: true });
 
   constructor(private u: WorldUniforms) {
+    // Fire lights exist from the start (dark until a crash site uses one): adding a light mid-raid changes the
+    // light count, which makes three.js recompile every lit shader — a second-long freeze.
+    for (let i = 0; i < 2; i++) {
+      const light = new THREE.PointLight(0xff8a3a, 0, 9, 1.6);
+      this.group.add(light);
+      this.spareLights.push(light);
+    }
     for (let i = 0; i < 160; i++) {
       const s = new THREE.Sprite(this.smokeMat.clone());
       s.visible = false;
@@ -169,10 +177,11 @@ export class MapEventView {
     this.group.add(g);
     this.emitters.push({ x: ev.x + 0.4, z: ev.y, y: 1.6, kind: 'fire', rate: 22, acc: 0, until: Infinity });
     this.emitters.push({ x: ev.x + 0.4, z: ev.y, y: 2.2, kind: 'smoke', rate: 6, acc: 0, until: Infinity });
-    const light = new THREE.PointLight(0xff8a3a, 10, 9, 1.6);
-    light.position.set(ev.x, 2, ev.y);
-    this.group.add(light);
-    this.fireLights.push(light);
+    const light = this.spareLights.pop();
+    if (light) {
+      light.position.set(ev.x, 2, ev.y);
+      this.fireLights.push(light);
+    }
   }
 
   private buildDrop(ev: MapEvent): void {

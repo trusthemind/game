@@ -28,3 +28,25 @@ export class SharpenEffect extends Effect {
     );
   }
 }
+
+/**
+ * Sanitises the HDR scene before bloom. The frame renders into a half-float target, and one pixel that
+ * overflows (a muzzle-flash light a few centimetres from a gun or hand, a razor-sharp specular highlight)
+ * or goes NaN gets smeared over the whole screen by bloom's blur chain: a full-white frame. Kill NaN/Inf and
+ * cap radiance at a level bloom still reads as "very bright".
+ */
+export class SanitizeEffect extends Effect {
+  constructor(maxRadiance = 32) {
+    super(
+      'SanitizeEffect',
+      /* glsl */ `
+      uniform float maxRadiance;
+      void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
+        vec3 c = inputColor.rgb;
+        if (any(isnan(c)) || any(isinf(c))) c = vec3(0.0);
+        outputColor = vec4(clamp(c, 0.0, maxRadiance), inputColor.a);
+      }`,
+      { uniforms: new Map([['maxRadiance', new Uniform(maxRadiance)]]) },
+    );
+  }
+}
