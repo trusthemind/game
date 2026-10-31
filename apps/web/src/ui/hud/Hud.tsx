@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useRaidUi, type HudState } from '../../game/hudStore';
 import { BodyFigure } from '../components/BodyFigure';
 import type { GameSession } from '../../game/GameSession';
@@ -193,12 +194,34 @@ function Mini({ label, v, color }: { label: string; v: number; color: string }) 
 
 function Compass({ facing, extractions }: { facing: number; extractions: { name: string; angle: number }[] }) {
   // 0 rad = east on the map; north is -y.
-  const deg = ((facing * 180) / Math.PI + 90 + 360) % 360;
+  const target = ((facing * 180) / Math.PI + 90 + 360) % 360;
   const marks = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   const pxPerDeg = 3;
+  // The HUD state arrives a few times a second and the aim snaps with the mouse, so the strip glides to the
+  // heading on its own clock: critically damped, the short way round, never jumping across north.
+  const strip = useRef<HTMLDivElement>(null);
+  const want = useRef(target);
+  useEffect(() => {
+    want.current = target;
+  }, [target]);
+  useEffect(() => {
+    let raf = 0;
+    let shown = want.current;
+    let last = performance.now();
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick);
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const delta = ((want.current - shown + 540) % 360) - 180;
+      shown = (shown + delta * (1 - Math.exp(-dt * 12)) + 360) % 360;
+      if (strip.current) strip.current.style.transform = `translateX(${-shown * pxPerDeg}px)`;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
   return (
     <div className="compass">
-      <div className="compass-strip" style={{ transform: `translateX(${-deg * pxPerDeg}px)` }}>
+      <div className="compass-strip" ref={strip}>
         {[-1, 0, 1].flatMap((rep) =>
           marks.map((m, i) => (
             <span key={`${rep}${m}`} className={m.length === 1 ? 'major' : ''} style={{ left: (rep * 360 + i * 45) * pxPerDeg }}>
