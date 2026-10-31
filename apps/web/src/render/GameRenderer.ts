@@ -15,7 +15,7 @@ import {
 } from 'postprocessing';
 import { VEHICLE_DEFS, type Interactable, type Raid, type RaidEvent } from '@ashfall/engine';
 import { CharacterView, disposeCharacterCaches, lookFor, type Appearance } from './character';
-import type { AssetLibrary } from './assets';
+import { bodySettled, loadBodies, type AssetLibrary } from './assets';
 import { Effects } from './effects';
 import { SanitizeEffect, SharpenEffect } from './sharpen';
 import { QUALITY, type QualityLevel, type QualityPreset } from './quality';
@@ -262,6 +262,12 @@ export class GameRenderer {
    * muzzle flash, a loot pile — and the browser can show a black or white frame while it waits. On the first
    * frame (all actor views already exist) show everything, compile, draw one frame, then restore visibility.
    */
+  /** Bodies worn by the player and everyone on the map at the start (loaded before the first frame). */
+  bodiesAtStart(): string[] {
+    const p = this.raid.player;
+    return this.raid.actors.map((a) => (a === p ? this.playerLook : lookFor(a.id, a.archetype, a.npcId, a.bossId)).body).filter((b): b is string => !!b);
+  }
+
   private prewarm(): void {
     this.warmed = true;
     const hidden: THREE.Object3D[] = [];
@@ -416,6 +422,11 @@ export class GameRenderer {
       let v = this.views.get(a.id);
       if (!v) {
         const look = a === p ? this.playerLook : lookFor(a.id, a.archetype, a.npcId, a.bossId);
+        // Someone who spawned mid-raid in a body nobody wore yet appears once it has loaded.
+        if (!bodySettled(this.lib, look.body)) {
+          void loadBodies(this.lib, [look.body]);
+          continue;
+        }
         v = new CharacterView(this.lib, look, this.uniforms, this.preset.shadows);
         this.views.set(a.id, v);
         this.scene.add(v.root);

@@ -10,6 +10,7 @@ import { HEAVY_MELEE, meleeModel, REVERSE_GRIP } from './melee3d';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import { itemModel } from './thumbnails';
 import { attachSkinned, cloneHuman, type HumanParts } from './human';
+import { rebindToSkeleton } from './rebind';
 import { ease, newPalm, palmFrame, reachPalm, type Arm } from './armIK';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,6 +57,9 @@ export interface Appearance {
   feet?: 'ranger' | 'peasant';
   hat?: Hat | null;
   hatColor?: number;
+  /** A rigged character model (models/bodies/<id>.glb) instead of the modelled body + outfit: it brings its
+   * own face, clothes and kit, and is rebound onto our skeleton so every animation and attachment works. */
+  body?: string;
 }
 
 export const SKIN_TONES = [0xf1c8a8, 0xe3b08e, 0xc99069, 0x9a6544, 0x6b4430];
@@ -179,7 +183,21 @@ export function lookFor(seed: number, archetype: string, npcId?: string, bossId?
   switch (archetype) {
     case 'raider':
     case 'guard':
-      return { ...base, ...camo(), gloves: 0x1a1a1a, boots: 0x1a1816 };
+      return {
+        ...base,
+        ...camo(),
+        gloves: 0x1a1a1a,
+        boots: 0x1a1816,
+        // Guards (a boss's own men) wear the heavy kit; raiders anything military.
+        body:
+          archetype === 'guard'
+            ? rng.pick(sex === 'f' ? ['fem_ops', 'fem_police'] : ['swat', 'swat_mc', 'pmc_heavy', 'rus_a'])
+            : rng.pick(
+                sex === 'f'
+                  ? ['fem_w1', 'fem_w2', 'fem_ops', 'fem_jacket']
+                  : ['pmc_a', 'fsb', 'pmc_heavy', 'swat_mc', 'ukr_a', 'ukr_b', 'rus_a'],
+              ),
+      };
     case 'boss':
       return { ...base, top: 0x3b2622, topStyle: 'coat', pants: 0x1f1f22, beard: true, hair: 'buzz', gloves: 0x1a1a1a };
     case 'infected': {
@@ -194,8 +212,13 @@ export function lookFor(seed: number, archetype: string, npcId?: string, bossId?
         pants: (c.pants ?? base.pants) & 0x7f7f7f,
       };
     }
-    default:
-      return { ...base, ...civ() };
+    default: {
+      // Some scavengers wear a whole rigged model: women more often, there are more civilian ones of those.
+      const c: Appearance = { ...base, ...civ() };
+      if (archetype === 'scav' && rng.chance(sex === 'f' ? 0.6 : 0.3))
+        c.body = rng.pick(sex === 'f' ? ['fem_jacket', 'fem_leather', 'fem_police', 'fem_w2'] : ['ukr_b', 'rus_a', 'pmc_a']);
+      return c;
+    }
   }
 }
 
@@ -217,6 +240,7 @@ export function playerAppearance(look: {
     gloves: 0x2b2722,
     eyes: 0x4a3020,
     age: 1,
+    body: look.sex === 'f' ? 'fem_jacket' : 'pmc_a',
   };
 }
 
@@ -280,6 +304,7 @@ const NPC_LOOKS: Record<string, Appearance> = {
     gloves: null,
     eyes: 0x4f6a3a,
     age: 0,
+    body: 'fem_jacket',
   },
   mykola: {
     sex: 'm',
@@ -294,6 +319,7 @@ const NPC_LOOKS: Record<string, Appearance> = {
     gloves: 0x5a4632,
     eyes: 0x3a5a7a,
     age: 2,
+    body: 'pmc_a',
   },
   vera: {
     sex: 'f',
@@ -308,6 +334,7 @@ const NPC_LOOKS: Record<string, Appearance> = {
     gloves: null,
     eyes: 0x2a1d14,
     age: 1,
+    body: 'fem_leather',
   },
   taras: {
     sex: 'm',
@@ -323,6 +350,7 @@ const NPC_LOOKS: Record<string, Appearance> = {
     eyes: 0x5a6a7a,
     age: 1,
     scars: true,
+    body: 'ukr_a',
   },
   yaryna: {
     sex: 'f',
@@ -337,6 +365,7 @@ const NPC_LOOKS: Record<string, Appearance> = {
     gloves: null,
     eyes: 0x3a2a1a,
     age: 0,
+    body: 'fem_ops',
   },
   ostap: {
     sex: 'm',
@@ -351,6 +380,7 @@ const NPC_LOOKS: Record<string, Appearance> = {
     gloves: 0x4a3828,
     eyes: 0x4a3a2a,
     age: 2,
+    body: 'ukr_b',
   },
 };
 
@@ -1075,18 +1105,25 @@ const UPPER = /^(spine_02|spine_03|neck_01|Head|clavicle|upperarm|lowerarm|hand|
 const LOWER = /^(root|pelvis|spine_01|thigh|calf|foot|ball)/;
 const filtered = new Map<string, THREE.AnimationClip>();
 
-function layerClip(lib: AssetLibrary, name: string, layer: 'upper' | 'lower' | 'full'): THREE.AnimationClip | null {
-  const key = `${name}:${layer}`;
+/** Bones whose position the clips may set on a rebound body (everything else keeps the body's own proportions). */
+const MOVING = /^(root|pelvis)\.position$/;
+
+/**
+ * One layer of a clip. `ownProportions`: a rebound body (rigged model on our skeleton) has its own bone lengths,
+ * so the clip's per-bone position keys (authored for our mannequin) are dropped and only rotations drive it.
+ */
+function layerClip(lib: AssetLibrary, name: string, layer: 'upper' | 'lower' | 'full', ownProportions = false): THREE.AnimationClip | null {
+  const key = `${name}:${layer}:${ownProportions ? 1 : 0}`;
   const hit = filtered.get(key);
   if (hit) return hit;
   const src = lib.clips.get(name);
   if (!src) return null;
-  if (layer === 'full') return src;
-  const re = layer === 'upper' ? UPPER : LOWER;
+  if (layer === 'full' && !ownProportions) return src;
+  const re = layer === 'upper' ? UPPER : layer === 'lower' ? LOWER : /./;
   const clip = new THREE.AnimationClip(
-    `${name}_${layer}`,
+    `${name}_${layer}${ownProportions ? '_own' : ''}`,
     src.duration,
-    src.tracks.filter((t) => re.test(t.name)),
+    src.tracks.filter((t) => re.test(t.name) && (!ownProportions || !t.name.endsWith('.position') || MOVING.test(t.name))),
   );
   filtered.set(key, clip);
   return clip;
@@ -1150,6 +1187,8 @@ export class CharacterView {
   private aimT = 0;
   private rig!: RigInfo;
   private human: HumanParts | null = null;
+  /** Wearing a rigged model's own clothes and face (no hair, hats or outfit pieces of ours). */
+  private sfBody = false;
   /** Calling in an extraction on the radio (standing still in the zone while its timer runs). */
   extracting = false;
   dead = false;
@@ -1182,7 +1221,9 @@ export class CharacterView {
     if (!rigInfos.has(src)) rigInfos.set(src, analyseRig(skinnedMeshes, !human));
     this.rig = rigInfos.get(src)!;
     this.bodyMeshes = skinnedMeshes;
-    const outfit = human ? outfitPieces(lib, look) : null;
+    const sfBody = human && look.body ? (lib.bodies.get(look.body) ?? null) : null;
+    this.sfBody = !!sfBody;
+    const outfit = human && !sfBody ? outfitPieces(lib, look) : null;
     for (const m of skinnedMeshes) {
       m.material = human
         ? humanBodyMaterial(human.body.material as THREE.MeshStandardMaterial, look, u, false, !!outfit)
@@ -1225,6 +1266,11 @@ export class CharacterView {
         worn.castShadow = shadows;
         this.outfitMeshes.push(worn);
       }
+      if (sfBody) {
+        for (const m of [human.body, human.eyes, human.brows]) if (m) m.visible = false;
+        const { meshes } = rebindToSkeleton(sfBody.scene, sfBody.animations[0], this.model, human.body.skeleton.bones, (m) => worldMat(m as THREE.MeshStandardMaterial, u, null), `${look.body}|${look.sex}`);
+        for (const m of meshes) m.castShadow = shadows;
+      }
     } else this.model.scale.setScalar(CHAR_SCALE);
     this.root.add(this.model);
     this.handR = this.skinned.skeleton.getBoneByName('hand_r') ?? null;
@@ -1246,6 +1292,7 @@ export class CharacterView {
     const rig = this.rig;
     const a = this.look;
     const head = this.bone(/^head$/i);
+    if (this.sfBody) return;
     if (this.human) {
       const clothed = this.outfitMeshes.length > 0;
       const hooded = clothed && a.topStyle === 'hoodie';
@@ -1339,7 +1386,7 @@ export class CharacterView {
     for (const m of this.outfitMeshes) if (/Hood/.test(m.name)) m.visible = !s.helmet;
     // No hat over a raised hood.
     const hat =
-      !s.helmet && this.look.hat && !this.look.zombie && this.look.topStyle !== 'hoodie' ? this.look.hat : null;
+      !s.helmet && !this.sfBody && this.look.hat && !this.look.zombie && this.look.topStyle !== 'hoodie' ? this.look.hat : null;
     // Hats and helmets sit over short hair; long hair stays (it hangs below the rim).
     for (const h of this.hairMeshes) h.visible = !(s.helmet || (hat && hat !== 'bandana')) || /Long/.test(h.name);
     if (hat) {
@@ -1484,7 +1531,7 @@ export class CharacterView {
       if (this.lower) this.lower.timeScale = timeScale;
       return;
     }
-    const clip = layerClip(this.lib, name, layer);
+    const clip = layerClip(this.lib, name, layer, this.sfBody);
     if (!clip) return;
     const next = this.mixer.clipAction(clip);
     const sameClip = this.lowerName.split(':')[0] === name;
@@ -1503,7 +1550,7 @@ export class CharacterView {
     this.upper = null;
     this.upperName = name ?? '';
     if (name) {
-      const clip = layerClip(this.lib, name, 'upper');
+      const clip = layerClip(this.lib, name, 'upper', this.sfBody);
       if (clip) {
         const next = this.mixer.clipAction(clip);
         next.reset().play();
@@ -1515,7 +1562,7 @@ export class CharacterView {
   }
 
   private playOneShot(name: string, layer: 'upper' | 'full', speed = 1): void {
-    const clip = layerClip(this.lib, name, layer);
+    const clip = layerClip(this.lib, name, layer, this.sfBody);
     if (!clip) return;
     const a = this.mixer.clipAction(clip);
     a.reset();

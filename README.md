@@ -273,6 +273,13 @@ All 3D models, animations, sounds and icons are free assets. Full lists are in
 
 - **Models and animation:** [Quaternius](https://quaternius.com) (CC0): Universal Animation Library 1 and 2,
   Universal Base Characters, Ultimate Gun Pack, Survival Pack, Stylized Nature MegaKit, Furniture Pack.
+- **Character bodies (CC BY 4.0, Sketchfab):** DanlyVostok ("Military tactical suit", "Game Ready Low Poly
+  Tactical Character"), SpatialNeglect ("FSB Operator", with clothing by ErhanMatur, Bzovius, SrGeneroso,
+  shedmon, Albin and Mayess), BAMEN ("Military Soldier Female Warrior"). Also DanlyVostok ("Soldier Full
+  Tactical Gear"), SpatialNeglect (two "S.W.A.T. Operator" models), doctortex (two "Ukrainian Soldier" models,
+  "Russian Soldier"), DJMaesen ("female specops"), Bad boy for life ("Female Police Officer"), 360SMS
+  ("Young woman with pants and jacket"), Massimo Javer ("Rigged Female Character: Leather Jacket & Boots").
+  Full list with links in apps/web/public/models/CREDITS.txt.
 - **Sound (all real recordings, no synthesis):** The Free Firearm Sound Library (Jaszczak, Nelson, Heras,
   Nanney, CC0), Kenney RPG and UI sounds (CC0), qubodup and Independent.nu impacts (CC0), Exewin and other
   OpenGameArt CC0 voice, footstep, reload and ambience packs. **CC BY 3.0:** footsteps by swuing,

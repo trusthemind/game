@@ -59,10 +59,13 @@ export function RaidScreen() {
           d.companionEq = draft.companionEq;
         });
         void useProfile.getState().flush();
-        useRaidUi.setState({ overlay: null, hud: null, messages: [], loot: null, dialogueActor: null, showPerf: profile.settings.showPerf });
-        s.start();
-        setSession(s);
-        (window as unknown as { __ashfall?: GameSession }).__ashfall = s;
+        return s.preloadBodies().then(() => {
+          if (cancelled || !s) return;
+          useRaidUi.setState({ overlay: null, hud: null, messages: [], loot: null, dialogueActor: null, showPerf: profile.settings.showPerf });
+          s.start();
+          setSession(s);
+          (window as unknown as { __ashfall?: GameSession }).__ashfall = s;
+        });
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
     return () => {

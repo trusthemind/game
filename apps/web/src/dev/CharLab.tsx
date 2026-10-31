@@ -10,7 +10,7 @@ import {
   modSlotsFor,
   type Actor,
 } from '@ashfall/engine';
-import { loadAssets } from '../render/assets';
+import { BODY_IDS, bodySex, loadAssets, loadBodies } from '../render/assets';
 import { buildGun } from '../render/gunsmith';
 import { attachSkinned, cloneHuman } from '../render/human';
 import { CharacterView, lookFor, renderPortrait, type Appearance } from '../render/character';
@@ -85,10 +85,31 @@ export function CharLab() {
       { look: lookFor(14, 'scav'), eq: [], active: 'melee', speed: 0 },
       { look: lookFor(15, 'scav'), eq: [], active: 'melee', speed: 1.4 },
     ];
+    if (view === 'bodies') {
+      // Rigged Sketchfab bodies on our skeleton: idle with a rifle, walking, aiming, and one with our kit on.
+      // `&ids=swat,fem_ops` shows just those (all of them in a row otherwise, plus three moving).
+      cast.length = 0;
+      const only = new URLSearchParams(location.hash.split('?')[1] ?? '').get('ids');
+      const ids: string[] = only ? only.split(',') : [...BODY_IDS];
+      ids.forEach((id, i) => {
+        const look = { ...lookFor(i + 3, 'raider'), body: id, sex: bodySex(id) };
+        cast.push({ look, eq: ['ak74m:primary'], active: 'primary', speed: 0 });
+      });
+      if (!only) {
+        cast.push({ look: { ...lookFor(4, 'raider'), body: 'swat', sex: 'm' }, eq: ['akm:primary'], active: 'primary', speed: 1.4 });
+        cast.push({ look: { ...lookFor(6, 'raider'), body: 'fem_ops', sex: 'f' }, eq: ['pm:secondary'], active: 'secondary', speed: 3.2 });
+        cast.push({ look: { ...lookFor(5, 'raider'), body: 'fem_jacket', sex: 'f' }, eq: ['axe:melee'], active: 'melee', speed: 0 });
+      }
+      const span = cast.length * 1.35;
+      cam.position.set(0, 2.2, Math.max(9.5, span * 1.25));
+      cam.lookAt(0, 1.0, 0);
+      // Console handle for close-ups: __bodyCam.position.set(…); __bodyCam.lookAt(…).
+      (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
+    }
     if (view === 'gestures') {
       // Reloads and treatment by hand, looping: AK, pistol, pump gun; dressing an arm, a leg, splint, injector.
       cast.length = 0;
-      const base = (i: number) => ({ ...lookFor(i + 3, 'raider'), sex: 'm' as const });
+      const base = (i: number) => ({ ...lookFor(i + 3, 'raider'), body: 'pmc_a', sex: 'm' as const });
       cast.push({ look: base(0), eq: ['ak74m:primary'], active: 'primary', speed: 0, reload: true });
       cast.push({ look: base(1), eq: ['pm:secondary'], active: 'secondary', speed: 0, reload: true });
       cast.push({ look: base(2), eq: ['mp133:primary'], active: 'primary', speed: 0, reload: true });
@@ -221,7 +242,8 @@ export function CharLab() {
     }
     const views: { v: CharacterView; a: Actor }[] = [];
     const mixers: THREE.AnimationMixer[] = [];
-    loadAssets().then((lib) => {
+    loadAssets().then(async (lib) => {
+      await loadBodies(lib, [...BODY_IDS]);
       if (view === 'humans') {
         cast.length = 0;
         const styles = [...lib.hair.keys()].filter((k) => k.startsWith('Hair_'));

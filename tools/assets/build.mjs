@@ -23,7 +23,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { dedup, meshopt, prune, quantize, resample, weld, reorder, simplify, textureCompress } from '@gltf-transform/functions';
+import { dedup, meshopt, metalRough, prune, quantize, resample, weld, reorder, simplify, textureCompress } from '@gltf-transform/functions';
 import sharp from 'sharp';
 import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 
@@ -539,6 +539,90 @@ async function buildOutfits() {
   fs.rmSync(tmp);
 }
 
+
+// ── Bodies: rigged Sketchfab characters (CC BY, see tools/assets/sketchfab.mjs) ─────────────────────────
+// Kept on their own (Mixamo) skeleton; the game rebinds them onto ours at load (apps/web/src/render/rebind.ts).
+// [source slug under sketchfab/, triangle budget, meshes to drop (by material name)]
+const BODIES = {
+  // Headphones float above the cap in the source itself. (char_b_tactical is left out: its export's bind pose
+  // is broken — gloves and head land metres away — and its own clip doesn't fix it.)
+  pmc_a: ['char_a_tactical_suit', 18000, /^HeadphonesT/],
+  fsb: ['char_e_fsb', 20000, /^(Krinkov|Null)/],
+  fem_w1: ['char_w1_tactical_female', 16000, null],
+  fem_w2: ['char_w2_female_soldier', 12500, null],
+  fem_ops: ['char_w5_specops', 15000, null],
+  fem_police: ['char_w6_police', 15000, null],
+  fem_jacket: ['char_w7_jacket', 16000, null],
+  // Character Creator export: the see-through eye/tear/occlusion layers and the mouth render as dark smudges here.
+  fem_leather: ['char_w8_leather', 22000, /^Std_(Tongue|Upper_Teeth|Lower_Teeth|Tearline|Eye_Occlusion|Cornea)/],
+  swat: ['char_swat', 22000, null],
+  swat_mc: ['char_swat_mc', 22000, null],
+  pmc_heavy: ['char_full_gear', 24000, /^Mark_SunGlusses/],
+  ukr_a: ['char_ukr_a', 16000, null],
+  ukr_b: ['char_ukr_b', 18000, null],
+  rus_a: ['char_rus_a', 16000, null],
+};
+
+async function buildBodies() {
+  console.log('bodies:');
+  await MeshoptEncoder.ready;
+  await MeshoptSimplifier.ready;
+  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
+  fs.mkdirSync(path.join(OUT, 'bodies'), { recursive: true });
+  for (const [id, [slug, budget, drop]] of Object.entries(BODIES)) {
+    const src = path.join(SRC, 'sketchfab', slug, 'scene.gltf');
+    if (!fs.existsSync(src)) {
+      console.warn(`  ! missing ${slug} (run tools/assets/sketchfab.mjs)`);
+      continue;
+    }
+    const doc = await io.read(src);
+    const root = doc.getRoot();
+    // Keep only the first clip: the game samples its first frame as the pose to rebind from (some of these
+    // exports have a broken bind pose and only look right posed by their own animation).
+    root.listAnimations().slice(1).forEach((a) => a.dispose());
+    // Unskinned meshes (the guns, knives and goggles these come holding) are never drawn: the rebind skips them.
+    for (const n of root.listNodes()) {
+      const m = n.getMesh();
+      if (m && (!n.getSkin() || (drop && m.listPrimitives().some((p) => drop.test(p.getMaterial()?.getName() ?? ''))))) n.setMesh(null);
+    }
+    // Fuse exports mark every material as blended, so boots and trousers sort behind the skin they cover.
+    // Cut-out alpha keeps hair cards and lashes and draws in depth order.
+    for (const mt of root.listMaterials()) if (mt.getAlphaMode() === 'BLEND') mt.setAlphaMode('MASK').setAlphaCutoff(0.5);
+    // Facial blend shapes (Character Creator ships dozens) are most of the geometry and nothing drives them.
+    // Tangents (three.js derives them in the shader), vertex colours and second UV sets go unused too.
+    for (const m of root.listMeshes()) {
+      m.setWeights([]);
+      for (const p of m.listPrimitives()) {
+        for (const t of p.listTargets()) p.removeTarget(t);
+        for (const sem of p.listSemantics()) if (/^(TANGENT|COLOR_\d+|TEXCOORD_[1-9])$/.test(sem)) p.setAttribute(sem, null);
+      }
+    }
+    let tris = 0;
+    for (const n of root.listNodes()) for (const p of n.getMesh()?.listPrimitives() ?? []) tris += (p.getIndices()?.getCount() ?? p.getAttribute('POSITION').getCount()) / 3;
+    const ratio = Math.min(1, budget / tris);
+    await doc.transform(
+      // Several exports use the spec-gloss extension, which three.js no longer reads (no textures at all).
+      metalRough(),
+      prune(),
+      dedup(),
+      weld(),
+      ...(ratio < 0.98 ? [simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.004, lockBorder: true })] : []),
+      // Colour at 1K; normal, occlusion, roughness and the rest at 512 (a character is ~150 px tall on screen).
+      textureCompress({ encoder: sharp, targetFormat: 'webp', slots: /^(?!baseColorTexture$)/, resize: [512, 512], quality: 80 }),
+      textureCompress({ encoder: sharp, targetFormat: 'webp', slots: /^baseColorTexture$/, resize: [1024, 1024], quality: 82 }),
+      reorder({ encoder: MeshoptEncoder }),
+      // Geometry is most of the weight. Quantising skinned positions folds the dequantisation scale into the
+      // inverse bind matrices; that's fine, since the rebind works from the mesh as drawn (bone matrices × positions)
+      // rather than from either on its own.
+      quantize({ quantizeNormal: 10, quantizePosition: 14, quantizeTexcoord: 12 }),
+      meshopt({ encoder: MeshoptEncoder, level: 'medium' }),
+    );
+    const out = path.join(OUT, 'bodies', `${id}.glb`);
+    await io.write(out, doc);
+    console.log(`  → ${path.relative(ROOT, out)} ${Math.round(tris)}→~${Math.round(tris * ratio)} tris (${(fs.statSync(out).size / 1024).toFixed(0)} KB)`);
+  }
+}
+
 // ONLY=character,weapons… rebuilds a subset.
 const only = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
 const want = (k) => !only || only.has(k);
@@ -551,5 +635,6 @@ if (want('props')) await buildSet('props', PROPS, [path.join(SRC, 'survival')]);
 if (want('nature')) await buildNature();
 if (want('furniture')) await buildFurniture();
 if (want('outfits')) await buildOutfits();
+if (want('bodies')) await buildBodies();
 // CREDITS.txt in apps/web/public/models is maintained by hand (several packs, several licences).
 console.log('done');

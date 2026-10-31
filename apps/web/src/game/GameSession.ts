@@ -28,7 +28,7 @@ import {
   type RaidResult,
 } from '@ashfall/engine';
 import { GameRenderer } from '../render/GameRenderer';
-import type { AssetLibrary } from '../render/assets';
+import { loadBodies, type AssetLibrary } from '../render/assets';
 import { lookFor, playerAppearance } from '../render/character';
 import type { QualityLevel } from '../render/quality';
 import { Input } from '../input/Input';
@@ -219,6 +219,11 @@ export class GameSession {
       if (z) audio.groan(z.pos.x, z.pos.y);
     }
     audio.tick(dt, raid.player.hp / raid.player.maxHp);
+  }
+
+  /** Loads the rigged bodies the people already on the map wear; call before start(). */
+  preloadBodies(): Promise<void> {
+    return loadBodies(this.opts.assets, this.renderer.bodiesAtStart());
   }
 
   start(): void {

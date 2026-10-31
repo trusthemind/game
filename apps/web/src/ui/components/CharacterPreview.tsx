@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import type { Actor, Equipment } from '@ashfall/engine';
-import { loadAssets } from '../../render/assets';
+import { bodySettled, loadAssets, loadBodies } from '../../render/assets';
 import { CharacterView, playerAppearance } from '../../render/character';
 import type { WorldUniforms } from '../../render/patches';
 import { useProfile } from '../../state/profileStore';
@@ -61,12 +61,16 @@ export function CharacterPreview() {
         const p = useProfile.getState().profile;
         if (!p) return;
         const key = JSON.stringify(p.look);
-        if (key !== lookKey) {
+        const look = playerAppearance(p.look);
+        if (key !== lookKey && !bodySettled(lib, look.body)) {
+          // Keep showing the old look until the new body has loaded.
+          void loadBodies(lib, [look.body]).then(() => !disposed && sync());
+        } else if (key !== lookKey) {
           if (view) {
             scene.remove(view.root);
             view.dispose();
           }
-          view = new CharacterView(lib, playerAppearance(p.look), u, true);
+          view = new CharacterView(lib, look, u, true);
           scene.add(view.root);
           lookKey = key;
         }

@@ -12,14 +12,47 @@ Ultimate Gun Pack accessories — Quaternius (CC0 1.0) — mods.glb (suppressors
 
 Item icons — game-icons.net (CC BY 3.0) by Lorc, Delapouite, Skoll, sbed and contributors — https://game-icons.net
 
-Vehicles — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Textures resized to WebP, meshopt-compressed
-(tools/assets/vehicles.mjs); turned, scaled and merged at load (apps/web/src/render/vehicle.ts):
+Character bodies in bodies/ — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Decimated, quantised and
+meshopt-compressed, textures resized to WebP (colour 1K, the rest 512), held weapons and face blend shapes removed,
+rebound to the game skeleton at load (apps/web/src/render/rebind.ts):
+  pmc_a.glb  — "Military tactical suit (LowPolyGameReady)" by DanlyVostok
+               https://sketchfab.com/3d-models/military-tactical-suit-lowpolygameready-ef698ce36b1545a78ce592dd3db4c7ed
+               (headphones removed)
+  fsb.glb    — "FSB Operator" by SpatialNeglect, built from clothing pieces shared by ErhanMatur, Bzovius,
+               SrGeneroso, shedmon, Albin and Mayess
+               https://sketchfab.com/3d-models/fsb-operator-43a561e941704eefb1ab0614be4f0049 (rifle removed)
+  fem_w1.glb — "Game Ready Low Poly Tactical Character" by DanlyVostok
+               https://sketchfab.com/3d-models/game-ready-low-poly-tactical-character-68213c7d97a04b1b963599180210f5bd
+  fem_w2.glb — "FREE [Military Soldier Female Warrior] RIGGED" by BAMEN
+               https://sketchfab.com/3d-models/free-military-soldier-female-warrior-rigged-ba5ad50a7a2f457a8b5ed7a84328027f
+  fem_ops.glb     — "female specops" by DJMaesen (pistol, knife and goggles removed)
+                    https://sketchfab.com/3d-models/female-specops-367a37bf5c0b48e688195d915c5496a2
+  fem_police.glb  — "Female Police Officer fully rigged 3d character" by Bad boy for life
+                    https://sketchfab.com/3d-models/female-police-officer-fully-rigged-3d-character-e4f9e18ac0e34312a2e26cb1fd180fe4
+  fem_jacket.glb  — "YOUNG WOMAN WITH PANTS AND JACKET MOVING HER ARM" by 360SMS
+                    https://sketchfab.com/3d-models/young-woman-with-pants-and-jacket-moving-her-arm-bac6355e5ffc4a0ca79b1b76b99d3db8
+  fem_leather.glb — "Rigged Female Character: Leather Jacket & Boots" by Massimo Javer (eye and mouth layers removed)
+                    https://sketchfab.com/3d-models/rigged-female-character-leather-jacket-boots-05c240d89fb34089ad6491ba9499ad0c
+  swat.glb        — "S.W.A.T. Operator" by SpatialNeglect, built from clothing pieces shared by ErhanMatur, Bzovius,
+                    SrGeneroso, shedmon, Albin and Mayess (rifle removed)
+                    https://sketchfab.com/3d-models/swat-operator-9e82fabf26194896b5ad4a364d864eab
+  swat_mc.glb     — "S.W.A.T. Operator- 4k Followers Special Remaster" by SpatialNeglect (weapon removed)
+                    https://sketchfab.com/3d-models/swat-operator-4k-followers-special-remaster-f6923917c8014578b1c1cb2b4c249268
+  pmc_heavy.glb   — "Soldier Full Tactical Gear (LowPolyGameReady)" by DanlyVostok (sunglasses removed)
+                    https://sketchfab.com/3d-models/soldier-full-tactical-gear-lowpolygameready-850593a8c7114c188395ba1849a66eb9
+  ukr_a.glb       — "Ukrainian Soldier" by doctortex
+                    https://sketchfab.com/3d-models/ukrainian-soldier-94f74f6bdd994733a8a40c7ff088e12f
+  ukr_b.glb       — "Ukrainian Soldier" by doctortex
+                    https://sketchfab.com/3d-models/ukrainian-soldier-b5d8f735b24c49f7ab5b9cc21af4b229
+  rus_a.glb       — "Russian Soldier" by doctortex
+                    https://sketchfab.com/3d-models/russian-soldier-e9aa211b67264dc086af1d2f4d4e3d84
+
+Vehicles and Soviet household furniture — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Textures
+resized to WebP, meshopt-compressed (tools/assets/vehicles.mjs); turned, scaled and merged at load
+(apps/web/src/render/vehicle.ts, furnitureSf.ts):
   vehicles.glb
     uaz469  — "Uaz-469" by Yo.Ri  https://sketchfab.com/3d-models/uaz-469-70c8691c6fb64b859fbfc16babfa2c5f
     zhiguli — "Zhiguli Soviet Cars" by spacelynxcanfly  https://sketchfab.com/3d-models/zhiguli-soviet-cars-7c3f4bee5d37401d853d2206dc7859fc
-
-Soviet household furniture — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Textures resized to WebP,
-meshopt-compressed (tools/assets/vehicles.mjs); turned, scaled and merged at load (apps/web/src/render/furnitureSf.ts):
   furniture_sf.glb
     gas_stove    — "Old Soviet Gas Stove" by shaqsh (backdrop removed)  https://sketchfab.com/3d-models/old-soviet-gas-stove-0958b0ab4e2344cc847e14355f196512
     fridge_old   — "An old refrigerator and a wooden crate" by Eugen S. (crate removed)  https://sketchfab.com/3d-models/an-old-refrigerator-and-a-wooden-crate-9664f9f194ae4256a64ab168f74f8b9b
