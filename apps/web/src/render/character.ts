@@ -10,6 +10,7 @@ import { HEAVY_MELEE, meleeModel, REVERSE_GRIP } from './melee3d';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import { itemModel } from './thumbnails';
 import { attachSkinned, cloneHuman, type HumanParts } from './human';
+import { ease, newPalm, palmFrame, reachPalm, type Arm } from './armIK';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Appearance
@@ -1097,7 +1098,24 @@ function layerClip(lib: AssetLibrary, name: string, layer: 'upper' | 'lower' | '
 
 const CHAR_SCALE = 0.92;
 const tmpV = new THREE.Vector3();
+const _ikF = new THREE.Vector3();
+const _ikU = new THREE.Vector3();
+const _ikL = new THREE.Vector3();
+const _ikA = new THREE.Vector3();
+const _ikB = new THREE.Vector3();
+const _ikP = new THREE.Vector3();
+const _ikS = new THREE.Vector3();
+const _ikT = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
+const _palmC0 = new THREE.Vector3();
+const _palmC1 = new THREE.Vector3();
+const _palmC2 = new THREE.Vector3();
+const _palmM = new THREE.Matrix4();
+const _palmQ = new THREE.Quaternion();
+const _palmQ2 = new THREE.Quaternion();
+const [_rlX, _rlY, _rlZ, _rlD, _rlB, _rlR, _rlT, _rlF, _rlN] = Array.from({ length: 9 }, () => new THREE.Vector3());
+/** Clip seconds of Fixing_Kneeling spent down on one knee. */
+const KNEEL_HOLD = [1.0, 4.0] as const;
 
 export class CharacterView {
   readonly root = new THREE.Group();
@@ -1122,6 +1140,8 @@ export class CharacterView {
   private held: THREE.Object3D | null = null;
   private heldKind: 'gun' | 'melee' | null = null;
   private heldLen = 0;
+  private heldBox = new THREE.Box3();
+  private heldDef = '';
   private reverseGrip = false;
   /** index_01, middle_01, pinky_01, thumb_01 of the right hand: they define the fist the weapon sits in. */
   private fingers: (THREE.Bone | null)[] = [];
@@ -1442,6 +1462,8 @@ export class CharacterView {
         this.reverseGrip = REVERSE_GRIP.has(held.def);
         const b = new THREE.Box3().setFromObject(src);
         this.heldLen = d.melee ? b.max.z : b.getSize(tmpV).z;
+        this.heldBox.copy(b);
+        this.heldDef = held.def;
         if (d.melee) this.held.matrixAutoUpdate = false;
         this.gear.add(this.held);
       }
@@ -1525,7 +1547,8 @@ export class CharacterView {
   }
 
   reloading(): void {
-    this.playOneShot('Pistol_Reload', 'upper', 1.4);
+    // Guns reload with hand IK (see reloadGesture); the clip is only a fallback for a rig without arm bones.
+    if (!(this.heldKind === 'gun' && this.arms())) this.playOneShot('Pistol_Reload', 'upper', 1.4);
   }
 
   /** Eating, drinking, bandaging. */
@@ -1574,6 +1597,7 @@ export class CharacterView {
     const treat = this.updateTreat(a, moving);
     const gun = this.heldKind === 'gun';
     let stance: string | null = null;
+    if (this.held) this.held.visible = !this.treatDef;
     if (treat === 'kneel') stance = null;
     else if (treat) stance = treat;
     else if (zombie || talking || (sprint && moving)) stance = null;
@@ -1608,8 +1632,336 @@ export class CharacterView {
       this.twistLegs(a, dt, moving && !zombie && !sprint && !a.crouching ? along : null);
     }
     this.placeHeld(a);
+    if (!this.hidden) this.proceduralArms(a, dt);
     this.placeTreatProp();
   }
+
+  // ── Procedural hands: reloads and treatment, IK on top of the animated pose ───────────────────────────
+
+  private armBones: Record<string, THREE.Bone> | null | undefined;
+  private reloadTotal = 0;
+  private reloadPrev = 0;
+  private useTotal = 0;
+  private usePrev = 0;
+  private handProp: THREE.Mesh | null = null;
+  private gestureT = 0;
+
+  private arms(): Record<string, THREE.Bone> | null {
+    if (this.armBones !== undefined) return this.armBones;
+    const sk = this.skinned.skeleton;
+    const names = ['upperarm_l', 'lowerarm_l', 'hand_l', 'upperarm_r', 'lowerarm_r', 'hand_r', 'spine_01', 'spine_03', 'Head', 'thigh_l', 'calf_l', 'foot_l', 'thigh_r', 'calf_r', 'foot_r'];
+    const fingers = ['middle_01', 'index_01', 'pinky_01'].flatMap((f) => [`${f}_l`, `${f}_r`]);
+    const out: Record<string, THREE.Bone> = {};
+    for (const n of [...names, ...fingers]) {
+      const b = sk.getBoneByName(n);
+      if (!b) return (this.armBones = null);
+      out[n] = b;
+    }
+    const arm = (side: 'l' | 'r'): Arm => ({
+      side,
+      upper: out[`upperarm_${side}`]!,
+      lower: out[`lowerarm_${side}`]!,
+      hand: out[`hand_${side}`]!,
+      middle: out[`middle_01_${side}`]!,
+      index: out[`index_01_${side}`]!,
+      pinky: out[`pinky_01_${side}`]!,
+    });
+    this.armRig = { l: arm('l'), r: arm('r') };
+    return (this.armBones = out);
+  }
+
+  /** Arm chains for the hand IK (set up with the bones; separate from `rig`, the mesh's RigInfo). */
+  private armRig: Record<'l' | 'r', Arm> | null = null;
+  private palm = newPalm();
+
+  /**
+   * Seat `obj` (geometry centred on its origin, `size` its extent) in the palm of a hand: its longest side across
+   * the palm like a gripped handle, the next along the fingers, resting on the palm.
+   */
+  private inPalm(obj: THREE.Object3D, side: 'l' | 'r', size: THREE.Vector3): void {
+    if (!this.armRig) return;
+    const P = palmFrame(this.armRig[side], this.palm);
+    const dims = [size.x, size.y, size.z];
+    const ord = [0, 1, 2].sort((i, j) => dims[j]! - dims[i]!);
+    const cols = [_palmC0, _palmC1, _palmC2];
+    cols[ord[0]!]!.copy(P.x);
+    cols[ord[1]!]!.copy(P.f);
+    cols[ord[2]!]!.copy(P.n);
+    _palmM.makeBasis(cols[0]!, cols[1]!, cols[2]!);
+    if (_palmM.determinant() < 0) _palmM.makeBasis(cols[0]!.negate(), cols[1]!, cols[2]!);
+    _palmQ.setFromRotationMatrix(_palmM);
+    obj.quaternion.copy(this.gear.getWorldQuaternion(_palmQ2).invert().multiply(_palmQ));
+    tmpV.copy(P.c).addScaledVector(P.n, dims[ord[2]!]! / 2);
+    obj.position.copy(this.gear.worldToLocal(tmpV));
+  }
+
+  /** A small prop (magazine, shell) carried in a hand, gripped in its palm each frame. */
+  private propInHand(kind: 'mag' | 'pmag' | 'shell' | null, side: 'l' | 'r' = 'l'): void {
+    if (!kind) {
+      if (this.handProp) this.handProp.visible = false;
+      return;
+    }
+    const dims = kind === 'mag' ? [0.035, 0.17, 0.08] : kind === 'pmag' ? [0.024, 0.1, 0.035] : [0.022, 0.022, 0.07];
+    const key = dims.join('x');
+    if (!this.handProp || this.handProp.userData.key !== key) {
+      if (this.handProp) this.gear.remove(this.handProp);
+      this.handProp = new THREE.Mesh(new THREE.BoxGeometry(dims[0], dims[1], dims[2]), flatMat(kind === 'shell' ? 0x8a2a22 : 0x1e1f1c, { rough: 0.6 }, this.u));
+      this.handProp.userData.key = key;
+      this.handProp.castShadow = true;
+      this.gear.add(this.handProp);
+    }
+    this.handProp.visible = true;
+    this.inPalm(this.handProp, side, tmpV2.set(dims[0]!, dims[1]!, dims[2]!));
+  }
+
+  private proceduralArms(a: Actor, dt: number): void {
+    const B = this.arms();
+    if (!B || this.dead) return;
+    this.gestureT += dt;
+    this.root.updateMatrixWorld(true);
+    // Body frame in world: forward, up, the character's left.
+    const fwd = _ikF.set(0, 0, 1).transformDirection(this.root.matrixWorld);
+    const up = _ikU.set(0, 1, 0);
+    const left = _ikL.subVectors(B.upperarm_l!.getWorldPosition(_ikA), B.upperarm_r!.getWorldPosition(_ikB)).normalize();
+    const pole = (side: 'l' | 'r') =>
+      _ikP.copy(B[`upperarm_${side}`]!.getWorldPosition(_ikA)).addScaledVector(up, -0.6).addScaledVector(left, side === 'l' ? 0.35 : -0.35).addScaledVector(fwd, -0.15);
+
+    let reloading = false;
+    if (a.reloadT > 0 && this.held && this.heldKind === 'gun') {
+      if (this.reloadTotal <= 0 || a.reloadT > this.reloadPrev + 1e-3) this.reloadTotal = a.reloadT;
+      this.reloadPrev = a.reloadT;
+      reloading = true;
+      this.reloadGesture(1 - a.reloadT / this.reloadTotal, B, fwd, up, left, pole('l'));
+    } else this.reloadTotal = this.reloadPrev = 0;
+
+    let treating = false;
+    this.treatHand = 'l';
+    if (!reloading && a.useT > 0 && a.useDef) {
+      if (this.useTotal <= 0 || a.useT > this.usePrev + 1e-3) this.useTotal = a.useT;
+      this.usePrev = a.useT;
+      treating = this.treatGesture(a, 1 - a.useT / this.useTotal, B, fwd, up, left);
+    } else this.useTotal = this.usePrev = 0;
+    if (!reloading && !treating) this.propInHand(null);
+    if (!treating) this.showWrap(null);
+  }
+
+  /**
+   * Reload by hand: the gun rolls to show its side, the support hand strips the magazine and drops it, reaches
+   * to the chest rig for a fresh one, seats it and works the charging handle (slide on a pistol). A pump gun is
+   * fed shell by shell from the belt into the loading port, then racked.
+   */
+  private reloadGesture(u: number, B: Record<string, THREE.Bone>, fwd: THREE.Vector3, up: THREE.Vector3, left: THREE.Vector3, pole: THREE.Vector3): void {
+    const h = this.held!;
+    const box = this.heldBox;
+    const sz = box.getSize(_ikS);
+    const pistol = this.heldLen < 0.4;
+    const pump = /mp133|toz/.test(this.heldDef);
+    // Roll the gun to bring the magazine well / port into view, back level for the charging handle; the key
+    // points below are read off the rolled gun.
+    h.rotation.z += (pistol ? 0.25 : 0.45) * ease(0.02, 0.12, u) * (1 - ease(0.8, 0.9, u));
+    h.updateMatrixWorld(true);
+    const at = (x: number, y: number, z: number) => h.localToWorld(_ikT.set(box.min.x + sz.x * x, box.min.y + sz.y * y, box.min.z + sz.z * z)).clone();
+    const well = pistol ? at(0.5, 0.05, 0.3) : at(0.5, 0.35, 0.52);
+    const below = well.clone().addScaledVector(up, -0.24);
+    const handle = pistol ? at(0.5, 1, 0.08) : at(0.0, 0.7, 0.58);
+    const back = handle.clone().addScaledVector(fwd, -0.09);
+    const pouch = B.spine_03!.getWorldPosition(_ikA).addScaledVector(fwd, 0.17).addScaledVector(left, 0.1).addScaledVector(up, -0.24).clone();
+    const port = at(0.5, 0.3, 0.55);
+    const foreEnd = at(0.5, 0.35, 0.78);
+    const foreBack = foreEnd.clone().addScaledVector(fwd, -0.1);
+
+    // How the support hand meets each point, in the gun's own axes (gz towards the muzzle, gy up, gx towards the
+    // side away from the charging handle): under the gun palm up, into the pouch fingers down, hooking the handle
+    // from its side, over the top of a pistol slide.
+    const gx = _rlX.setFromMatrixColumn(h.matrixWorld, 0).normalize();
+    const gy = _rlY.setFromMatrixColumn(h.matrixWorld, 1).normalize();
+    const gz = _rlZ.setFromMatrixColumn(h.matrixWorld, 2).normalize();
+    type Grip = 'under' | 'pouch' | 'side' | 'top';
+    const grip = (g: Grip): [THREE.Vector3, THREE.Vector3] =>
+      g === 'under' ? [gz, gy] : g === 'pouch' ? [_rlD.copy(up).negate(), _rlB.copy(fwd).negate()] : g === 'side' ? [gy, gx] : [_rlR.copy(gx).negate(), _rlT.copy(gy).negate()];
+    type Key = [number, THREE.Vector3, Grip];
+    let keys: Key[];
+    let prop: 'mag' | 'pmag' | 'shell' | null = null;
+    if (pump) {
+      keys = [];
+      for (let i = 0; i < 4; i++) {
+        const t0 = 0.04 + i * 0.2;
+        keys.push([t0, pouch, 'pouch'], [t0 + 0.1, port, 'under'], [t0 + 0.16, port, 'under']);
+        const k = (u - t0) / 0.2;
+        if (k >= 0 && k < 0.5) prop = 'shell';
+      }
+      keys.push([0.86, foreEnd, 'under'], [0.91, foreBack, 'under'], [0.97, foreEnd, 'under']);
+    } else {
+      const hg: Grip = pistol ? 'top' : 'side';
+      keys = [[0, well, 'under'], [0.14, well, 'under'], [0.3, below, 'under'], [0.47, pouch, 'pouch'], [0.55, pouch, 'pouch'], [0.72, below, 'under'], [0.8, well, 'under'], [0.86, handle, hg], [0.92, back, hg], [1, handle, hg]];
+      if ((u > 0.14 && u < 0.3) || (u > 0.55 && u < 0.8)) prop = pistol ? 'pmag' : 'mag';
+    }
+    const target = _ikT;
+    let i = 0;
+    while (i < keys.length - 2 && u > keys[i + 1]![0]) i++;
+    const [t0, p0, g0] = keys[i]!;
+    const [t1, p1, g1] = keys[i + 1]!;
+    const k = u <= t0 ? 0 : u >= t1 ? 1 : ease(t0, t1, u);
+    target.lerpVectors(p0, p1, k);
+    const [f0, n0] = grip(g0);
+    const fd = _rlF.copy(f0);
+    const nd = _rlN.copy(n0);
+    const [f1, n1] = grip(g1);
+    fd.lerp(f1, k).normalize();
+    nd.lerp(n1, k).normalize();
+    const w = ease(0, 0.08, u) * (1 - ease(0.95, 1, u));
+    reachPalm(this.armRig!.l, target, fd, nd, pole, w);
+    this.propInHand(prop, 'l');
+  }
+
+  /**
+   * Treatment by hand, on the body part being treated: a dressing or tourniquet is wound round the limb, a
+   * splint or surgery kit worked with both hands on it, an injector jabbed into the thigh. Food, drink and pills
+   * keep the eating clip. Returns false when the item has no hand gesture.
+   */
+  private treatGesture(
+    a: Actor,
+    u: number,
+    B: Record<string, THREE.Bone>,
+    fwd: THREE.Vector3,
+    up: THREE.Vector3,
+    left: THREE.Vector3,
+  ): boolean {
+    const m = getDef(a.useDef!).med;
+    const R = this.armRig;
+    if (!m || !R) return false;
+    const w = ease(0, 0.12, u) * (1 - ease(0.92, 1, u));
+    const part = a.usePart ?? 'thorax';
+    const sgn = (s: 'l' | 'r') => (s === 'l' ? 1 : -1);
+    const opp = (s: 'l' | 'r') => (s === 'l' ? 'r' : 'l');
+    const at = (bone: string) => B[bone]!.getWorldPosition(new THREE.Vector3());
+    // Elbows out to their own side and down, so a hand reaching across the body doesn't fold the arm inwards.
+    const elbow = (side: 'l' | 'r') =>
+      _ikP.copy(B[`upperarm_${side}`]!.getWorldPosition(_ikA)).addScaledVector(up, -0.5).addScaledVector(left, sgn(side) * 0.45).addScaledVector(fwd, -0.1);
+    /** Palm flat on a surface whose outward normal is `out`, fingers carrying on the line of reach from the shoulder. */
+    const flat = (side: 'l' | 'r', target: THREE.Vector3, out: THREE.Vector3, weight = w) => {
+      const fd = target.clone().sub(at(`upperarm_${side}`));
+      fd.addScaledVector(out, -fd.dot(out));
+      if (fd.lengthSq() < 1e-6) fd.copy(fwd);
+      reachPalm(R[side], target, fd.normalize(), out.clone().negate(), elbow(side), weight);
+    };
+
+    // An injured arm comes up in front of the belly, forearm across the body and palm up, for the other hand to work on.
+    const hurt = part === 'leftArm' ? 'l' : part === 'rightArm' ? 'r' : null;
+    if (hurt) {
+      const hold = at('spine_03').addScaledVector(fwd, 0.3).addScaledVector(up, -0.14).addScaledVector(left, sgn(hurt) * 0.02);
+      const fd = fwd.clone().multiplyScalar(0.7).addScaledVector(left, -sgn(hurt) * 0.7).normalize();
+      reachPalm(R[hurt], hold, fd, up, elbow(hurt), w, 0.5);
+    }
+
+    const injector = /morphine|stim|adren|propital|zagustin|etg|sj/.test(a.useDef!);
+    if (injector) {
+      // Fist round the injector, raised, then jabbed down and in at the outside of the left thigh (high enough to
+      // reach standing) and held for the dose.
+      const into = left.clone().multiplyScalar(-0.6).addScaledVector(up, -0.8).normalize();
+      const skin = at('thigh_l').lerp(at('calf_l'), 0.2).addScaledVector(left, 0.08).addScaledVector(fwd, 0.04);
+      const jab = skin.clone().addScaledVector(into, -0.075);
+      const raised = jab.clone().addScaledVector(left, 0.1).addScaledVector(up, 0.14).addScaledVector(fwd, 0.08);
+      const target = raised.lerp(jab, ease(0.25, 0.35, u) * (1 - ease(0.8, 0.95, u)));
+      // Across the palm (and so the injector) points into the thigh; fingers forward.
+      const fd = fwd.clone().addScaledVector(into, -into.dot(fwd)).normalize();
+      const nd = new THREE.Vector3().crossVectors(fd, into).negate();
+      reachPalm(R.l, target, fd, nd, elbow('l'), w);
+      this.treatHand = 'l';
+      this.showWrap(null);
+      return true;
+    }
+
+    // Torso and head: pressing on the wound rather than going round it.
+    if (part === 'thorax' || part === 'stomach' || part === 'head') {
+      const head = part === 'head';
+      const spot = head
+        ? at('Head').addScaledVector(up, 0.04).addScaledVector(left, 0.09)
+        : at(part === 'thorax' ? 'spine_03' : 'spine_01').addScaledVector(fwd, 0.15);
+      const out = head ? left.clone() : fwd.clone();
+      const side = head ? 'l' : 'r';
+      const ang = this.gestureT * 5;
+      const work = spot.clone().addScaledVector(up, Math.sin(ang) * 0.03).addScaledVector(left, Math.cos(ang) * 0.03);
+      flat(side, work, out);
+      if (!head) flat(opp(side), spot.clone().addScaledVector(up, 0.06).addScaledVector(left, 0.07), out, w * 0.9);
+      this.treatHand = side;
+      this.showWrap(null);
+      return true;
+    }
+
+    // Limbs: arms dressed mid-forearm; legs on the thigh, low on a raised one, high on the one knelt on. A
+    // tourniquet goes high and tight on a leg.
+    const band = !!m.stopsHeavy && !m.stopsLight;
+    const leg = part === 'leftLeg' ? 'l' : part === 'rightLeg' ? 'r' : null;
+    const s = (hurt ?? leg ?? 'l') as 'l' | 'r';
+    const p0 = at(hurt ? `lowerarm_${s}` : `thigh_${s}`);
+    const p1 = at(hurt ? `hand_${s}` : `calf_${s}`);
+    const kneltOn = !hurt && p1.y < p0.y - 0.2;
+    const mid = p0.clone().lerp(p1, hurt ? 0.5 : band ? 0.2 : kneltOn ? 0.3 : 0.55);
+    const limbR = hurt ? 0.058 : 0.11;
+    const axis = p1.clone().sub(p0).normalize();
+    // Round the limb: e1 on top (the front of an upright thigh), e2 the side away from the body.
+    const e1 = (Math.abs(axis.dot(up)) > 0.8 ? fwd : up).clone();
+    e1.addScaledVector(axis, -e1.dot(axis)).normalize();
+    const e2 = new THREE.Vector3().crossVectors(axis, e1);
+    if (e2.dot(hurt ? fwd : left.clone().multiplyScalar(sgn(s))) < 0) e2.negate();
+
+    if (m.surgery || m.fixesFracture) {
+      // Palms either side of the limb, pressing and binding along it; on an arm the free hand works over the top.
+      const k = Math.sin(this.gestureT * 3.2) * 0.04;
+      if (hurt) flat(opp(s), mid.clone().addScaledVector(e1, limbR + 0.02).addScaledVector(axis, k), e1);
+      else {
+        flat(s, mid.clone().addScaledVector(e2, limbR + 0.025).addScaledVector(axis, k), e2);
+        flat(opp(s), mid.clone().addScaledVector(e2, -limbR - 0.025).addScaledVector(axis, -k), e2.clone().negate());
+      }
+      this.treatHand = hurt ? opp(s) : s;
+      // The splint's binding builds up on the limb.
+      if (m.fixesFracture) this.showWrap(mid, axis, limbR + 0.006, 0.03 + 0.09 * ease(0.15, 0.85, u), 0xcfc6a4);
+      else this.showWrap(null);
+      return true;
+    }
+
+    if (m.stopsLight || m.stopsHeavy || m.resource > 0) {
+      // Wind the dressing: the roll goes over the top, round the far side and underneath, and back, the palm on it
+      // and the fingers along the line of reach. On a leg the other hand holds the end down on top.
+      const work = hurt ? opp(s) : s;
+      const th = 1.6 + 1.5 * Math.sin(this.gestureT * 4);
+      const radial = e1.clone().multiplyScalar(Math.cos(th)).addScaledVector(e2, Math.sin(th));
+      flat(work, mid.clone().addScaledVector(radial, limbR + 0.065), radial);
+      // The other hand pins the end just above the turns (towards the hip), where it is within reach when kneeling.
+      if (!hurt) flat(opp(s), mid.clone().addScaledVector(axis, -0.07).addScaledVector(e1, limbR + 0.02), e1, w * 0.9);
+      this.treatHand = work;
+      // The dressing builds up on the limb as it is wound.
+      this.showWrap(mid, axis, limbR + 0.004, (band ? 0.04 : 0.025) + (band ? 0.02 : 0.08) * ease(0.15, 0.85, u), band ? 0xa0452c : 0xe6e1d6);
+      return true;
+    }
+    return false;
+  }
+
+  private wrap: THREE.Mesh | null = null;
+
+  /** The dressing on the limb: an open sleeve round `axis` at `at`, `len` long; null hides it. */
+  private showWrap(at: THREE.Vector3 | null, axis?: THREE.Vector3, r = 0.05, len = 0.05, color = 0xe6e1d6): void {
+    if (!at) {
+      if (this.wrap) this.wrap.visible = false;
+      return;
+    }
+    if (!this.wrap) {
+      this.wrap = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 14, 1, true), flatMat(color, { rough: 0.9, side: true }, this.u));
+      this.wrap.castShadow = true;
+      this.gear.add(this.wrap);
+    }
+    // Materials are shared from a cache: swap rather than recolour.
+    this.wrap.material = flatMat(color, { rough: 0.9, side: true }, this.u);
+    this.wrap.visible = true;
+    this.wrap.scale.set(r, len, r);
+    _palmQ.setFromUnitVectors(_palmC0.set(0, 1, 0), axis!);
+    this.wrap.quaternion.copy(this.gear.getWorldQuaternion(_palmQ2).invert().multiply(_palmQ));
+    this.wrap.position.copy(this.gear.worldToLocal(tmpV.copy(at)));
+  }
+
+  /** The hand holding the treatment item this frame; the item sits in its palm. */
+  private treatHand: 'l' | 'r' = 'l';
 
   private treatDef: string | null = null;
   private treatProp: THREE.Object3D | null = null;
@@ -1634,8 +1986,16 @@ export class CharacterView {
         if (m) {
           // Hand-sized: the longest side ~14 cm whatever the model's own size.
           const size = new THREE.Box3().setFromObject(m.obj).getSize(tmpV);
-          m.obj.scale.multiplyScalar(Math.min(1, 0.14 / Math.max(size.x, size.y, size.z, 1e-3)));
+          // An autoinjector is ~13 cm in the fist, however small its model.
+          const injector = /morphine|stim|adren|propital|zagustin|etg|sj/.test(def);
+          const fit = 0.14 / Math.max(size.x, size.y, size.z, 1e-3);
+          m.obj.scale.multiplyScalar(injector ? fit * 0.93 : Math.min(1, fit));
+          // Centred on the group's origin so it can be seated in the palm.
+          m.obj.updateMatrixWorld(true);
+          const box = new THREE.Box3().setFromObject(m.obj);
+          m.obj.position.sub(box.getCenter(tmpV2));
           this.treatProp = new THREE.Group().add(m.obj);
+          this.treatProp.userData.size = box.getSize(new THREE.Vector3());
           this.gear.add(this.treatProp);
         }
         if (this.oneShot) {
@@ -1645,6 +2005,10 @@ export class CharacterView {
       }
     }
     if (!def) return null;
+    // Fixing_Kneeling kneels down over its first second and stands back up after 4.1 s: while treating, loop
+    // the kneeling stretch so a long treatment doesn't stand up and kneel again halfway through.
+    for (const act of [this.lower, this.upper])
+      if (act && act.getClip().name.startsWith('Fixing_Kneeling') && act.time > KNEEL_HOLD[1]) act.time -= KNEEL_HOLD[1] - KNEEL_HOLD[0];
     const d = getDef(def);
     const m = d.med;
     if (m && (m.surgery || m.fixesFracture)) return moving ? 'Fixing_Kneeling' : 'kneel';
@@ -1653,13 +2017,14 @@ export class CharacterView {
     return 'Consume';
   }
 
+  /** Keep the treatment item gripped in the palm of the hand using it. */
   private placeTreatProp(): void {
     const p = this.treatProp;
-    if (!p || !this.handL) return;
-    this.handL.getWorldPosition(tmpV);
-    this.gear.worldToLocal(tmpV);
-    p.position.copy(tmpV);
-    p.position.y -= 0.02;
+    if (!p) return;
+    if (this.armRig) return this.inPalm(p, this.treatHand, p.userData.size as THREE.Vector3);
+    const hand = this.treatHand === 'r' ? this.handR : this.handL;
+    if (!hand) return;
+    p.position.copy(this.gear.worldToLocal(hand.getWorldPosition(tmpV)));
   }
 
   private legYaw = 0;

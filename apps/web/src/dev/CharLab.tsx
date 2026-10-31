@@ -61,6 +61,8 @@ export function CharLab() {
       crouch?: boolean;
       modded?: boolean;
       use?: string;
+      part?: string;
+      reload?: boolean;
     }[] = [
       { look: lookFor(0, 'npc', 'lena'), eq: ['pm:secondary', 'b_daypack:backpack'], active: 'secondary', speed: 0 },
       { look: lookFor(0, 'npc', 'mykola'), eq: ['mp133:primary'], active: 'primary', speed: 1.4 },
@@ -83,6 +85,44 @@ export function CharLab() {
       { look: lookFor(14, 'scav'), eq: [], active: 'melee', speed: 0 },
       { look: lookFor(15, 'scav'), eq: [], active: 'melee', speed: 1.4 },
     ];
+    if (view === 'gestures') {
+      // Reloads and treatment by hand, looping: AK, pistol, pump gun; dressing an arm, a leg, splint, injector.
+      cast.length = 0;
+      const base = (i: number) => ({ ...lookFor(i + 3, 'raider'), sex: 'm' as const });
+      cast.push({ look: base(0), eq: ['ak74m:primary'], active: 'primary', speed: 0, reload: true });
+      cast.push({ look: base(1), eq: ['pm:secondary'], active: 'secondary', speed: 0, reload: true });
+      cast.push({ look: base(2), eq: ['mp133:primary'], active: 'primary', speed: 0, reload: true });
+      cast.push({ look: base(3), eq: [], active: 'melee', speed: 0, use: 'bandage', part: 'leftArm' });
+      cast.push({ look: base(4), eq: [], active: 'melee', speed: 0, use: 'esmarch', part: 'rightLeg' });
+      cast.push({ look: base(5), eq: [], active: 'melee', speed: 0, use: 'splint', part: 'leftLeg' });
+      cast.push({ look: base(6), eq: [], active: 'melee', speed: 0, use: 'morphine', part: 'thorax' });
+      cam.position.set(0, 2.6, 7.5);
+      cam.lookAt(0, 1.0, 0);
+      // Console handle: __gest.u = 0.4 pins the phase (null runs the loop); __gest.look(i, 'front'|'side'|'top') frames one actor.
+      (window as unknown as { __gest: { u: number | null; solo: number | null; [k: string]: unknown } }).__gest = {
+        u: null,
+        views: () => views,
+        solo: null as number | null,
+        look(i: number, from: 'front' | 'left' | 'right' | 'top' | 'back' | 'game' | 'gameback' = 'front', dist = 1.6, y = 0.95) {
+          this.solo = i;
+          const p = views[i]!.v.root.position;
+          const [x, z] = [p.x, p.z];
+          // The cast faces +z: 'left' / 'right' are the actor's own sides, seen from the front quarter.
+          if (from === 'front') cam.position.set(x, y + 0.35, z + dist);
+          if (from === 'back') cam.position.set(x, y + 0.45, z - dist);
+          if (from === 'left') cam.position.set(x + dist * 0.8, y + 0.3, z + dist * 0.6);
+          if (from === 'right') cam.position.set(x - dist * 0.8, y + 0.3, z + dist * 0.6);
+          if (from === 'top') cam.position.set(x, y + dist, z + dist * 0.45);
+          // The raid camera's pitch (19 up, 11.5 back), facing the actor or from behind.
+          if (from === 'game') cam.position.set(x, y + dist * 0.855, z + dist * 0.518);
+          if (from === 'gameback') cam.position.set(x, y + dist * 0.855, z - dist * 0.518);
+          cam.lookAt(x, y, z);
+        },
+      };
+      const fill = new THREE.DirectionalLight(0xffffff, 1.6);
+      fill.position.set(0, 3, 8);
+      scene.add(fill);
+    }
     if (view === 'gear') {
       // Close-up of worn kit: every helmet / armour / rig / backpack on someone.
       cast.length = 0;
@@ -295,7 +335,10 @@ export function CharLab() {
           faction: 'npc',
           useT: c.use ? 1e9 : 0,
           useDef: c.use ?? null,
+          usePart: c.part ?? null,
+          reloadT: 0,
         } as unknown as Actor;
+        if (view === 'gestures') (a as unknown as { cycle: 'reload' | 'use' | null }).cycle = c.reload ? 'reload' : c.use ? 'use' : null;
         scene.add(v.root);
         views.push({ v, a });
       });
@@ -324,7 +367,21 @@ export function CharLab() {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       for (const { v, a } of views) {
+        const cyc = (a as unknown as { cycle?: 'reload' | 'use' | null }).cycle;
+        // window.__gest.u pins every gesture at one phase (0..1) for frame-by-frame checks.
+        const pin = (window as unknown as { __gest?: { u: number | null } }).__gest?.u;
+        if (pin != null && pin !== (a as unknown as { pinned?: number }).pinned) {
+          // The view takes the timer's length from its first value: start a fresh gesture at full length.
+          (a as unknown as { pinned?: number }).pinned = pin;
+          if (cyc === 'reload') a.reloadT = 2.6;
+          if (cyc === 'use') a.useT = 4.5;
+          v.update(a, 0, true, true);
+        }
+        if (cyc === 'reload') a.reloadT = pin != null ? Math.max(1e-4, 2.6 * (1 - pin)) : Math.max(0, 2.6 - ((now / 1000) % 3.2));
+        if (cyc === 'use') a.useT = pin != null ? Math.max(1e-4, 4.5 * (1 - pin)) : Math.max(0.0001, 4.5 - ((now / 1000) % 5));
         v.update(a, dt, true, true);
+        const solo = (window as unknown as { __gest?: { solo: number | null } }).__gest?.solo;
+        if (solo != null) v.root.visible = views[solo]!.v === v;
         a.pos.y = 0;
         if (view.startsWith('strafe')) a.pos.x = views.indexOf(views.find((w) => w.a === a)!) * 1.3 - 2.6;
       }
