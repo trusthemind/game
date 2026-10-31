@@ -139,8 +139,16 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
       else if (t === Tile.Window) windows.push([x, y, map.isSolid(x - 1, y) && map.isSolid(x + 1, y)]);
       else if (t === Tile.Fence) fences.push([x, y, map.get(x - 1, y) === Tile.Fence || map.get(x + 1, y) === Tile.Fence]);
       else if (t === Tile.Tree) trees.push([x, y]);
-      // Border forest: sparse, the dark outer ground + fog of war sells the density.
-      else if (t === Tile.Border && (x * 7 + y * 13) % 5 === 0) border.push([x, y]);
+      // Border forest: sparse, the dark outer ground + fog of war sells the density. It opens where an
+      // extraction leads out, so the road, trail or pier carries on past the edge.
+      else if (t === Tile.Border && (x * 7 + y * 13) % 5 === 0 && !inExitGap(x + 0.5, y + 0.5)) border.push([x, y]);
+    }
+    function inExitGap(x: number, y: number): boolean {
+      return map.extractions.some((e) => {
+        const along = (x - e.x) * Math.cos(e.dir) + (y - e.y) * Math.sin(e.dir);
+        const across = (x - e.x) * Math.sin(e.dir) - (y - e.y) * Math.cos(e.dir);
+        return along > 4 && along < 14 && Math.abs(across) < 10;
+      });
     }
 
   const m4 = new THREE.Matrix4();
@@ -411,8 +419,9 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
     const ring = new THREE.Mesh(geo(new THREE.RingGeometry(e.radius - 0.12, e.radius, 48)), ringMat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(e.x, 0.03, e.y);
-    const beam = new THREE.Mesh(geo(new THREE.CylinderGeometry(e.radius * 0.9, e.radius, 6, 32, 1, true)), beamMat);
-    beam.position.set(e.x, 3, e.y);
+    // A low glow: the place itself (barrier, gate, pier…) now says what it is, the beam only marks the spot.
+    const beam = new THREE.Mesh(geo(new THREE.CylinderGeometry(e.radius * 0.95, e.radius, 1.6, 32, 1, true)), beamMat);
+    beam.position.set(e.x, 0.8, e.y);
     group.add(ring, beam);
     extractionBeams.push(beam);
   }

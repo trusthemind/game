@@ -23,6 +23,7 @@ import { addContainerInstance, buildWorld, markContainerSearched, type WorldMesh
 import type { WorldUniforms } from './patches';
 import { disposeTextures } from './textures';
 import { buildRoofs, updateRoofs, type RoofSet } from './roofs';
+import { buildExtractProps, type ExtractProps } from './extracts';
 import { MapEventView } from './mapEvents';
 
 interface Lighting {
@@ -118,6 +119,12 @@ export class GameRenderer {
   private searched = new Set<number>();
   private containerCount = 0;
   private frameNo = 0;
+  private extractProps: ExtractProps;
+  /** Barrier / gate opening per extraction, eased towards the extraction progress. */
+  private extractOpen = new Map<number, number>();
+  /** Seconds since you extracted: you walk out of the map while the banner shows. */
+  private exitT = 0;
+  private exitPos: { x: number; y: number } | null = null;
   private time = 0;
   private labels = new Map<number, HTMLDivElement>();
   private raycaster = new THREE.Raycaster();
@@ -190,6 +197,8 @@ export class GameRenderer {
     this.scene.add(this.world.group);
     this.roofs = buildRoofs(raid.map, this.uniforms, this.preset.shadows);
     this.scene.add(this.roofs.group);
+    this.extractProps = buildExtractProps(raid.map.extractions, this.uniforms, this.preset.shadows);
+    this.scene.add(this.extractProps.group);
     this.containerCount = raid.map.containers.length;
     this.effects = new Effects(this.preset.muzzleLights);
     this.effects.enableRain(raid.rain);
@@ -388,6 +397,36 @@ export class GameRenderer {
       const visible = a === p || !!a.companion || raid.isVisibleToPlayer(a.pos.x, a.pos.y);
       const alerted =
         !!a.brain && (a.brain.state === 'engage' || a.brain.state === 'cover' || a.brain.state === 'search');
+      if (a === p) {
+        // Calling in the extraction on the radio while the timer runs; once out, walk off the map.
+        v.extracting = raid.status === 'active' && raid.extractProgress > 0;
+        if (raid.status === 'extracted') {
+          // Put the radio away, step into the middle of the lane and walk out past the barrier, over the
+          // edge and into the dark; the camera stays on the way out.
+          const ex = raid.map.extractions.find((e) => e.id === raid.extractingAt);
+          const dir = ex?.dir ?? p.facing;
+          const fx = Math.cos(dir);
+          const fy = Math.sin(dir);
+          const ox = ex?.x ?? p.pos.x;
+          const oy = ex?.y ?? p.pos.y;
+          const lx0 = (p.pos.x - ox) * fy - (p.pos.y - oy) * fx;
+          const lz0 = (p.pos.x - ox) * fx + (p.pos.y - oy) * fy;
+          const at = (t: number) => {
+            const s = Math.max(0, t - 0.5) * 1.75;
+            const lx = lx0 * (1 - Math.min(1, s / 3.5)) ** 2;
+            return { x: ox + lx * fy + (lz0 + s) * fx, y: oy - lx * fx + (lz0 + s) * fy };
+          };
+          this.exitT += dt;
+          const pos = at(this.exitT);
+          const prev = at(this.exitT - Math.max(dt, 1e-3));
+          const vel = { x: (pos.x - prev.x) / Math.max(dt, 1e-3), y: (pos.y - prev.y) / Math.max(dt, 1e-3) };
+          const moving = this.exitT > 0.5;
+          const proxy = { ...p, pos, vel: moving ? vel : { x: 0, y: 0 }, facing: moving ? Math.atan2(vel.y, vel.x) : dir, aiming: false, sprinting: false, crouching: false };
+          this.exitPos = { x: ox + fx * 3, y: oy + fy * 3 };
+          v.update(proxy as typeof p, dt, true, false, false);
+          continue;
+        }
+      }
       v.update(a, dt, visible, alerted, this.talkingActor === a.id || (a === p && this.talkingActor !== null));
       if (a === p) {
         const looting = this.raid.loot !== null;
@@ -419,6 +458,14 @@ export class GameRenderer {
 
     for (const b of this.world.extractionBeams)
       (b.material as THREE.MeshBasicMaterial).opacity = 0.09 + Math.sin(this.time * 2) * 0.03;
+    for (const e of raid.map.extractions) {
+      const want = raid.extractingAt === e.id ? (raid.status === 'extracted' ? 1 : raid.extractProgress) : 0;
+      const cur = this.extractOpen.get(e.id) ?? 0;
+      const next = cur + (want - cur) * (1 - Math.exp(-dt * 5));
+      this.extractOpen.set(e.id, next);
+      this.extractProps.setProgress(e.id, next);
+    }
+    this.extractProps.update(this.time);
 
     // Camera: follow the player, lead towards the aim point (peek), with shake.
     const aimX = p.intent.aimX;
@@ -428,8 +475,8 @@ export class GameRenderer {
     const leadX = Math.max(-7, Math.min(7, (aimX - p.pos.x) * lean));
     const leadY = Math.max(-5, Math.min(5, (aimY - p.pos.y) * lean));
     const k = 1 - Math.exp(-dt * 6);
-    let fx0 = p.pos.x + leadX;
-    let fz0 = p.pos.y + leadY;
+    let fx0 = this.exitPos ? this.exitPos.x : p.pos.x + leadX;
+    let fz0 = this.exitPos ? this.exitPos.y : p.pos.y + leadY;
     let zoom = this.zoom;
     const talker = this.talkingActor !== null ? raid.actorById(this.talkingActor) : null;
     if (talker) {
@@ -547,6 +594,7 @@ export class GameRenderer {
     this.events.dispose();
     this.effects.dispose();
     this.composer?.dispose();
+    this.extractProps.dispose();
     this.fowTex.dispose();
     for (const v of this.views.values()) v.dispose();
     disposeCharacterCaches();

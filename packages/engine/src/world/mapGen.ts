@@ -1,7 +1,7 @@
 import { BOSSES } from '../items/bosses';
 import { Rng } from '../core/rng';
 import { createGrid } from '../items/inventory';
-import { GameMap, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype } from './map';
+import { GameMap, extractKind, extractSolids, extractToWorld, ROAD_EXTRACTS, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype } from './map';
 import { Tile } from './tiles';
 import { furnish } from './furniture';
 
@@ -32,7 +32,7 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
     avenues: 3,
     raidMinutes: 35,
     botDensity: 1,
-    extractNames: ['Old Gas Station', 'Rail Bridge', 'Collapsed Tunnel', 'Checkpoint ZB-013', 'Forest Path', 'Cargo Gate', 'Dam Road'],
+    extractNames: ['Old Gas Station', 'Rail Bridge', 'Collapsed Tunnel', 'Checkpoint ZB-013', 'Forest Path', 'Cargo Gate', 'Dam Road', 'Outpost Kordon-7'],
   },
   pinehollow: {
     id: 'pinehollow',
@@ -43,7 +43,7 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
     avenues: 2,
     raidMinutes: 35,
     botDensity: 0.8,
-    extractNames: ['Logging Camp', 'Ranger Tower', 'Old Mill', 'Rusty Bridge', 'Hunters’ Trail', 'Ferry Pier'],
+    extractNames: ['Logging Camp', 'Ranger Tower', 'Old Mill', 'Rusty Bridge', 'Hunters’ Trail', 'Ferry Pier', 'Forest Outpost'],
   },
   portkirov: {
     id: 'portkirov',
@@ -65,7 +65,7 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
     avenues: 2,
     raidMinutes: 25,
     botDensity: 1,
-    extractNames: ['North Gate', 'South Gate', 'East Gate', 'West Gate'],
+    extractNames: ['North Gate', 'South Gate', 'Checkpoint East', 'West Outpost'],
   },
 };
 
@@ -299,14 +299,80 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
       if (t === Tile.Tree || t === Tile.Fence) map.set(sp.x + dx, sp.y + dy, Tile.Grass);
     }
 
+  // Extractions: the name decides what the place is, and so where it can be — a checkpoint, gate or overpass
+  // stands where a road actually runs out of the map (so the barrier crosses it), a trail, pier or watchtower
+  // off the road. Each sits far enough in for its set dressing, faces out of the map, and gets its ground
+  // cleared of trees and fences; spots next to buildings are skipped.
   const names = rng.shuffle([...preset.extractNames]);
+  const roadNames = names.filter((n) => ROAD_EXTRACTS.has(extractKind(n)));
+  const wildNames = names.filter((n) => !ROAD_EXTRACTS.has(extractKind(n)));
+  const OUT: [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // top, right, bottom, left edge
+  const INSET = 9;
+  const isRoad = (x: number, y: number) => map.get(x, y) === Tile.Road || map.get(x, y) === Tile.Dirt;
+  const roadLeaves = (x: number, y: number, side: number) => {
+    const [ox, oy] = OUT[side]!;
+    for (let k = 1; k <= INSET - 3; k++) if (!isRoad(x + ox * k, y + oy * k)) return false;
+    return true;
+  };
+  // The set dressing reaches ~10 m to either side and 7 m in: keep that footprint off buildings (a tighter one
+  // if a crowded edge has no room for the full one).
+  const nearBuilding = (x: number, y: number, side: number, half: number, back: number) => {
+    const a = extractToWorld({ x, y, dir: Math.atan2(OUT[side]![1], OUT[side]![0]) }, -half, -back);
+    const b = extractToWorld({ x, y, dir: Math.atan2(OUT[side]![1], OUT[side]![0]) }, half, INSET);
+    const [x0, x1, y0, y1] = [Math.min(a.x, b.x), Math.max(a.x, b.x), Math.min(a.y, b.y), Math.max(a.y, b.y)];
+    return map.buildings.some((bl) => x1 > bl.x - 1 && x0 < bl.x + bl.w + 1 && y1 > bl.y - 1 && y0 < bl.y + bl.h + 1);
+  };
   let extractId = 0;
   const exSides = [(spawnSide + 2) % 4, (spawnSide + 1) % 4, (spawnSide + 3) % 4, (spawnSide + 2) % 4, spawnSide];
   for (const side of exSides.slice(0, size >= 200 ? 5 : 3)) {
-    const c = edgeTiles(side, 5).filter((p) => clear(p.x, p.y, 1) && Math.hypot(p.x - sp.x, p.y - sp.y) > size * 0.35 && map.extractions.every((e) => Math.hypot(e.x - p.x, e.y - p.y) > 40));
+    const open = edgeTiles(side, INSET).filter(
+      (p) => Math.hypot(p.x - sp.x, p.y - sp.y) > size * 0.35 && map.extractions.every((e) => Math.hypot(e.x - p.x, e.y - p.y) > 40),
+    );
+    let c = open.filter((p) => !nearBuilding(p.x, p.y, side, 10, 8));
+    if (!c.length) c = open.filter((p) => !nearBuilding(p.x, p.y, side, 6, 4));
     if (!c.length) continue;
-    const p = rng.pick(c.filter((q) => q.road).length ? c.filter((q) => q.road) : c);
-    map.extractions.push({ id: extractId, name: names[extractId % names.length]!, x: p.x + 0.5, y: p.y + 0.5, radius: 2.4 });
+    const roads = c.filter((q) => q.road && roadLeaves(q.x, q.y, side));
+    const wild = c.filter((q) => !q.road);
+    // Alternate so a map gets both kinds, as long as a name of that kind is left. A road exit with no road
+    // leaving the map here gets one: a dirt track from the edge in, past the barrier.
+    const wantRoad = (extractId % 2 === 0 || !wildNames.length) && roadNames.length > 0;
+    const pool = wantRoad ? (roads.length ? roads : c) : wild.length ? wild : c;
+    const p = rng.pick(pool);
+    const name = (wantRoad ? roadNames.shift() : wildNames.shift()) ?? roadNames.shift() ?? wildNames.shift() ?? `Exit ${extractId + 1}`;
+    const [ox, oy] = OUT[side]!;
+    // Clear the footprint (10 m to either side, from 8 m inside out to the edge) of trees, fences and wrecks.
+    for (let a = -8; a <= INSET; a++)
+      for (let b = -10; b <= 10; b++) {
+        const x = p.x + ox * a + (oy !== 0 ? b : 0);
+        const y = p.y + oy * a + (ox !== 0 ? b : 0);
+        const t = map.get(x, y);
+        if (t === Tile.Tree || t === Tile.Fence || t === Tile.Car) map.set(x, y, Tile.Grass);
+      }
+    if (ROAD_EXTRACTS.has(extractKind(name)) && !roadLeaves(p.x, p.y, side))
+      for (let a = -12; a <= INSET; a++)
+        for (const b of [-1, 0, 1]) {
+          const x = p.x + ox * a + (oy !== 0 ? b : 0);
+          const y = p.y + oy * a + (ox !== 0 ? b : 0);
+          if (map.inBounds(x, y) && !map.isSolid(x, y) && !isRoad(x, y)) map.set(x, y, Tile.Dirt);
+        }
+    const ex = { id: extractId, name, x: p.x + 0.5, y: p.y + 0.5, radius: 2.4, kind: extractKind(name), dir: Math.atan2(oy, ox) };
+    // A trail is a worn footpath that wanders out through the trees.
+    if (ex.kind === 'path')
+      for (let a = -8; a <= INSET; a++) {
+        const w = Math.round(Math.sin(a * 0.45 + p.x * 0.3) * 1.2);
+        for (const b of [w, w + 1]) {
+          const t = extractToWorld(ex, b - 0.5, a);
+          const tx = Math.floor(t.x);
+          const ty = Math.floor(t.y);
+          if (map.get(tx, ty) === Tile.Grass) map.set(tx, ty, Tile.Dirt);
+        }
+      }
+    // Booths, towers, water and embankments are solid; loot that ended up under them goes.
+    for (const box of extractSolids(ex)) {
+      map.addBlocker(box);
+      map.containers = map.containers.filter((k) => !(k.x + 1 > box[0] && k.x < box[2] && k.y + 1 > box[1] && k.y < box[3]));
+    }
+    map.extractions.push(ex);
     extractId++;
   }
 

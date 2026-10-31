@@ -1150,6 +1150,8 @@ export class CharacterView {
   private aimT = 0;
   private rig!: RigInfo;
   private human: HumanParts | null = null;
+  /** Calling in an extraction on the radio (standing still in the zone while its timer runs). */
+  extracting = false;
   dead = false;
   private hidden = false;
 
@@ -1597,8 +1599,9 @@ export class CharacterView {
     const treat = this.updateTreat(a, moving);
     const gun = this.heldKind === 'gun';
     let stance: string | null = null;
-    if (this.held) this.held.visible = !this.treatDef;
-    if (treat === 'kneel') stance = null;
+    const radio = this.extracting && !moving && !treat;
+    if (this.held) this.held.visible = !radio && !this.treatDef;
+    if (treat === 'kneel' || radio) stance = null;
     else if (treat) stance = treat;
     else if (zombie || talking || (sprint && moving)) stance = null;
     else if (gun && (alerted || this.aimT > 0 || (a.faction === 'player' && a.aiming))) stance = 'Pistol_Aim_Neutral';
@@ -1609,6 +1612,7 @@ export class CharacterView {
     const layer: 'lower' | 'full' = upperBusy ? 'lower' : 'full';
 
     if (treat === 'kneel') this.setLower('Fixing_Kneeling', 1, 'full');
+    else if (radio) this.setLower('Idle_TalkingPhone_Loop', 1, 'full');
     else if (zombie) {
       if (moving) this.setLower('Zombie_Walk_Fwd_Loop', speed / 1.2, layer);
       else this.setLower('Zombie_Idle_Loop', 1, layer);

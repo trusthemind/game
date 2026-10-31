@@ -74,9 +74,12 @@ export function patchWorldMaterial<T extends THREE.Material>(mat: T, u: WorldUni
         /* glsl */ `#include <opaque_fragment>
         if (uFowOn > 0.5) {
           vec2 fuv = vFowPos.xz / uMapSize;
-          vec4 fw = texture2D(uFow, fuv);
+          vec4 fw = texture2D(uFow, clamp(fuv, 0.0, 1.0));
           float f = mix(mix(0.035, 0.30, fw.g), 1.0, fw.r);
-          if (fuv.x < 0.0 || fuv.y < 0.0 || fuv.x > 1.0 || fuv.y > 1.0) f = 0.03;
+          // At the edge things fade into the dark: from 1.5 m inside to 3.5 m out (a road or a pier leading
+          // away, you walking off after extracting).
+          float edgeD = min(min(vFowPos.x, vFowPos.z), min(uMapSize.x - vFowPos.x, uMapSize.y - vFowPos.z));
+          f = mix(f, 0.03, 1.0 - smoothstep(-3.5, 1.5, edgeD));
           gl_FragColor.rgb *= f;
         }`,
       );

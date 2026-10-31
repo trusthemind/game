@@ -9,11 +9,16 @@ import './ui/components/dialogue.css';
 
 // No <StrictMode>: its double-mount would start (and pay for) a raid twice in dev.
 const CharLab = lazy(() => import('./dev/CharLab').then((m) => ({ default: m.CharLab })));
+const ExtractLab = lazy(() => import('./dev/ExtractLab').then((m) => ({ default: m.ExtractLab })));
 const lab = location.hash.startsWith('#charlab');
 createRoot(document.getElementById('root')!).render(
   lab ? (
     <Suspense fallback={null}>
       <CharLab />
+    </Suspense>
+  ) : location.hash.startsWith('#extractlab') ? (
+    <Suspense fallback={null}>
+      <ExtractLab />
     </Suspense>
   ) : (
     <App />

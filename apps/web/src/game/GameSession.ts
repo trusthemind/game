@@ -299,7 +299,8 @@ export class GameSession {
     if (raid.status !== 'active' && !this.ended) {
       // Wall-clock delay: on a slow machine the clamped frame dt would stretch the death banner for ages.
       if (this.endT < 0) {
-        this.endT = performance.now() + 2800;
+        // Extracted: long enough to watch yourself walk out past the barrier and off the map.
+        this.endT = performance.now() + (raid.status === 'extracted' ? 7500 : 2800);
         useRaidUi.setState({ overlay: null });
         this.input.enabled = false;
       }
