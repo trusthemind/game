@@ -863,6 +863,12 @@ export class Raid {
     }
     const def = effectiveWeapon(w);
     if (!def.auto && !it.firePressed) return;
+    if (!def.operable) {
+      // A gun missing a required part (barrel, gas tube, magazine…) only clicks.
+      a.fireCd = 0.4;
+      if (a === this.player) this.emit({ t: 'msg', text: `${getDef(w.def).short} is missing parts`, tone: 'bad' });
+      return;
+    }
     if ((w.ammo ?? 0) <= 0) {
       a.fireCd = 0.25;
       // Pulling the trigger on an empty gun reloads it (if you carry rounds for it).
@@ -1094,7 +1100,7 @@ export class Raid {
     const w = this.weaponItem(a);
     if (!w || a.reloadT > 0) return false;
     const def = effectiveWeapon(w);
-    if ((w.ammo ?? 0) >= def.magSize) return false;
+    if (!def.operable || (w.ammo ?? 0) >= def.magSize) return false;
     if (!carryGrids(a.eq).some((g) => g.items.some((p) => getDef(p.item.def).ammo?.caliber === def.caliber))) {
       if (a === this.player) this.emit({ t: 'msg', text: `No ${def.caliber} ammo`, tone: 'bad' });
       return false;

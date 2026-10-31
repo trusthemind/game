@@ -1,7 +1,7 @@
 import type { Rng } from '../core/rng';
 import type { BotArchetype } from '../world/map';
 import { ALL_ITEMS, ammoForCaliber, getDef } from './defs';
-import { effectiveWeapon, installMod, modFits, modSlotsFor } from './mods';
+import { effectiveWeapon, installPart, partFits, socketTree } from './mods';
 import { addItem, createEquipment, createItem, type Equipment } from './inventory';
 import { rollItem, tieredTable } from './loot';
 
@@ -101,10 +101,13 @@ function loadWeapon(rng: Rng, eq: Equipment, slot: 'primary' | 'secondary', kit:
   const gun = createItem(id, { ammo: w.magSize, ammoType: ammoDef.id });
   // Better-geared bots run modded guns (and the mods come off their bodies with the gun).
   const modChance = kit.mags[0] >= 3 ? 0.55 : 0.12;
-  for (const slotName of modSlotsFor(id)) {
+  // Socket by socket, parents first: a railed handguard that goes on brings its rails into the walk.
+  for (let i = 0, tree = socketTree(gun); i < tree.length; i++) {
+    const r = tree[i]!;
     if (!rng.chance(modChance)) continue;
-    const options = ALL_ITEMS.filter((d) => d.mod?.slot === slotName && modFits(d.id, id) && (kit.mags[0] >= 3 || d.rarity <= 2));
-    if (options.length) installMod(gun, createItem(rng.pick(options).id));
+    const options = ALL_ITEMS.filter((d) => partFits(d.id, r.socket, r.host.def, id) && d.id !== r.part?.def && (kit.mags[0] >= 3 || d.rarity <= 2));
+    if (!options.length || !installPart(gun, r.path, createItem(rng.pick(options).id))) continue;
+    tree = socketTree(gun);
   }
   gun.ammo = effectiveWeapon(gun).magSize;
   eq.slots[slot] = gun;

@@ -1,6 +1,7 @@
 import { addItem, carryGrids, removeItem, type ItemInstance, createEquipment, createGrid, createItem, type Equipment, type GridContainer, SLOTS } from './items/inventory';
 import { generateLoadout, starterKit } from './items/loadouts';
-import { getDef } from './items/defs';
+import { getDef, ITEMS } from './items/defs';
+import { upgradeLegacyGun } from './items/mods';
 import { Rng } from './core/rng';
 import { INITIAL_AFFINITY, NPCS } from './dialogue/npcs';
 import { newRelationship, type Relationship } from './dialogue/types';
@@ -9,7 +10,7 @@ import { applyRaidToTasks, type TaskState } from './tasks';
 import { newHideout, type HideoutState } from './hideout';
 import { companionLevel, companionRaidXp, companionState, gearTierFor, upgradeCompanionGear, type CompanionState } from './companions';
 
-export const PROFILE_VERSION = 4;
+export const PROFILE_VERSION = 5;
 
 export interface ProfileStats {
   raids: number;
@@ -139,6 +140,21 @@ export function migrateProfile(raw: unknown): Profile {
       }
     }
     out.version = 4;
+  }
+  if (out.version < 5) {
+    // v4 → v5: AKs and the M4 are built from parts. Wherever such a gun lies (gear, stash, a companion's kit,
+    // your grave), it gets its factory parts; old attachments go back on, or into the stash if none fits.
+    const spare: ItemInstance[] = [];
+    const visit = (o: unknown): void => {
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) return o.forEach(visit);
+      const it = o as Partial<ItemInstance>;
+      if (typeof it.def === 'string' && typeof it.uid === 'string' && ITEMS[it.def]?.weapon?.sockets) spare.push(...upgradeLegacyGun(it as ItemInstance));
+      for (const v of Object.values(o)) visit(v);
+    };
+    visit(out);
+    for (const m of spare) addItem(out.stash, m);
+    out.version = 5;
   }
   out.companions ??= {};
   out.settings.difficulty ??= 'normal';

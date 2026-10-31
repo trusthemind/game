@@ -5,10 +5,11 @@ import {
   createEquipment,
   createItem,
   getDef,
-  installMod,
-  modFits,
-  modSlotsFor,
+  installPart,
+  partFits,
+  socketTree,
   type Actor,
+  type ItemInstance,
 } from '@ashfall/engine';
 import { BODY_IDS, bodySex, loadAssets, loadBodies } from '../render/assets';
 import { buildGun } from '../render/gunsmith';
@@ -17,6 +18,16 @@ import { CharacterView, lookFor, renderPortrait, type Appearance } from '../rend
 import type { WorldUniforms } from '../render/patches';
 
 /** Dev-only lineup of characters/outfits/weapons (open /#charlab). Used for visual checks and screenshots. */
+/** Fill every empty socket with the first part that fits (rails a part brings get filled too). */
+function modAll(it: ItemInstance): void {
+  for (let i = 0, t = socketTree(it); i < t.length; i++) {
+    const r = t[i]!;
+    if (r.part) continue;
+    const fit = ALL_ITEMS.find((d) => partFits(d.id, r.socket, r.host.def, it.def));
+    if (fit && installPart(it, r.path, createItem(fit.id))) t = socketTree(it);
+  }
+}
+
 export function CharLab() {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -295,11 +306,7 @@ export function CharLab() {
           const row = Math.floor(i / 4);
           for (const modded of [false, true]) {
             const it = createItem(id);
-            if (modded)
-              for (const ms of modSlotsFor(id)) {
-                const fit = ALL_ITEMS.find((d) => d.mod?.slot === ms && modFits(d.id, id));
-                if (fit) installMod(it, createItem(fit.id));
-              }
+            if (modded) modAll(it);
             const g = buildGun(lib, it);
             if (!g) continue;
             g.rotation.y = Math.PI / 2;
@@ -319,11 +326,7 @@ export function CharLab() {
           const [def, slot] = e.split(':') as [string, keyof typeof eq.slots];
           eq.slots[slot] = createItem(def);
           const it = eq.slots[slot]!;
-          if (c.modded && getDef(def).weapon)
-            for (const ms of modSlotsFor(def)) {
-              const fit = ALL_ITEMS.find((d) => d.mod?.slot === ms && modFits(d.id, def));
-              if (fit) installMod(it, createItem(fit.id));
-            }
+          if (c.modded && getDef(def).weapon) modAll(it);
         }
         const v = new CharacterView(lib, c.look, u, true);
         const a = {

@@ -6,15 +6,13 @@ import {
   createItem,
   effectiveWeapon,
   getDef,
-  installMod,
-  MOD_SLOTS,
-  modFits,
-  modSlotsFor,
+  installPart,
+  partFits,
   peekSource,
   removeItem,
-  removeMod,
+  removePart,
+  socketTree,
   type ItemInstance,
-  type ModSlot,
 } from '@ashfall/engine';
 import { InvContext } from './components';
 import { toSource, type Resolver, type SrcRef } from './host';
@@ -25,8 +23,6 @@ export const useModder = create<{ src: SrcRef | null; open(src: SrcRef): void; c
   open: (src) => set({ src }),
   close: () => set({ src: null }),
 }));
-
-const SLOT_LABEL: Record<ModSlot, string> = { muzzle: 'Muzzle', scope: 'Sight', grip: 'Foregrip', stock: 'Stock', mag: 'Magazine', light: 'Tactical light' };
 
 /** Grids that mods can come from / go back to (in order). */
 function modGrids(r: Resolver): { id: string; label: string }[] {
@@ -65,24 +61,25 @@ export function WeaponModder() {
   const gun = s && peekSource(s);
   if (!gun || !getDef(gun.def).weapon) return null;
   const def = getDef(gun.def);
-  const base = effectiveWeapon({ ...gun, mods: undefined });
+  // Compared against the gun as it leaves the factory (bare, for guns with plain attachment slots).
+  const base = effectiveWeapon(createItem(gun.def));
   const cur = effectiveWeapon(gun);
-  const slots = modSlotsFor(gun.def);
+  const tree = socketTree(gun);
   const grids = modGrids(host.resolver);
   const available: { item: ItemInstance; grid: string; label: string }[] = [];
-  for (const g of grids) for (const p of host.resolver.grid(g.id)!.items) if (getDef(p.item.def).mod && modFits(p.item.def, gun.def)) available.push({ item: p.item, grid: g.id, label: g.label });
+  for (const g of grids) for (const p of host.resolver.grid(g.id)!.items) if (getDef(p.item.def).mod) available.push({ item: p.item, grid: g.id, label: g.label });
 
   /** Put a removed part (and any unloaded rounds) somewhere sensible. */
   const stow = (r: Resolver, item: ItemInstance): boolean => grids.some((g) => addItem(r.grid(g.id)!, item));
 
-  const install = (modUid: string, gridId: string) =>
+  const install = (path: string[], modUid: string, gridId: string) =>
     host.apply((r) => {
       const g = r.grid(gridId);
       const w = peekSource(toSource(r, src)!);
       const placed = g?.items.find((p) => p.item.uid === modUid);
       if (!g || !w || !placed) return false;
       removeItem(g, modUid);
-      const res = installMod(w, placed.item);
+      const res = installPart(w, path, placed.item);
       if (!res) {
         addItem(g, placed.item);
         return false;
@@ -93,14 +90,14 @@ export function WeaponModder() {
       return true;
     });
 
-  const remove = (slot: ModSlot) =>
+  const remove = (path: string[]) =>
     host.apply((r) => {
       const w = peekSource(toSource(r, src)!);
-      if (!w?.mods?.[slot]) return false;
-      const mod = w.mods[slot]!;
-      // Check there's room before detaching.
-      if (!grids.some((g) => r.grid(g.id) && addItem(r.grid(g.id)!, mod))) return false;
-      const res = removeMod(w, slot);
+      const ref = w && socketTree(w).find((t) => t.path.join('/') === path.join('/'));
+      if (!w || !ref?.part) return false;
+      // Check there's room before detaching (the part comes off with everything on it).
+      if (!grids.some((g) => r.grid(g.id) && addItem(r.grid(g.id)!, ref.part!))) return false;
+      const res = removePart(w, path);
       if (res.unloaded && w.ammoType) stow(r, createItem(w.ammoType, { stack: res.unloaded }));
       audio.ui('move');
       return true;
@@ -118,15 +115,19 @@ export function WeaponModder() {
         </div>
         <div className="modder-body">
           <div className="modder-slots">
-            {MOD_SLOTS.filter((sl) => slots.includes(sl)).map((sl) => {
-              const m = gun.mods?.[sl];
-              const options = available.filter((a) => getDef(a.item.def).mod!.slot === sl);
+            {tree.map((t) => {
+              const m = t.part;
+              const key = t.path.join('/');
+              const options = available.filter((a) => a.item.uid !== m?.uid && partFits(a.item.def, t.socket, t.host.def, gun.def));
               return (
-                <div key={sl} className={`mslot ${m ? 'filled' : ''}`}>
+                <div key={key} className={`mslot ${m ? 'filled' : ''}`} style={{ marginLeft: (t.path.length - 1) * 14 }}>
                   <div className="mslot-head">
-                    <span className="h small">{SLOT_LABEL[sl]}</span>
+                    <span className="h small">
+                      {t.socket.label}
+                      {t.socket.required && !m && <span className="bad"> · required</span>}
+                    </span>
                     {m ? (
-                      <button className="btn small" onClick={() => remove(sl)}>
+                      <button className="btn small" onClick={() => remove(t.path)}>
                         Remove
                       </button>
                     ) : (
@@ -137,7 +138,7 @@ export function WeaponModder() {
                   {options.length > 0 && (
                     <div className="mslot-opts">
                       {options.map((o) => (
-                        <button key={o.item.uid} className="mopt" onClick={() => install(o.item.uid, o.grid)} title={`From ${o.label}`}>
+                        <button key={o.item.uid} className="mopt" onClick={() => install(t.path, o.item.uid, o.grid)} title={`From ${o.label}`}>
                           <span>{getDef(o.item.def).short}</span>
                           <span className="faint small">{o.label}</span>
                         </button>
@@ -158,6 +159,7 @@ export function WeaponModder() {
             {stat('Reload (s)', base.reloadTime, cur.reloadTime, (n) => n.toFixed(1), 'down')}
             {stat('Aim zoom', base.zoom, cur.zoom, (n) => `${n.toFixed(2)}×`, 'up')}
             {stat('Mobility', base.ergo * 100, cur.ergo * 100, (n) => `${n.toFixed(0)}%`, 'up')}
+            {!cur.operable && <div className="bad small">Missing a required part — it won't fire.</div>}
             <div className="mstat">
               <span className="dim">Suppressed</span>
               <span className={cur.suppressed ? 'good' : 'faint'}>{cur.suppressed ? 'yes — bots hear you at a third of the distance' : 'no'}</span>

@@ -1,4 +1,4 @@
-import { getDef, type Caliber, type ItemDef, type ModSlot } from './defs';
+import { getDef, type Caliber, type ItemDef, type Preset } from './defs';
 
 /** A concrete item. Containers (rigs, backpacks) carry their own grid, so dropping a backpack keeps its contents. */
 export interface ItemInstance {
@@ -17,8 +17,11 @@ export interface ItemInstance {
   uses?: number;
   /** Found in raid. */
   fir?: boolean;
-  /** Installed weapon attachments. */
-  mods?: Partial<Record<ModSlot, ItemInstance>>;
+  /**
+   * Installed parts by socket id. A part can carry parts of its own (a handguard's foregrip), so a gun built
+   * from parts is a tree; older guns use the attachment slot names (muzzle, scope, …) as socket ids.
+   */
+  mods?: Partial<Record<string, ItemInstance>>;
 }
 
 export interface Placed {
@@ -58,9 +61,43 @@ export function createItem(defId: string, opts: Partial<Omit<ItemInstance, 'def'
   if (def.grid && !item.grid) item.grid = createGrid(def.grid.w, def.grid.h);
   if (def.category === 'secure' && item.grid) item.grid.secure = true;
   if (def.weapon && item.ammo === undefined) item.ammo = 0;
+  // Guns and parts built from parts leave the factory with their parts in.
+  const preset = def.weapon?.preset ?? def.mod?.preset;
+  if (preset && !opts.mods) item.mods = presetParts(preset);
   if (def.med && item.uses === undefined) item.uses = def.med.resource || def.med.uses;
   if (def.stackMax) item.stack = Math.min(Math.max(1, item.stack), def.stackMax);
   return item;
+}
+
+function presetParts(preset: Preset): Partial<Record<string, ItemInstance>> {
+  const out: Partial<Record<string, ItemInstance>> = {};
+  for (const [socket, p] of Object.entries(preset)) {
+    const [id, sub] = typeof p === 'string' ? [p, undefined] : p;
+    out[socket] = createItem(id, sub ? { mods: presetParts(sub) } : {});
+  }
+  return out;
+}
+
+/** Weight and value of a def's factory parts: a gun's def lists the complete gun, its receiver is the rest. */
+const presetTotals = new Map<string, { weight: number; value: number }>();
+function factoryParts(d: ItemDef): { weight: number; value: number } {
+  const preset = d.weapon?.preset ?? d.mod?.preset;
+  if (!preset || !d.weapon) return { weight: 0, value: 0 };
+  let t = presetTotals.get(d.id);
+  if (!t) {
+    t = { weight: 0, value: 0 };
+    const add = (p: Preset) => {
+      for (const v of Object.values(p)) {
+        const [id, sub] = typeof v === 'string' ? [v, undefined] : v;
+        t!.weight += getDef(id).weight;
+        t!.value += getDef(id).value;
+        if (sub) add(sub);
+      }
+    };
+    add(preset);
+    presetTotals.set(d.id, t);
+  }
+  return t;
 }
 
 export function createEquipment(): Equipment {
@@ -176,7 +213,7 @@ export function carryGrids(eq: Equipment): GridContainer[] {
 
 export function itemWeight(item: ItemInstance): number {
   const d = getDef(item.def);
-  let w = d.weight * (d.stackMax ? item.stack : 1);
+  let w = (d.weight - factoryParts(d).weight) * (d.stackMax ? item.stack : 1);
   if (item.grid) for (const p of item.grid.items) w += itemWeight(p.item);
   for (const m of Object.values(item.mods ?? {})) if (m) w += itemWeight(m);
   return w;
@@ -199,7 +236,7 @@ export function equipmentWeight(eq: Equipment): number {
 
 export function itemValue(item: ItemInstance): number {
   const d = getDef(item.def);
-  let v = d.value * (d.stackMax ? item.stack : 1);
+  let v = (d.value - factoryParts(d).value) * (d.stackMax ? item.stack : 1);
   if (d.armor && item.dur !== undefined) v *= 0.35 + 0.65 * (item.dur / d.armor.durability);
   if (item.grid) for (const p of item.grid.items) v += itemValue(p.item);
   for (const m of Object.values(item.mods ?? {})) if (m) v += itemValue(m);
