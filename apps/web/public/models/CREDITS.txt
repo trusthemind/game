@@ -11,3 +11,15 @@ Furniture Pack — Quaternius (CC0 1.0) — https://quaternius.com — furniture
 Ultimate Gun Pack accessories — Quaternius (CC0 1.0) — mods.glb (suppressors, scopes, grip, stock, flashlight)
 
 Item icons — game-icons.net (CC BY 3.0) by Lorc, Delapouite, Skoll, sbed and contributors — https://game-icons.net
+
+Soviet household furniture — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Textures resized to WebP,
+meshopt-compressed (tools/assets/vehicles.mjs); turned, scaled and merged at load (apps/web/src/render/furnitureSf.ts):
+  furniture_sf.glb
+    gas_stove    — "Old Soviet Gas Stove" by shaqsh (backdrop removed)  https://sketchfab.com/3d-models/old-soviet-gas-stove-0958b0ab4e2344cc847e14355f196512
+    fridge_old   — "An old refrigerator and a wooden crate" by Eugen S. (crate removed)  https://sketchfab.com/3d-models/an-old-refrigerator-and-a-wooden-crate-9664f9f194ae4256a64ab168f74f8b9b
+    bathtub      — "Old Bathtube" by wolkoed  https://sketchfab.com/3d-models/old-bathtube-2f1706233a3248cf9a74586fc2e7120c
+    toilet       — "Dirty Toilet" by Shedmon  https://sketchfab.com/3d-models/dirty-toilet-389d5427a1f344c4aa4883ec5a6aaf05
+    tv           — "Old Television" by Nathan Sioui  https://sketchfab.com/3d-models/old-television-86c2567eddd0460cb3127be05cc66450
+    radiator     — "Old Radiator" by thethieme  https://sketchfab.com/3d-models/old-radiator-8a1a2e0263aa401591c1e87d824a79ef
+    wardrobe_old — "Old Russian wardrobe in 1983 V 2.0" by Paule Gennadievich  https://sketchfab.com/3d-models/old-russian-wardrobe-in-1983-v-20-f0ad9f13bc784d5ebaa81e6956cf5118
+    chair_old    — "Old Soviet Chair" by shaqsh  https://sketchfab.com/3d-models/old-soviet-chair-f22abd940288406b9f3079a4ee91b53c

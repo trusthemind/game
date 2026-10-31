@@ -23,7 +23,16 @@ export type FurnitureKind =
   | 'sofa'
   | 'stool'
   | 'table'
-  | 'vase';
+  | 'vase'
+  // Soviet household pieces (Sketchfab, CC BY): kitchens, bathrooms, living rooms.
+  | 'gas_stove'
+  | 'fridge_old'
+  | 'bathtub'
+  | 'toilet'
+  | 'tv'
+  | 'radiator'
+  | 'wardrobe_old'
+  | 'chair_old';
 
 /** Footprint in metres: w across the front, d front-to-back. */
 export const FURNITURE_SIZE: Record<FurnitureKind, { w: number; d: number; blocks: boolean }> = {
@@ -43,6 +52,14 @@ export const FURNITURE_SIZE: Record<FurnitureKind, { w: number; d: number; block
   stool: { w: 0.37, d: 0.36, blocks: false },
   table: { w: 1.35, d: 1.24, blocks: true },
   vase: { w: 0.33, d: 0.33, blocks: false },
+  gas_stove: { w: 0.59, d: 0.43, blocks: true },
+  fridge_old: { w: 0.85, d: 0.75, blocks: true },
+  bathtub: { w: 1.6, d: 0.76, blocks: true },
+  toilet: { w: 0.43, d: 0.67, blocks: true },
+  tv: { w: 0.6, d: 0.46, blocks: false },
+  radiator: { w: 0.9, d: 0.1, blocks: false },
+  wardrobe_old: { w: 0.98, d: 0.56, blocks: true },
+  chair_old: { w: 0.45, d: 0.47, blocks: false },
 };
 
 export interface Furniture {
@@ -67,16 +84,23 @@ type Side = 0 | 1 | 2 | 3; // wall on the north, east, south, west of the room
 
 interface Theme {
   wall: [FurnitureKind, number][];
+  /** Each wall piece at most once (a bathroom has one tub). */
+  unique?: boolean;
   centre?: FurnitureKind;
   decor: FurnitureKind[];
 }
 
 const HOME_THEMES: Theme[] = [
-  { wall: [['bed', 1], ['closet', 1], ['dresser', 1]], decor: ['lamp', 'plant'] },
-  { wall: [['bed_double', 1], ['closet', 1], ['dresser', 1]], decor: ['lamp', 'vase'] },
-  { wall: [['sofa', 1], ['bookcase', 2], ['dresser', 1]], centre: 'coffee_table', decor: ['armchair', 'lamp', 'plant'] },
-  { wall: [['bookcase', 2], ['dresser', 1]], centre: 'table', decor: ['chair', 'chair', 'chair', 'plant'] },
+  { wall: [['bed', 1], ['wardrobe_old', 1], ['dresser', 1]], decor: ['lamp', 'radiator'] },
+  { wall: [['bed_double', 1], ['closet', 1], ['wardrobe_old', 1]], decor: ['lamp', 'vase', 'radiator'] },
+  { wall: [['sofa', 1], ['bookcase', 2], ['dresser', 1]], centre: 'coffee_table', decor: ['armchair', 'tv', 'plant', 'radiator'] },
+  // Kitchen: stove, fridge and a cupboard along the walls, a table with chairs in the middle.
+  { wall: [['gas_stove', 1], ['fridge_old', 1], ['dresser', 1]], unique: true, centre: 'table', decor: ['chair_old', 'chair_old', 'chair_old', 'radiator'] },
 ];
+
+/** The smallest room of a home with two or more rooms is its bathroom (when it's bathroom-sized). */
+const BATHROOM: Theme = { wall: [['bathtub', 1], ['toilet', 1]], unique: true, decor: ['radiator'] };
+const HAS_BATHROOMS = new Set<BuildingKind>(['house', 'apartment']);
 
 const THEMES: Record<BuildingKind, Theme[]> = {
   house: HOME_THEMES,
@@ -105,13 +129,17 @@ export function furnish(map: GameMap): void {
 
 function furnishBuilding(map: GameMap, b: Building, rng: Rng): void {
   const themes = THEMES[b.kind];
+  const smallest = b.rooms.reduce<Rect | null>((m, r) => (r.w >= 3 && r.h >= 3 && (!m || r.w * r.h < m.w * m.h) ? r : m), null);
+  const bathroom = HAS_BATHROOMS.has(b.kind) && b.rooms.length >= 2 && smallest && smallest.w * smallest.h <= 24 ? smallest : null;
   for (const room of b.rooms) {
     if (room.w < 3 || room.h < 3) continue;
-    const theme = rng.pick(themes);
     const area = room.w * room.h;
+    const theme = room === bathroom ? BATHROOM : rng.pick(themes);
     const wallPieces = Math.min(7, Math.max(2, Math.round(area / 9)));
-    for (let i = 0; i < wallPieces; i++) {
-      const kind = rng.weighted(theme.wall);
+    const pool = [...theme.wall];
+    for (let i = 0; i < wallPieces && pool.length; i++) {
+      const kind = rng.weighted(pool);
+      if (theme.unique) pool.splice(pool.findIndex(([k]) => k === kind), 1);
       for (let tries = 0; tries < 14; tries++) if (placeAgainstWall(map, b, room, kind, rng)) break;
     }
     if (theme.centre && room.w >= 4 && room.h >= 4) placeCentre(map, b, room, theme.centre, theme.decor, rng);
@@ -175,7 +203,7 @@ function placeCentre(map: GameMap, b: Building, room: Rect, kind: FurnitureKind,
   ];
   for (const k of decor) {
     const s = FURNITURE_SIZE[k];
-    if (k === 'chair' || k === 'armchair' || k === 'stool') {
+    if (k === 'chair' || k === 'chair_old' || k === 'armchair' || k === 'stool') {
       const seat = seats.splice(rng.int(0, seats.length - 1), 1)[0];
       if (!seat) continue;
       const [sx, sy, sd] = seat;

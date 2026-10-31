@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { addSketchfabFurniture } from './furnitureSf';
 
 /**
  * Loads the CC0 model packs once per session (see tools/assets/build.mjs) and hands out clones.
@@ -48,8 +49,8 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
     for (const c of g.scene.children) m.set(c.name, c);
     return m;
   };
-  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature'), load('mods'), load('human_m').catch(() => null), load('human_f').catch(() => null), load('hair').catch(() => null), load('furniture').catch(() => null), load('outfits').catch(() => null)]).then(
-    ([character, characterF, weapons, melee, props, nature, mods, humanM, humanF, hairDoc, furniture, outfitDoc]) => {
+  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature'), load('mods'), load('human_m').catch(() => null), load('human_f').catch(() => null), load('hair').catch(() => null), load('furniture').catch(() => null), load('outfits').catch(() => null), load('furniture_sf').catch(() => null)]).then(
+    ([character, characterF, weapons, melee, props, nature, mods, humanM, humanF, hairDoc, furniture, outfitDoc, furnitureSf]) => {
       const hair = new Map<string, THREE.SkinnedMesh>();
       hairDoc?.scene.traverse((o) => {
         const sm = o as THREE.SkinnedMesh;
@@ -81,6 +82,7 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
           if (m.isMesh && !(m as THREE.SkinnedMesh).isSkinnedMesh) m.geometry = toCreasedNormals(m.geometry, (40 * Math.PI) / 180);
         });
       ready = { character, characterF, humanM, humanF, hair, clips, weapons: byName(weapons), melee: byName(melee), mods: byName(mods), props: byName(props), nature: byName(nature), furniture: furniture ? byName(furniture) : new Map(), outfits };
+      addSketchfabFurniture(ready.furniture, furnitureSf);
       return ready;
     },
   );

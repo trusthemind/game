@@ -1,0 +1,277 @@
+[
+ {
+  "uid": "ef698ce36b1545a78ce592dd3db4c7ed",
+  "slug": "char_a_tactical_suit",
+  "use": "character A: PMC / raider"
+ },
+ {
+  "uid": "342501b0c84843a3a418319c31ea26fa",
+  "slug": "char_b_tactical",
+  "use": "character B: PMC / raider"
+ },
+ {
+  "uid": "e92cf8059df143f4b41d90bc751b5605",
+  "slug": "char_c_speznaz",
+  "use": "character C: spetsnaz"
+ },
+ {
+  "uid": "239dbacce962446dbabf91de34b9e6ef",
+  "slug": "char_d_okraina_police",
+  "use": "character D: police"
+ },
+ {
+  "uid": "43a561e941704eefb1ab0614be4f0049",
+  "slug": "char_e_fsb",
+  "use": "character E: FSB operator"
+ },
+ {
+  "uid": "cca25ef7b9794d49b909022ed8e81f15",
+  "slug": "char_f_alan_survivor",
+  "use": "character F: scav / civilian"
+ },
+ {
+  "uid": "68213c7d97a04b1b963599180210f5bd",
+  "slug": "char_w1_tactical_female",
+  "use": "female W1"
+ },
+ {
+  "uid": "ba5ad50a7a2f457a8b5ed7a84328027f",
+  "slug": "char_w2_female_soldier",
+  "use": "female W2"
+ },
+ {
+  "uid": "41a2d066abd64200a1987b3456708f04",
+  "slug": "char_w3_civilian_female",
+  "use": "female W3"
+ },
+ {
+  "uid": "522a598aa3334dada7f0907df04f9d6d",
+  "slug": "char_w4_female_police",
+  "use": "female W4"
+ },
+ {
+  "uid": "367a37bf5c0b48e688195d915c5496a2",
+  "slug": "char_w5_specops",
+  "use": "body fem_ops: female special forces"
+ },
+ {
+  "uid": "e4f9e18ac0e34312a2e26cb1fd180fe4",
+  "slug": "char_w6_police",
+  "use": "body fem_police: female police officer"
+ },
+ {
+  "uid": "bac6355e5ffc4a0ca79b1b76b99d3db8",
+  "slug": "char_w7_jacket",
+  "use": "body fem_jacket: woman in jacket and trousers"
+ },
+ {
+  "uid": "05c240d89fb34089ad6491ba9499ad0c",
+  "slug": "char_w8_leather",
+  "use": "body fem_leather: woman in leather jacket"
+ },
+ {
+  "uid": "9e82fabf26194896b5ad4a364d864eab",
+  "slug": "char_swat",
+  "use": "body swat: S.W.A.T. operator"
+ },
+ {
+  "uid": "f6923917c8014578b1c1cb2b4c249268",
+  "slug": "char_swat_mc",
+  "use": "body swat_mc: S.W.A.T. operator in multicam"
+ },
+ {
+  "uid": "850593a8c7114c188395ba1849a66eb9",
+  "slug": "char_full_gear",
+  "use": "body pmc_heavy: soldier in full tactical gear"
+ },
+ {
+  "uid": "94f74f6bdd994733a8a40c7ff088e12f",
+  "slug": "char_ukr_a",
+  "use": "body ukr_a: Ukrainian soldier"
+ },
+ {
+  "uid": "b5d8f735b24c49f7ab5b9cc21af4b229",
+  "slug": "char_ukr_b",
+  "use": "body ukr_b: Ukrainian soldier"
+ },
+ {
+  "uid": "e9aa211b67264dc086af1d2f4d4e3d84",
+  "slug": "char_rus_a",
+  "use": "body rus_a: Russian soldier"
+ },
+ {
+  "uid": "5f8c7d15f5ad48fbb3685e634df76304",
+  "slug": "cloth_gorka",
+  "use": "clothing: Gorka suit"
+ },
+ {
+  "uid": "90c084b9a56441b1afcfa9293b6fe4af",
+  "slug": "cloth_armor_vest",
+  "use": "clothing: armour vest"
+ },
+ {
+  "uid": "91270dab9d1a47c7ba7ffaaf8c8b0beb",
+  "slug": "veh_vaz2107",
+  "use": "vehicle: VAZ-2107"
+ },
+ {
+  "uid": "ba563a31b4754a66a5f0e7f893145922",
+  "slug": "veh_vaz2104",
+  "use": "vehicle: VAZ-2104 wreck"
+ },
+ {
+  "uid": "300e85f5786f48b3abd5f8ab3851c3a1",
+  "slug": "veh_lada_riva",
+  "use": "vehicle: Lada Riva"
+ },
+ {
+  "uid": "7c3f4bee5d37401d853d2206dc7859fc",
+  "slug": "veh_zhiguli_pack",
+  "use": "vehicle: Zhiguli wrecks (4 colours)"
+ },
+ {
+  "uid": "09016f12adde42e996c29209635e2b92",
+  "slug": "veh_uaz469_hawol",
+  "use": "vehicle: UAZ-469"
+ },
+ {
+  "uid": "70c8691c6fb64b859fbfc16babfa2c5f",
+  "slug": "veh_uaz469_grox",
+  "use": "vehicle: UAZ-469 (alt)"
+ },
+ {
+  "uid": "4f45aa2e9180437b9687b3d567069ca9",
+  "slug": "veh_uaz452",
+  "use": "vehicle: UAZ-452 Bukhanka"
+ },
+ {
+  "uid": "13a2a560bacf4df7bbba19e4e1905095",
+  "slug": "veh_gaz66",
+  "use": "vehicle: GAZ-66 Shishiga"
+ },
+ {
+  "uid": "93fc33be25e34b44b205c5b962d66e61",
+  "slug": "veh_niva",
+  "use": "vehicle: Lada Niva"
+ },
+ {
+  "uid": "9084c3bae8224d338103997bc3101480",
+  "slug": "gun_ak74m_fjh",
+  "use": "weapon: AK-74M (PBR, named parts)"
+ },
+ {
+  "uid": "e74e7e34e8d44c12a3701aa4d3d33167",
+  "slug": "gun_ak74m_kerry",
+  "use": "weapon: AK-74M (low-poly, attachments)"
+ },
+ {
+  "uid": "896cdfacb60948bd89918a152d25c658",
+  "slug": "gun_aks74_armoredwave",
+  "use": "weapon: AKS-74"
+ },
+ {
+  "uid": "14648d9cf9804cb387f4f88e13850056",
+  "slug": "gun_aks74u_jeandiz",
+  "use": "weapon: AKS-74U"
+ },
+ {
+  "uid": "84bb0a58a18047069706047639b82899",
+  "slug": "gun_ak74m_seven",
+  "use": "weapon: AK-74M (alt)"
+ },
+ {
+  "uid": "87a76b087e044b60ba9e9bf7ae814fb6",
+  "slug": "gun_ak74_wood",
+  "use": "weapon: AK-74 wooden"
+ },
+ {
+  "uid": "3139957b69194510b4cd3fccb52a6d36",
+  "slug": "gun_pbs1",
+  "use": "weapon mod: PBS-1 suppressor"
+ },
+ {
+  "uid": "b27f9003622a4c7499bfd8d2a06dc47b",
+  "slug": "gun_tt_ak74",
+  "use": "weapon: AK-74 (TastyTony family)"
+ },
+ {
+  "uid": "4fc741a30b20477ea748f5d2837ac0b4",
+  "slug": "gun_tt_aks74u",
+  "use": "weapon: AKS-74U (TastyTony family)"
+ },
+ {
+  "uid": "849b7cdf8622487485febc40db89e734",
+  "slug": "gun_tt_akm",
+  "use": "weapon: AKM (TastyTony family)"
+ },
+ {
+  "uid": "8cab1cbeb82c4396a154f9fc8771417b",
+  "slug": "gun_tt_m4a1",
+  "use": "weapon: M4A1 (TastyTony family)"
+ },
+ {
+  "uid": "059e968f6f764357880807c62c117ab7",
+  "slug": "gun_tt_hk416",
+  "use": "weapon: HK416 (TastyTony family)"
+ },
+ {
+  "uid": "626082c669c740efa06e03c63b7bc2d9",
+  "slug": "gun_tt_pkm",
+  "use": "weapon: PKM (TastyTony family)"
+ },
+ {
+  "uid": "60efc54ac59e47d18bdff94b2f5144ff",
+  "slug": "gun_tt_g17",
+  "use": "weapon: Glock 17 (TastyTony family)"
+ },
+ {
+  "uid": "a79689d37bb547c4a1ab6628f60dd05f",
+  "slug": "gun_tt_mp5sd",
+  "use": "weapon: MP5 (TastyTony family)"
+ },
+ {
+  "uid": "ec2fb60fecaf4aea94b681a52ec7bc26",
+  "slug": "gun_tt_vector",
+  "use": "weapon: Vector (TastyTony family)"
+ },
+ {
+  "uid": "0958b0ab4e2344cc847e14355f196512",
+  "slug": "furn_gas_stove",
+  "use": "furniture: gas stove"
+ },
+ {
+  "uid": "9664f9f194ae4256a64ab168f74f8b9b",
+  "slug": "furn_fridge_crate",
+  "use": "furniture: fridge (crate dropped)"
+ },
+ {
+  "uid": "2f1706233a3248cf9a74586fc2e7120c",
+  "slug": "furn_bathtub_old",
+  "use": "furniture: bathtub"
+ },
+ {
+  "uid": "389d5427a1f344c4aa4883ec5a6aaf05",
+  "slug": "furn_toilet_dirty",
+  "use": "furniture: toilet"
+ },
+ {
+  "uid": "86c2567eddd0460cb3127be05cc66450",
+  "slug": "furn_tv_old",
+  "use": "furniture: television"
+ },
+ {
+  "uid": "8a1a2e0263aa401591c1e87d824a79ef",
+  "slug": "furn_radiator_old",
+  "use": "furniture: radiator"
+ },
+ {
+  "uid": "f0ad9f13bc784d5ebaa81e6956cf5118",
+  "slug": "furn_wardrobe_1983",
+  "use": "furniture: wardrobe"
+ },
+ {
+  "uid": "f22abd940288406b9f3079a4ee91b53c",
+  "slug": "furn_chair_soviet",
+  "use": "furniture: chair"
+ }
+]

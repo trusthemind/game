@@ -4,6 +4,7 @@ import { Rng, Tile, solidBoxes, type Box, type GameMap, type LootContainer, type
 import { getTexture, type TexKind } from './textures';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
 import type { AssetLibrary } from './assets';
+import { droppedJacket, jacketFabric, JACKET_COLORS, JACKET_VARIANTS } from './jacket3d';
 
 export const WALL_H = 2.1;
 
@@ -43,7 +44,7 @@ const CONTAINER_SHAPE: Record<ContainerKind, { w: number; h: number; d: number; 
 };
 
 /** Containers drawn with a furniture model instead of a box. */
-const CONTAINER_MODEL: Partial<Record<ContainerKind, string>> = { wardrobe: 'closet', drawer: 'dresser', shelf: 'bookcase_empty' };
+const CONTAINER_MODEL: Partial<Record<ContainerKind, string>> = { wardrobe: 'wardrobe_old', fridge: 'fridge_old', drawer: 'dresser', shelf: 'bookcase_empty' };
 
 export interface WorldMeshes {
   group: THREE.Group;
@@ -349,9 +350,42 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
   const containerModels = new Map<number, [THREE.InstancedMesh, number][]>();
   const modelled = lib?.furniture.size ? map.containers.filter((c) => CONTAINER_MODEL[c.kind] && lib.furniture.has(CONTAINER_MODEL[c.kind]!)) : [];
   for (const c of modelled) containerIndex.set(c.id, -1);
+  const jackets = map.containers.filter((c) => c.kind === 'jacket');
+  for (const c of jackets) containerIndex.set(c.id, -1);
   for (const c of map.containers) addContainerInstance(containers, containerIndex, map, c);
   containers.castShadow = shadows;
   group.add(containers);
+
+  // ── Jackets dropped on the floor: a procedural garment, collar to the wall, each one its own colour.
+  if (jackets.length) {
+    const jacketMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93 });
+    materials.push(patchWorldMaterial(jacketMat, u, { pre: jacketFabric, key: 'jacket' }));
+    const meshes = JACKET_VARIANTS.map((v) => {
+      const inst = new THREE.InstancedMesh(droppedJacket(v), jacketMat, jackets.length);
+      inst.count = 0;
+      inst.castShadow = shadows;
+      inst.receiveShadow = shadows;
+      return inst;
+    });
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const c of jackets) {
+      const r = new Rng(c.id * 2654435761);
+      const [dx, dy] = map.isSolid(c.x - 1, c.y) ? [-1, 0] : map.isSolid(c.x + 1, c.y) ? [1, 0] : map.isSolid(c.x, c.y - 1) ? [0, -1] : map.isSolid(c.x, c.y + 1) ? [0, 1] : [0, -1];
+      // Model collar faces −Z: turn it towards the wall, then let it fall a little askew.
+      const yaw = Math.atan2(-dx, -dy) + Math.PI + r.range(-0.45, 0.45);
+      const off = 0.08 + r.range(0, 0.06);
+      const inst = meshes[r.int(0, meshes.length - 1)]!;
+      const i = inst.count++;
+      inst.setMatrixAt(i, m4.compose(new THREE.Vector3(c.x + 0.5 + dx * off, 0.004, c.y + 0.5 + dy * off), new THREE.Quaternion().setFromAxisAngle(up, yaw), new THREE.Vector3(1, 1, 1)));
+      inst.setColorAt(i, tmpC.setHex(r.pick(JACKET_COLORS)));
+      containerModels.set(c.id, [[inst, i]]);
+    }
+    for (const inst of meshes) {
+      if (!inst.count) continue;
+      inst.computeBoundingSphere();
+      group.add(inst);
+    }
+  }
 
   // ── Furniture (+ furniture-shaped containers): one InstancedMesh per material per model and 32×32
   // chunk, so it culls with the camera. Models face +Z with their back at −Z.
@@ -476,7 +510,9 @@ export function markContainerSearched(world: WorldMeshes, c: LootContainer): voi
   if (i === undefined) return;
   if (i < 0) {
     for (const [inst, k] of world.containerModels.get(c.id) ?? []) {
-      inst.setColorAt(k, tmpC.setScalar(0.5));
+      if (inst.instanceColor) inst.getColorAt(k, tmpC);
+      else tmpC.setScalar(1);
+      inst.setColorAt(k, tmpC.multiplyScalar(0.5));
       inst.instanceColor!.needsUpdate = true;
     }
     return;
