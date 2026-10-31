@@ -1570,13 +1570,17 @@ export class CharacterView {
     const clip = layerClip(this.lib, name, layer, this.sfBody);
     if (!clip) return;
     const a = this.mixer.clipAction(clip);
+    // Already on (the next shot of a burst, or a one-shot still fading out): restart at full weight. Fading it
+    // in again from 0 would leave the upper body unheld for a few frames, and it sags into the bind pose.
+    const live = a.isScheduled() && a.getEffectiveWeight() > 0;
     a.reset();
     a.setLoop(THREE.LoopOnce, 1);
     // Hold the last frame until update() fades it out: a finished LoopOnce action drops to weight 0 at once,
     // and while the stance is still fading in the arms would sag towards the bind pose (spread out wide).
     a.clampWhenFinished = true;
     a.timeScale = speed;
-    a.setEffectiveWeight(1).fadeIn(0.06).play();
+    a.setEffectiveWeight(1).play();
+    if (!live) a.fadeIn(0.06);
     if (this.oneShot && this.oneShot !== a) this.oneShot.fadeOut(0.06);
     // A one-shot replaces the stance for its duration.
     this.upper?.fadeOut(0.06);
