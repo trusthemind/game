@@ -43,8 +43,10 @@ infected, and reach an exit before the timer runs out. If you die, everything yo
   and mods that change recoil, ergonomics, noise and range.
 - Animated humans on one shared skeleton: male and female bodies, modelled faces, hairstyles and beards,
   outfits per faction, and vault, loot, eat and heal animations.
-- Sampled, spatialised sound: per-calibre gunshots with distance tails, suppressed shots, surface-aware
-  footsteps, reloads, impacts and weather ambience.
+- Sound made only from real recordings, spatialised: per-calibre gunshots layered from close and
+  down-range microphones (distant fire is a real distant recording), suppressed shots, footsteps per
+  surface, melee swishes with blunt and blade hits, pain and death cries, reloads, impacts, heartbeat, and
+  weather and night ambience.
 - Installable PWA that works offline. Saves live in IndexedDB and optionally sync across devices through
   the Go backend.
 
@@ -150,6 +152,13 @@ folder, then:
 
 ```bash
 ASSET_SRC=/path/to/packs node tools/assets/build.mjs
+```
+
+Sounds have their own pipeline (Python with numpy, plus ffmpeg); the folder layout it expects is at the top
+of the script:
+
+```bash
+SND_SRC=/path/to/sound/packs python3 tools/sounds/build.py
 ```
 
 `ONLY=furniture,weapons` rebuilds just those sets.
@@ -264,8 +273,11 @@ All 3D models, animations, sounds and icons are free assets. Full lists are in
 
 - **Models and animation:** [Quaternius](https://quaternius.com) (CC0): Universal Animation Library 1 and 2,
   Universal Base Characters, Ultimate Gun Pack, Survival Pack, Stylized Nature MegaKit, Furniture Pack.
-- **Sound:** OpenGameArt CC0 recordings, including The Free Firearm Sound Library (Jaszczak, Nelson,
-  Heras, Nanney), footstep, reload, ambience and creature packs.
+- **Sound (all real recordings, no synthesis):** The Free Firearm Sound Library (Jaszczak, Nelson, Heras,
+  Nanney, CC0), Kenney RPG and UI sounds (CC0), qubodup and Independent.nu impacts (CC0), Exewin and other
+  OpenGameArt CC0 voice, footstep, reload and ambience packs. **CC BY 3.0:** footsteps by swuing,
+  EminYILDIRIM and Eelke, edited by congusbongus ("Footsteps on different surfaces"); male pain and death
+  cries by Michel Baradari ("11 male human pain/death sounds").
 - **Icons:** [game-icons.net](https://game-icons.net) by Lorc, Delapouite, Skoll, sbed and contributors
   (CC BY 3.0).
 - **Fonts:** Chakra Petch, IBM Plex Sans and JetBrains Mono (SIL Open Font License).

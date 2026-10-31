@@ -1,18 +1,45 @@
-All sounds in this folder are cut/processed from CC0 (public domain) recordings.
-Rebuild with: SND_SRC=<extracted packs> python3 tools/sounds/build.py
+Every sound in this folder is cut and processed from real recordings. Nothing is synthesised.
+Rebuild with: SND_SRC=<extracted packs> python3 tools/sounds/build.py   (needs numpy + ffmpeg)
 
+CC0 (public domain, no attribution required; credited anyway)
 - The Free Firearm Sound Library (Prepared) — Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney
-  https://opengameart.org/content/the-free-firearm-sound-library  (CC0)
-- Different steps on wood, stone, leaves, gravel and mud — https://opengameart.org/content/different-steps-on-wood-stone-leaves-gravel-and-mud (CC0)
-- Fantozzi's footsteps (grass/sand & stone) — https://opengameart.org/content/fantozzis-footsteps-grasssand-stone (CC0)
-- 42 snow and gravel footsteps — https://opengameart.org/content/42-snow-and-gravel-footsteps (CC0)
-- Footsteps leather, cloth, armor — https://opengameart.org/content/footsteps-leather-cloth-armor (CC0)
-- Gun reload sounds — https://opengameart.org/content/gun-reload-sounds (CC0)
-- 2 gun reloads — https://opengameart.org/content/2-gun-reloads (CC0)
-- Handgun reload sound effect — https://opengameart.org/content/handgun-reload-sound-effect (CC0)
-- Equipment clicks II — https://opengameart.org/content/equipment-clicks-ii (CC0)
-- 100 CC0 SFX #2 — https://opengameart.org/content/100-cc0-sfx-2 (CC0)
-- Park ambiences — https://opengameart.org/content/park-ambiences (CC0)
-- Amb rain loop 1 — https://opengameart.org/content/amb-rain-loop-1 (CC0)
-- Mild wind background noise — https://opengameart.org/content/mild-wind-background-noise (CC0)
-- Zombie moans — https://opengameart.org/content/zombie-moans (CC0)
+  https://opengameart.org/content/the-free-firearm-sound-library
+  shot_* (near + mid microphones layered), far_* (mid microphone): Walther PPQ, Bersa, 1911, S&W 642, AK-47,
+  AR-15, Savage 10 .300 BLK, PPSh, Carl Gustav M45, SKS, Benelli Nova, Charles Daly, Winchester Model 12,
+  Mosin Nagant, Tikka T3, Springfield 1917
+- Footsteps on different surfaces — congusbongus, gravel folder from Ali_6868 (freesound pack 21608)
+  https://opengameart.org/content/footsteps-on-different-surfaces — step_gravel
+- Different steps on wood, stone, leaves, gravel and mud — https://opengameart.org/content/different-steps-on-wood-stone-leaves-gravel-and-mud
+- Fantozzi's footsteps (grass/sand & stone) — https://opengameart.org/content/fantozzis-footsteps-grasssand-stone
+- Footsteps leather, cloth, armor — https://opengameart.org/content/footsteps-leather-cloth-armor (CC0 / OGA-BY, used as CC0)
+- 100 CC0 SFX #2 — https://opengameart.org/content/100-cc0-sfx-2 (impacts, glass, doors, items, zipper, thunder, wet steps)
+- Swishes sound pack — https://opengameart.org/content/swishes-sound-pack (swing, swing_heavy)
+- Impact — qubodup — https://opengameart.org/content/impact (punch, impact_*)
+- Punch — qubodup — https://opengameart.org/content/punch (punch)
+- 8 wet squish, slurp impacts — Independent.nu — https://opengameart.org/content/8-wet-squish-slurp-impacts (flesh)
+- 50 RPG sound effects — Kenney — https://opengameart.org/content/50-rpg-sound-effects
+  (knife slices, chop, knife draw, cloth, belts, leather, latch: stab, draw_blade, gear, cloth, ui_move, ui_equip, dry)
+- 51 UI sound effects (buttons, switches and clicks) — Kenney — https://opengameart.org/content/51-ui-sound-effects-buttons-switches-and-clicks
+  (ui_click, ui_deny)
+- Death sounds — Exewin — https://opengameart.org/content/death-sounds-0 (death_m, pain_f)
+- Hurt / death sound effect for character — https://opengameart.org/content/hurt-death-sound-effect-for-character (death_f)
+- Hurt sound effects — https://opengameart.org/content/hurt-sound-effects (pain_f)
+- Heartbeat (single sound) — Independent.nu — https://opengameart.org/content/heartbeat-single-sound
+- Crickets ambient noise (loopable) — Wolfgang_ — https://opengameart.org/content/crickets-ambient-noise-loopable
+- Gun reload sounds — https://opengameart.org/content/gun-reload-sounds
+- 2 gun reloads — StarNinjas — https://opengameart.org/content/2-gun-reloads
+- Handgun reload sound effect — https://opengameart.org/content/handgun-reload-sound-effect
+- Equipment clicks II — https://opengameart.org/content/equipment-clicks-ii
+- Park ambiences — https://opengameart.org/content/park-ambiences
+- Amb rain loop 1 — https://opengameart.org/content/amb-rain-loop-1
+- Mild wind background noise — https://opengameart.org/content/mild-wind-background-noise
+- Zombie moans — darsycho — https://opengameart.org/content/zombie-moans
+
+CC-BY 3.0 (attribution required — https://creativecommons.org/licenses/by/3.0/)
+- "footstep-concrete.wav", "footstep-grass.wav", "footstep-wood.wav" by swuing (freesound.org 38873, 38874, 38876),
+  "Water Footsteps" by EminYILDIRIM (freesound.org 608663), "fboots on aluminum ladder 01" by Eelke
+  (freesound.org 462598); edited by congusbongus in "Footsteps on different surfaces"
+  https://opengameart.org/content/footsteps-on-different-surfaces — step_stone, step_wood, step_grass, step_leaves,
+  step_mud, step_metal (re-cut and loudness-matched)
+- "11 male human pain/death sounds" by Michel Baradari — https://opengameart.org/content/11-male-human-paindeath-sounds
+  — pain_m, death_m (trimmed and loudness-matched)

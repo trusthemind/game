@@ -26,12 +26,12 @@ import {
 } from '@ashfall/engine';
 import { GameRenderer } from '../render/GameRenderer';
 import type { AssetLibrary } from '../render/assets';
-import { playerAppearance } from '../render/character';
+import { lookFor, playerAppearance } from '../render/character';
 import type { QualityLevel } from '../render/quality';
 import { Input } from '../input/Input';
 import { PerfMonitor } from '../perf/PerfMonitor';
 import { useRaidUi, type HudState } from './hudStore';
-import { audio } from '../audio/AudioEngine';
+import { audio, BLADES } from '../audio/AudioEngine';
 
 export interface SessionOptions {
   canvas: HTMLCanvasElement;
@@ -128,6 +128,14 @@ export class GameSession {
     window.addEventListener('keydown', this.onGesture);
   }
 
+  /** Voice for pain and death cries: the same deterministic look the renderer draws. */
+  private sexOf(id: number): 'm' | 'f' {
+    const a = this.raid.actorById(id);
+    if (!a) return 'm';
+    if (a === this.raid.player) return playerAppearance(this.opts.profile.look).sex;
+    return lookFor(a.id, a.archetype, a.npcId, a.bossId).sex;
+  }
+
   /** Browsers start audio suspended until a user gesture. */
   private onGesture = () => audio.unlock();
   private groanT = 2;
@@ -141,7 +149,6 @@ export class GameSession {
         case 'shot':
           if (e.pellet) break;
           audio.shot(e.weapon, e.fx, e.fy, e.actor === pid, !!e.suppressed);
-          if (e.hit) audio.hit(e.tx, e.ty, false, false);
           break;
         case 'step': {
           const t = e.tile;
@@ -157,12 +164,23 @@ export class GameSession {
           }
           break;
         case 'swing':
-          audio.swing(e.x, e.y, e.actor === pid);
+          audio.swing(e.weapon, e.x, e.y, e.actor === pid);
           break;
-        case 'hit':
-          if (!e.penetrated && !e.melee) audio.hit(e.x, e.y, true, e.target === pid);
-          else if (e.melee) audio.hit(e.x, e.y, false, e.target === pid);
+        case 'hit': {
+          const mine = e.target === pid;
+          if (e.melee) {
+            const w = raid.actorById(e.attacker)?.eq.slots.melee?.def ?? 'fists';
+            audio.hit(e.x, e.y, BLADES.has(w) ? 'blade' : 'blunt', mine);
+          } else audio.hit(e.x, e.y, e.penetrated ? 'bullet' : 'armor', mine);
+          const t = raid.actorById(e.target);
+          if (t?.alive && e.damage > 0) audio.pain(t.id, t.pos.x, t.pos.y, this.sexOf(t.id), t.archetype === 'infected', mine);
           break;
+        }
+        case 'death': {
+          const a = raid.actorById(e.actor);
+          if (a) audio.death(a.id, a.pos.x, a.pos.y, this.sexOf(a.id), a.archetype === 'infected', a.id === pid);
+          break;
+        }
         case 'impact':
           audio.impact(e.x, e.y, e.material);
           break;
