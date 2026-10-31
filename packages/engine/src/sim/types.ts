@@ -95,6 +95,8 @@ export interface Actor {
   bossId?: string;
   /** Companion following the player. */
   companion?: boolean;
+  /** Raid time until which a companion's spotter perk shows this actor on the player's minimap. */
+  spottedUntil?: number;
   /** Natural attack for creatures without gear (infected claws). */
   natural?: { damage: number; cooldown: number; reach: number; bleedChance: number };
 }

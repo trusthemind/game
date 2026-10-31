@@ -18,6 +18,13 @@ import {
   type Category,
   MAP_PRESETS,
   type MapId,
+  COMPANION_PERK,
+  PERKS,
+  companionLevel,
+  companionLoadout,
+  getDef,
+  reviveCompanion,
+  reviveCost,
 } from '@ashfall/engine';
 import { useApp, type HideoutTab } from '../../state/appStore';
 import { useProfile } from '../../state/profileStore';
@@ -312,7 +319,8 @@ function SurvivorsTab() {
                     ))}
                   </ul>
                 )}
-                {profile.companion === npc.id && <div className="companion-badge">Joins your next raid</div>}
+                {npc.canRecruit && (rel.met || here) && <CompanionPanel npcId={npc.id} />}
+                {profile.companion === npc.id && !(profile.companions[npc.id]?.wounded ?? 0) && <div className="companion-badge">Joins your next raid</div>}
                 {here ? (
                   <button className="btn" onClick={() => useApp.getState().openDialogue(npc.id)}>
                     Talk
@@ -325,6 +333,76 @@ function SurvivorsTab() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+const GEAR_SLOTS = [
+  ['primary', 'Primary'],
+  ['secondary', 'Pistol'],
+  ['armor', 'Armour'],
+  ['helmet', 'Helmet'],
+  ['rig', 'Rig'],
+  ['backpack', 'Backpack'],
+] as const;
+
+/** Level, squad perk, wounds and kit of a recruitable survivor. */
+function CompanionPanel({ npcId }: { npcId: string }) {
+  const profile = useProfile((s) => s.profile)!;
+  const st = profile.companions[npcId] ?? { xp: 0, wounded: 0 };
+  const lv = companionLevel(st.xp);
+  const perkId = COMPANION_PERK[npcId];
+  const perk = perkId ? PERKS[perkId] : null;
+  const eq = profile.companionEq[npcId];
+  const cost = reviveCost(lv.level);
+  const mutate = useProfile.getState().mutate;
+  // Their kit exists before the first raid too, so the panel never shows empty slots.
+  useEffect(() => {
+    if (!eq) mutate((d) => void companionLoadout(d, npcId));
+  }, [eq, mutate, npcId]);
+  return (
+    <div className="comp-panel">
+      <div className="comp-level">
+        <span className="h small">Level {lv.level}</span>
+        <div className="rel-bar">
+          <i style={{ width: lv.next ? `${(lv.into / lv.next) * 100}%` : '100%' }} />
+        </div>
+        <span className="mono dim small">{lv.next ? `${lv.into}/${lv.next} xp` : 'max'}</span>
+      </div>
+      {perk && (
+        <div className="comp-perk">
+          <b>{perk.name}</b>
+          <span className="dim small">{perk.describe(lv.level)}</span>
+        </div>
+      )}
+      {st.wounded > 0 ? (
+        <div className="comp-wounded">
+          <span className="bad">Wounded — sits out the next raid</span>
+          <button
+            className="btn small primary"
+            disabled={profile.money < cost}
+            onClick={() => {
+              mutate((d) => void reviveCompanion(d, npcId));
+              audio.ui('equip');
+            }}
+          >
+            Treat now · {fmt(cost)} ₵
+          </button>
+        </div>
+      ) : (
+        <div className="comp-gear">
+          {GEAR_SLOTS.map(([slot, label]) => {
+            const it = eq?.slots[slot];
+            return (
+              <div key={slot} className="comp-slot">
+                <span className="dim small">{label}</span>
+                <span className="small">{it ? getDef(it.def).name : '—'}</span>
+              </div>
+            );
+          })}
+          <span className="dim small">Own kit, not from your stash. Gets better as they level up.</span>
+        </div>
+      )}
     </div>
   );
 }

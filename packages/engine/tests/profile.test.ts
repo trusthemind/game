@@ -9,6 +9,7 @@ import {
   ITEMS,
   levelFromXp,
   migrateProfile,
+  PROFILE_VERSION,
   sellPrice,
   starterKit,
   traderCatalog,
@@ -172,6 +173,6 @@ describe('secure container + death grave', () => {
     const m = migrateProfile(JSON.parse(JSON.stringify(p)));
     expect(m.equipment.slots.secure?.def).toBe('sc_alpha');
     expect(m.settings.difficulty).toBe('normal');
-    expect(m.version).toBe(3);
+    expect(m.version).toBe(PROFILE_VERSION);
   });
 });

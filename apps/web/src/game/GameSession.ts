@@ -10,6 +10,9 @@ import {
   inPain,
   carryGrids,
   companionLoadout,
+  canDeploy,
+  companionLevel,
+  companionState,
   countAmmo,
   encounterLoadout,
   equipmentWeight,
@@ -70,11 +73,15 @@ export function raidFromProfile(profile: Profile, seed: number, mapId: MapId = '
   for (const npc of Object.values(NPCS)) {
     const rel = profile.npcs[npc.id];
     if (!rel || !npcEncounterEligible(npc, rel) || profile.companion === npc.id) continue;
+    if ((profile.companions[npc.id]?.wounded ?? 0) > 0) continue; // recovering at the base
     if (encounters.length < 3 && rng.chance(rel.met ? 0.45 : 0.7)) encounters.push({ npcId: npc.id, name: npc.name, prefers: npc.prefers ?? ['house'], eq: encounterLoadout(npc.id), wounded: npc.id === 'lena' });
   }
   const compId = profile.companion;
   const compRel = compId ? profile.npcs[compId] : undefined;
-  const companion = compId && compRel && !compRel.dead ? { npcId: compId, name: NPCS[compId]?.name ?? compId, eq: structuredClone(companionLoadout(profile, compId)) } : null;
+  const companion =
+    compId && compRel && canDeploy(profile, compId)
+      ? { npcId: compId, name: NPCS[compId]?.name ?? compId, eq: structuredClone(companionLoadout(profile, compId)), level: companionLevel(companionState(profile, compId).xp).level }
+      : null;
   return new Raid({
     seed,
     mapId,

@@ -27,6 +27,7 @@ import { OPAQUE, Tile } from '../world/tiles';
 import { solidBoxes, type Box } from '../world/collision';
 import { createVehicle, doorPos, exitSpots, pushOutOfVehicle, rayVehicle, seatPos, stepVehicle, vehicleBlocked, VEHICLE_DEFS, type Vehicle } from './vehicle';
 import { BotBrain, type BrainRole } from '../ai/brain';
+import { COMPANION_PERK, companionStats, medicCooldown, medicHeal, medUseMul, muleKg, searchMul, spotRange, stepNoiseMul, type PerkId } from '../companions';
 import { armorFor, gaussian, resolveBulletHit, resolveMeleeHit, ZONE_WEIGHTS } from './combat';
 import {
   aimMul,
@@ -80,7 +81,7 @@ export interface RaidOptions {
   seed: number;
   playerEq: Equipment;
   playerName?: string;
-  companion?: { npcId: string; name: string; eq: Equipment } | null;
+  companion?: { npcId: string; name: string; eq: Equipment; level?: number } | null;
   encounters?: RaidNpcSpawn[];
   botDensity?: number;
   mapSize?: number;
@@ -148,7 +149,7 @@ export interface RaidResult {
   valueIn: number;
   valueOut: number;
   xp: number;
-  companion: { npcId: string; alive: boolean; eq: Equipment | null } | null;
+  companion: { npcId: string; alive: boolean; eq: Equipment | null; kills: number } | null;
   metNpcs: string[];
   deadNpcs: string[];
 }
@@ -231,6 +232,10 @@ export class Raid {
   /** Event sites the player reached. */
   private readonly visited = new Set<'heli' | 'airdrop'>();
   private metNpcs = new Set<string>();
+  /** Level of the companion who came along (their perk scales with it). */
+  private squadLevel = 1;
+  private medicT = 0;
+  private spotT = 0;
   private deadNpcs = new Set<string>();
   private scratch: Actor[] = [];
   private waveT = 180;
@@ -273,19 +278,24 @@ export class Raid {
     for (const it of allItems(opts.playerEq)) this.startUids.add(it.uid);
 
     if (opts.companion) {
+      const level = opts.companion.level ?? 1;
+      const st = companionStats(level);
       const c = this.spawnActor({
         name: opts.companion.name,
         faction: 'player',
         archetype: 'npc',
         x: sp.x + 1.2,
         y: sp.y + 0.6,
-        hp: 110,
+        hp: st.hp,
         speed: 3.0,
         eq: opts.companion.eq,
       });
       c.npcId = opts.companion.npcId;
       c.companion = true;
-      c.brain = new BotBrain('companion', this.rng.fork('companion'), this.player.id);
+      const brain = new BotBrain('companion', this.rng.fork('companion'), this.player.id);
+      brain.tune(st.reactMul, st.skillAdd);
+      c.brain = brain;
+      this.squadLevel = level;
     }
 
     this.botRng = this.rng.fork('bots');
@@ -533,6 +543,7 @@ export class Raid {
       if (!a.alive) continue;
       this.updateActor(a, dt);
     }
+    this.updateSquadPerks(dt);
     this.updateVehicles(dt);
     this.hash.rebuild(this.liveActors());
     this.separateActors();
@@ -570,6 +581,53 @@ export class Raid {
   }
 
   // ── Actor update ────────────────────────────────────────────────────────────
+
+  /** The perk of the companion at your side, while they're alive. */
+  squadPerk(): { perk: PerkId; level: number; actor: Actor } | null {
+    for (const a of this.actors)
+      if (a.companion && a.alive && a.npcId && COMPANION_PERK[a.npcId]) return { perk: COMPANION_PERK[a.npcId]!, level: this.squadLevel, actor: a };
+    return null;
+  }
+
+  private updateSquadPerks(dt: number): void {
+    const sq = this.squadPerk();
+    const p = this.player;
+    if (!sq || !p.alive) return;
+    if (sq.perk === 'medic') {
+      this.medicT -= dt;
+      if (this.medicT > 0 || dist(sq.actor.pos, p.pos) > 6) return;
+      const parts = BODY_PARTS.map((k) => p.health.parts[k]);
+      const total = parts.reduce((s, x) => s + x.hp, 0);
+      const max = parts.reduce((s, x) => s + x.max, 0);
+      const bleedingPart = BODY_PARTS.find((k) => p.health.parts[k].heavy || p.health.parts[k].light);
+      if (!bleedingPart && total > max * 0.5) return;
+      if (bleedingPart) {
+        const part = p.health.parts[bleedingPart];
+        if (part.heavy) part.heavy = false;
+        else part.light = false;
+      }
+      // Heal the worst-off part that isn't blacked out.
+      const worst = BODY_PARTS.filter((k) => p.health.parts[k].hp > 0).sort((a, b) => p.health.parts[a].hp / p.health.parts[a].max - p.health.parts[b].hp / p.health.parts[b].max)[0];
+      if (worst) {
+        const part = p.health.parts[worst];
+        part.hp = Math.min(part.max, part.hp + medicHeal(sq.level));
+      }
+      this.medicT = medicCooldown(sq.level);
+      this.emit({ t: 'msg', text: `${sq.actor.name} patched you up`, tone: 'good' });
+    } else if (sq.perk === 'spotter') {
+      this.spotT -= dt;
+      if (this.spotT > 0) return;
+      this.spotT = 0.5;
+      const r = spotRange(sq.level);
+      for (const a of this.actors)
+        if (a.alive && a.faction !== 'player' && a.faction !== 'npc' && dist(a.pos, sq.actor.pos) <= r) a.spottedUntil = this.time + 1.2;
+    }
+  }
+
+  private perkOn(perk: PerkId): number | null {
+    const sq = this.squadPerk();
+    return sq && sq.perk === perk ? sq.level : null;
+  }
 
   private updateActor(a: Actor, dt: number): void {
     const it = a.intent;
@@ -653,7 +711,11 @@ export class Raid {
       if (a.stepT <= 0) {
         // Stride length: a jog covers ground in long strides, a crouch shuffles.
         a.stepT = a.sprinting ? 1.45 : a.crouching ? 0.6 : 0.8;
-        const r = a.crouching ? 1.4 : a.sprinting ? 8 : 3.5;
+        let r = a.crouching ? 1.4 : a.sprinting ? 8 : 3.5;
+        if (a === this.player) {
+          const lvl = this.perkOn('scout');
+          if (lvl !== null) r *= stepNoiseMul(lvl);
+        }
         this.makeNoise(a.pos.x, a.pos.y, a.archetype === 'infected' ? r * 0.5 : r, a.id, 'step');
         const tx = Math.floor(a.pos.x);
         const ty = Math.floor(a.pos.y);
@@ -689,7 +751,9 @@ export class Raid {
   recomputeSpeed(a: Actor): void {
     const weight = equipmentWeight(a.eq);
     let mul = 1;
-    if (weight > 28) mul -= Math.min(0.45, (weight - 28) / 70);
+    const muleLvl = a === this.player ? this.perkOn('mule') : null;
+    const free = 28 + (muleLvl !== null ? muleKg(muleLvl) : 0);
+    if (weight > free) mul -= Math.min(0.45, (weight - free) / 70);
     for (const s of ['armor', 'helmet'] as const) {
       const it = a.eq.slots[s];
       if (it) mul -= getDef(it.def).armor?.slow ?? 0;
@@ -1018,7 +1082,7 @@ export class Raid {
     }
     if (a.npcId) {
       this.deadNpcs.add(a.npcId);
-      this.emit({ t: 'msg', text: `${a.name} is dead.`, tone: 'bad' });
+      this.emit({ t: 'msg', text: a.companion ? `${a.name} is down — they'll be carried back wounded` : `${a.name} is dead.`, tone: 'bad' });
     }
     if (a === this.player) {
       this.status = 'dead';
@@ -1083,7 +1147,8 @@ export class Raid {
       }
       a.usePart = target;
     }
-    a.useT = t;
+    const medic = a === this.player && d.med ? this.perkOn('medic') : null;
+    a.useT = t * (medic !== null ? medUseMul(medic) : 1);
     a.useUid = uid;
     a.useDef = found.item.def;
     a.reloadT = 0;
@@ -1450,7 +1515,8 @@ export class Raid {
     const c = this.container(this.loot.id)!;
     if (c.searched) return;
     c.searchT += dt;
-    const per = CONTAINERS[c.kind].searchTime;
+    const forager = this.perkOn('forager');
+    const per = CONTAINERS[c.kind].searchTime * (forager !== null ? searchMul(forager) : 1);
     while (c.searchT >= per && !c.searched) {
       c.searchT -= per;
       const next = c.grid.items.find((pl) => !c.revealedUids.includes(pl.item.uid));
@@ -1705,7 +1771,7 @@ export class Raid {
       valueIn: this.valueIn,
       valueOut,
       xp,
-      companion: comp?.npcId ? { npcId: comp.npcId, alive: comp.alive, eq: comp.alive ? comp.eq : null } : null,
+      companion: comp?.npcId ? { npcId: comp.npcId, alive: comp.alive, eq: comp.alive ? comp.eq : null, kills: comp.kills } : null,
       mapId: this.map.mapId,
       killLog: [...this.killLog],
       lootedKinds: [...this.looted.values()],

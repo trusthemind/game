@@ -7,8 +7,9 @@ import { newRelationship, type Relationship } from './dialogue/types';
 import type { Difficulty, Grave, RaidResult } from './sim/raid';
 import { applyRaidToTasks, type TaskState } from './tasks';
 import { newHideout, type HideoutState } from './hideout';
+import { companionLevel, companionRaidXp, companionState, gearTierFor, upgradeCompanionGear, type CompanionState } from './companions';
 
-export const PROFILE_VERSION = 3;
+export const PROFILE_VERSION = 4;
 
 export interface ProfileStats {
   raids: number;
@@ -57,6 +58,8 @@ export interface Profile {
   /** NPC currently set to join the next raid. */
   companion: string | null;
   companionEq: Record<string, Equipment>;
+  /** Level progress and wounds per companion (see companions.ts). */
+  companions: Record<string, CompanionState>;
   lastFreeKit: number;
   settings: Settings;
   look: PlayerLook;
@@ -89,6 +92,7 @@ export function createProfile(name = 'Survivor', id = randomId(), look: PlayerLo
     npcs,
     companion: null,
     companionEq: {},
+    companions: {},
     lastFreeKit: 0,
     settings: { quality: 'auto', showPerf: false, volume: 0.7, difficulty: 'normal', autoHeal: true },
     look: { ...look },
@@ -125,6 +129,18 @@ export function migrateProfile(raw: unknown): Profile {
     out.grave ??= null;
     out.version = 3;
   }
+  if (out.version < 4) {
+    // v3 → v4: companion levels and wounds. A companion who died before this existed comes back wounded.
+    out.companions ??= {};
+    for (const [id, rel] of Object.entries(out.npcs)) {
+      if (rel.dead && NPCS[id]?.canRecruit) {
+        rel.dead = false;
+        out.companions[id] = { xp: 0, wounded: 1 };
+      }
+    }
+    out.version = 4;
+  }
+  out.companions ??= {};
   out.settings.difficulty ??= 'normal';
   out.grave ??= null;
   out.rev ??= 0;
@@ -148,7 +164,8 @@ export function levelFromXp(xp: number): { level: number; into: number; next: nu
 export function companionLoadout(profile: Profile, npcId: string): Equipment {
   const existing = profile.companionEq[npcId];
   if (existing && (existing.slots.primary || existing.slots.secondary)) return existing;
-  const eq = generateLoadout('raider', new Rng(`${profile.id}:${npcId}:${profile.stats.raids}`), 0);
+  const level = companionLevel(companionState(profile, npcId).xp).level;
+  const eq = generateLoadout('raider', new Rng(`${profile.id}:${npcId}:${profile.stats.raids}`), gearTierFor(level));
   // Companions start a little lighter than raiders, each with their own kind of gun.
   eq.slots.backpack = null;
   const sig = COMPANION_GUN[npcId];
@@ -215,18 +232,32 @@ export function applyRaidResult(profile: Profile, result: RaidResult): RaidSumma
   if (result.graveVisited) profile.grave = null;
   if (result.deathAt && (profile.settings.difficulty ?? 'normal') !== 'hard') profile.grave = { ...result.deathAt };
   profile.xp += result.xp;
+  // Wounded companions who sat this raid out are one raid closer to fit.
+  for (const [id, st] of Object.entries(profile.companions)) if (st.wounded > 0 && result.companion?.npcId !== id) st.wounded--;
   if (result.companion) {
-    const rel = profile.npcs[result.companion.npcId];
+    const id = result.companion.npcId;
+    const rel = profile.npcs[id];
+    const st = companionState(profile, id);
+    const before = companionLevel(st.xp).level;
+    st.xp += companionRaidXp(result.companion.alive, result.status === 'extracted', result.companion.kills ?? 0);
+    const after = companionLevel(st.xp).level;
     if (result.companion.alive && result.companion.eq) {
-      profile.companionEq[result.companion.npcId] = result.companion.eq;
+      profile.companionEq[id] = result.companion.eq;
       if (rel && result.status === 'extracted') {
         rel.affinity = Math.min(100, rel.affinity + 4);
         if (!rel.flags.includes('at_base')) rel.flags.push('at_base');
       }
+      if (after > before) upgradeCompanionGear(profile, id, after, profile.id);
+    } else {
+      // Carried back wounded: their kit stayed on the map, they sit out the next raid (or you pay the medic).
+      st.wounded = 1;
+      delete profile.companionEq[id];
+      if (profile.companion === id) profile.companion = null;
     }
   }
   for (const id of result.metNpcs) if (profile.npcs[id]) profile.npcs[id]!.met = true;
   for (const id of result.deadNpcs) {
+    if (result.companion?.npcId === id) continue; // a companion is wounded, not dead (above)
     const rel = profile.npcs[id];
     if (rel) rel.dead = true;
     if (profile.companion === id) profile.companion = null;

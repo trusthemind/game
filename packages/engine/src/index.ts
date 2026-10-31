@@ -23,6 +23,7 @@ export * from './dialogue/types';
 export * from './dialogue/runner';
 export * from './dialogue/npcs';
 export * from './profile';
+export * from './companions';
 export * from './economy';
 export * from './sim/health';
 export * from './world/collision';

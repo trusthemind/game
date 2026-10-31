@@ -91,7 +91,9 @@ export function Minimap({ raid, size = 196, full = false }: { raid: Raid; size?:
       }
       for (const a of raid.actors) {
         if (!a.alive || a === raid.player) continue;
-        if (!a.companion && !raid.isVisibleToPlayer(a.pos.x, a.pos.y)) continue;
+        // Hostiles your spotter companion has eyes on show up even outside your own sight.
+        const spotted = (a.spottedUntil ?? 0) > raid.time;
+        if (!a.companion && !spotted && !raid.isVisibleToPlayer(a.pos.x, a.pos.y)) continue;
         ctx.fillStyle = a.companion ? '#7fd1b9' : a.npcId ? '#f0c46a' : '#e05a4a';
         ctx.beginPath();
         ctx.arc(a.pos.x, a.pos.y, 0.8, 0, Math.PI * 2);
