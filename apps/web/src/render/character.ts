@@ -1544,9 +1544,14 @@ export class CharacterView {
     this.lowerName = key;
   }
 
-  private setUpper(name: string | null): void {
-    if (this.upperName === (name ?? '')) return;
-    const prev = this.upper;
+  /** `from`: a one-shot that just ended, handed over to the stance with a crossfade (weights always add up to 1). */
+  private setUpper(name: string | null, from: THREE.AnimationAction | null = null): void {
+    if (this.upperName === (name ?? '')) {
+      from?.fadeOut(0.15);
+      return;
+    }
+    if (from && this.upper) from.fadeOut(0.15);
+    const prev = this.upper ?? from;
     this.upper = null;
     this.upperName = name ?? '';
     if (name) {
@@ -1567,7 +1572,9 @@ export class CharacterView {
     const a = this.mixer.clipAction(clip);
     a.reset();
     a.setLoop(THREE.LoopOnce, 1);
-    a.clampWhenFinished = layer === 'full';
+    // Hold the last frame until update() fades it out: a finished LoopOnce action drops to weight 0 at once,
+    // and while the stance is still fading in the arms would sag towards the bind pose (spread out wide).
+    a.clampWhenFinished = true;
     a.timeScale = speed;
     a.setEffectiveWeight(1).fadeIn(0.06).play();
     if (this.oneShot && this.oneShot !== a) this.oneShot.fadeOut(0.06);
@@ -1638,8 +1645,9 @@ export class CharacterView {
     // Upper-body stance first: it decides whether the base layer plays on the whole body.
     this.aimT = Math.max(0, this.aimT - dt);
     this.oneShotT -= dt;
+    let ended: THREE.AnimationAction | null = null;
     if (this.oneShot && this.oneShotT <= 0) {
-      this.oneShot.fadeOut(0.12);
+      ended = this.oneShot;
       this.oneShot = null;
     }
     // Treating wounds / eating: a looping gesture for the whole use timer, weapon put away, item in hand.
@@ -1654,7 +1662,7 @@ export class CharacterView {
     else if (gun && (alerted || this.aimT > 0 || (a.faction === 'player' && a.aiming))) stance = 'Pistol_Aim_Neutral';
     else if (gun) stance = 'Pistol_Idle_Loop';
     else if (this.heldKind === 'melee' && (alerted || a.faction === 'player')) stance = 'Sword_Idle';
-    if (!this.oneShot) this.setUpper(stance);
+    if (!this.oneShot) this.setUpper(stance, ended);
     const upperBusy = !!this.upper || (!!this.oneShot && this.oneShotLayer === 'upper');
     const layer: 'lower' | 'full' = upperBusy ? 'lower' : 'full';
 
