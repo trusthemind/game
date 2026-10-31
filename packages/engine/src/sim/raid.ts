@@ -25,6 +25,7 @@ import { generateMap, MAP_PRESETS, type MapId } from '../world/mapGen';
 import { Pathfinder } from '../world/pathfinding';
 import { OPAQUE, Tile } from '../world/tiles';
 import { solidBoxes, type Box } from '../world/collision';
+import { createVehicle, doorPos, exitSpots, pushOutOfVehicle, rayVehicle, seatPos, stepVehicle, vehicleBlocked, VEHICLE_DEFS, type Vehicle } from './vehicle';
 import { BotBrain, type BrainRole } from '../ai/brain';
 import { armorFor, gaussian, resolveBulletHit, resolveMeleeHit, ZONE_WEIGHTS } from './combat';
 import {
@@ -158,7 +159,8 @@ export type Interactable =
   | { kind: 'corpse'; id: number; label: string; x: number; y: number }
   | { kind: 'npc'; id: number; npcId: string; label: string; x: number; y: number }
   | { kind: 'extract'; id: number; label: string; x: number; y: number }
-  | { kind: 'window'; id: number; label: string; x: number; y: number; broken: boolean };
+  | { kind: 'window'; id: number; label: string; x: number; y: number; broken: boolean }
+  | { kind: 'vehicle'; id: number; label: string; x: number; y: number; inside: boolean };
 
 const FIXED_DT = 1 / 60;
 export const INTERACT_RANGE = 1.7;
@@ -217,6 +219,8 @@ export class Raid {
   private nextEventId = 1;
   /** Window tiles whose glass has been smashed. */
   readonly brokenGlass = new Set<number>();
+  /** Drivable cars and roadside wrecks. */
+  readonly vehicles: Vehicle[] = [];
   private accumulator = 0;
   private valueIn: number;
   private killsBy: Record<string, number> = {};
@@ -291,6 +295,7 @@ export class Raid {
       if (!groupLeaders.has(s.group)) groupLeaders.set(s.group, a.id);
     }
 
+    this.map.vehicleSpawns.forEach((s, i) => this.vehicles.push(createVehicle(i + 1, s)));
     for (const enc of opts.encounters ?? []) this.spawnEncounter(enc);
     this.autoHeal = opts.autoHeal ?? true;
     this.setupEvents(opts.events ?? true);
@@ -528,6 +533,7 @@ export class Raid {
       if (!a.alive) continue;
       this.updateActor(a, dt);
     }
+    this.updateVehicles(dt);
     this.hash.rebuild(this.liveActors());
     this.separateActors();
 
@@ -609,9 +615,9 @@ export class Raid {
       a.facing = turnTowards(a.facing, angleTo(a.pos, { x: it.aimX, y: it.aimY }), turnRate * dt);
     }
 
-    // Movement.
-    let mx = it.moveX;
-    let my = it.moveY;
+    // Movement (in a vehicle the keys drive it instead, see updateVehicles).
+    let mx = a.vehicle ? 0 : it.moveX;
+    let my = a.vehicle ? 0 : it.moveY;
     const ml = Math.hypot(mx, my);
     if (ml > 1) {
       mx /= ml;
@@ -638,11 +644,11 @@ export class Raid {
     const accel = Math.min(1, dt * 14);
     a.vel.x += (mx * speed - a.vel.x) * accel;
     a.vel.y += (my * speed - a.vel.y) * accel;
-    this.moveAndCollide(a, a.vel.x * dt, a.vel.y * dt);
+    if (!a.vehicle) this.moveAndCollide(a, a.vel.x * dt, a.vel.y * dt);
 
     // Footstep noise.
     const v = Math.hypot(a.vel.x, a.vel.y);
-    if (v > 0.4) {
+    if (v > 0.4 && !a.vehicle) {
       a.stepT -= dt * v;
       if (a.stepT <= 0) {
         // Stride length: a jog covers ground in long strides, a crouch shuffles.
@@ -677,7 +683,7 @@ export class Raid {
       if (a.reloadT <= 0) this.finishReload(a);
     }
     if (it.reload) this.startReload(a);
-    if (it.fire && a.useT <= 0) this.tryAttack(a, it);
+    if (it.fire && a.useT <= 0 && !a.vehicle) this.tryAttack(a, it);
   }
 
   recomputeSpeed(a: Actor): void {
@@ -749,11 +755,11 @@ export class Raid {
   private separateActors(): void {
     const near = this.scratch;
     for (const a of this.actors) {
-      if (!a.alive) continue;
+      if (!a.alive || a.vehicle) continue;
       near.length = 0;
       this.hash.query(a.pos.x, a.pos.y, 0.8, near);
       for (const b of near) {
-        if (b.id <= a.id) continue;
+        if (b.id <= a.id || b.vehicle) continue;
         const dx = b.pos.x - a.pos.x;
         const dy = b.pos.y - a.pos.y;
         const d = Math.hypot(dx, dy);
@@ -829,22 +835,38 @@ export class Raid {
     const ox = a.pos.x + dx * (a.radius + 0.05);
     const oy = a.pos.y + dy * (a.radius + 0.05);
     let wallT = this.bulletObstacle(ox, oy, dx, dy, range);
-    const blocked = wallT >= 0;
+    let blocked = wallT >= 0;
     if (!blocked) wallT = range;
+    // Vehicles are hard cover (shooting over the bonnet you're hugging is fine). A round into a driven car
+    // sometimes goes through the glass into whoever sits behind it.
+    let carHit: Vehicle | null = null;
+    for (const v of this.vehicles) {
+      if (a.vehicle?.id === v.id) continue;
+      const t = rayVehicle(v, ox, oy, dx, dy, wallT);
+      if (t > 0.9 && t < wallT) {
+        wallT = t;
+        carHit = v;
+        blocked = true;
+      }
+    }
+    const exposed = !!carHit && carHit.seats.some((s) => s !== null) && this.rng.chance(0.35);
 
     const near = this.scratch;
     near.length = 0;
-    this.hash.query(ox + (dx * wallT) / 2, oy + (dy * wallT) / 2, wallT / 2 + 1, near);
+    this.hash.query(ox + (dx * wallT) / 2, oy + (dy * wallT) / 2, wallT / 2 + 4, near);
     let best: Actor | null = null;
     let bestT = wallT;
     for (const b of near) {
       if (b === a || !b.alive) continue;
-      const t = rayCircle(ox, oy, dx, dy, b.pos.x, b.pos.y, b.radius);
-      if (t >= 0 && t < bestT) {
+      const inHit = exposed && b.vehicle?.id === carHit!.id;
+      if (b.vehicle && !inHit) continue;
+      const t = rayCircle(ox, oy, dx, dy, b.pos.x, b.pos.y, inHit ? 0.6 : b.radius);
+      if (t >= 0 && (t < bestT || (inHit && !best))) {
         bestT = t;
         best = b;
       }
     }
+    if (carHit && !best) carHit.hp = Math.max(0, carHit.hp - damage * 0.3);
     const ex = ox + dx * bestT;
     const ey = oy + dy * bestT;
     this.emit({ t: 'shot', actor: a.id, fx: ox, fy: oy, tx: ex, ty: ey, weapon, hit: !!best, suppressed, pellet: !first });
@@ -857,7 +879,7 @@ export class Raid {
     } else if (blocked) {
       const tile = this.map.get(Math.floor(ex + dx * 0.08), Math.floor(ey + dy * 0.08));
       if (tile === Tile.Window) this.breakGlass(this.map.idx(Math.floor(ex + dx * 0.08), Math.floor(ey + dy * 0.08)), a);
-      const material = tile === Tile.Window ? 'glass' : tile === Tile.Tree || tile === Tile.Wood ? 'wood' : tile === Tile.Car || tile === Tile.Fence ? 'metal' : 'ground';
+      const material = carHit ? 'metal' : tile === Tile.Window ? 'glass' : tile === Tile.Tree || tile === Tile.Wood ? 'wood' : tile === Tile.Car || tile === Tile.Fence ? 'metal' : 'ground';
       this.emit({ t: 'impact', x: ex, y: ey, material });
       this.makeNoise(ex, ey, 3, a.id, 'impact');
     }
@@ -1249,6 +1271,18 @@ export class Raid {
         best = { kind: 'npc', id: a.id, npcId: a.npcId, label: `Talk to ${a.name}`, x: a.pos.x, y: a.pos.y };
       }
     }
+    const ride = this.vehicleOf(this.player);
+    if (ride) return { kind: 'vehicle', id: ride.id, label: `Get out of the ${VEHICLE_DEFS[ride.def].name}`, x: ride.pos.x, y: ride.pos.y, inside: true };
+    for (const v of this.vehicles) {
+      if (!VEHICLE_DEFS[v.def].drivable || v.wreck) continue;
+      const door = doorPos(v, 0);
+      const d = Math.min(Math.hypot(door.x - p.x, door.y - p.y), dist(v.pos, p) - 0.6);
+      if (d < bestD + 0.4) {
+        bestD = d;
+        const label = v.hp <= 0 ? `${VEHICLE_DEFS[v.def].name} (wrecked)` : `Drive the ${VEHICLE_DEFS[v.def].name}`;
+        best = { kind: 'vehicle', id: v.id, label, x: door.x, y: door.y, inside: false };
+      }
+    }
     return best ?? this.windowNear(this.player);
   }
 
@@ -1449,12 +1483,180 @@ export class Raid {
     this.invVersion++;
   }
 
+  // ── Vehicles ────────────────────────────────────────────────────────────────
+
+  private vehScratch: Actor[] = [];
+  /** Actor id → raid time they were last run over (one hit per bump, not one per tick). */
+  private runOver = new Map<number, number>();
+
+  vehicleOf(a: Actor): Vehicle | null {
+    return a.vehicle ? (this.vehicles.find((v) => v.id === a.vehicle!.id) ?? null) : null;
+  }
+
+  /** Get in: the driver's seat if it's free, else the first free one. A companion close by gets in with you. */
+  enterVehicle(a: Actor, id: number): boolean {
+    const v = this.vehicles.find((w) => w.id === id);
+    if (!v || v.wreck || a.vehicle || !a.alive || a.vaultT > 0) return false;
+    const def = VEHICLE_DEFS[v.def];
+    if (!def.drivable || dist(v.pos, a.pos) > def.length / 2 + 2) return false;
+    const seat = v.seats.indexOf(null);
+    if (seat < 0) return false;
+    this.board(a, v, seat);
+    if (a !== this.player) return true;
+    if (seat === 0) {
+      if (v.hp <= 0) this.emit({ t: 'msg', text: 'The engine is dead', tone: 'bad' });
+      else if (v.fuel <= 0) this.emit({ t: 'msg', text: 'The tank is empty', tone: 'bad' });
+      else v.engineOn = true;
+    }
+    for (const c of this.actors) {
+      if (!c.companion || !c.alive || c.vehicle || dist(c.pos, v.pos) > 10) continue;
+      const s = v.seats.indexOf(null);
+      if (s >= 0) this.board(c, v, s);
+    }
+    return true;
+  }
+
+  /** Get out on the first free side. Not while the car is still rolling fast. */
+  exitVehicle(a: Actor): boolean {
+    const v = this.vehicleOf(a);
+    if (!v || !a.vehicle) return false;
+    if (Math.abs(v.speed) > 3) {
+      if (a === this.player) this.emit({ t: 'msg', text: 'Too fast to get out', tone: 'bad' });
+      return false;
+    }
+    if (!this.unboard(a, v)) {
+      if (a === this.player) this.emit({ t: 'msg', text: 'No room to get out', tone: 'bad' });
+      return false;
+    }
+    if (a === this.player) {
+      v.engineOn = false;
+      for (const c of this.actors) if (c.companion && c.vehicle?.id === v.id) this.unboard(c, v);
+    }
+    return true;
+  }
+
+  private board(a: Actor, v: Vehicle, seat: number): void {
+    v.seats[seat] = a.id;
+    a.vehicle = { id: v.id, seat };
+    a.vel.x = a.vel.y = 0;
+    this.emit({ t: 'vehicle', id: v.id, actor: a.id, what: 'enter', x: v.pos.x, y: v.pos.y, power: 0 });
+    this.makeNoise(v.pos.x, v.pos.y, 4, a.id, 'step');
+  }
+
+  private unboard(a: Actor, v: Vehicle): boolean {
+    const seat = a.vehicle!.seat;
+    const free = (p: { x: number; y: number }) =>
+      this.map.isWalkable(Math.floor(p.x), Math.floor(p.y)) && this.vehicles.every((w) => !pushOutOfVehicle(w, p.x, p.y, a.radius));
+    const spot = exitSpots(v, seat).find(free);
+    if (!spot) return false;
+    v.seats[seat] = null;
+    a.vehicle = null;
+    a.pos.x = spot.x;
+    a.pos.y = spot.y;
+    a.vel.x = a.vel.y = 0;
+    this.resolveTiles(a);
+    this.emit({ t: 'vehicle', id: v.id, actor: a.id, what: 'exit', x: v.pos.x, y: v.pos.y, power: 0 });
+    return true;
+  }
+
+  private updateVehicles(dt: number): void {
+    for (const v of this.vehicles) {
+      if (v.wreck) continue;
+      // The dead don't keep their seats.
+      v.seats.forEach((id, s) => {
+        if (id === null) return;
+        const o = this.actorById(id);
+        if (o?.alive) return;
+        v.seats[s] = null;
+        if (o) o.vehicle = null;
+      });
+      // Only the player drives (bots at the wheel come later).
+      const driver = v.seats[0] !== null ? this.actorById(v.seats[0]) : null;
+      const it = driver === this.player ? driver.intent : null;
+      stepVehicle(v, this.map, { throttle: it ? -it.moveY : 0, steer: it ? it.moveX : 0, handbrake: !!it?.sprint }, dt, this.vehicles);
+
+      if (v.impact > 4) {
+        const before = v.hp;
+        v.hp = Math.max(0, v.hp - (v.impact - 4) * 30);
+        this.emit({ t: 'vehicle', id: v.id, actor: driver?.id ?? -1, what: 'crash', x: v.pos.x, y: v.pos.y, power: v.impact });
+        this.makeNoise(v.pos.x, v.pos.y, 10 + v.impact * 2, driver?.id ?? -1, 'impact');
+        if (v.hp <= 0 && before > 0) {
+          v.engineOn = false;
+          if (driver === this.player) this.emit({ t: 'msg', text: 'The engine died', tone: 'bad' });
+        }
+        // A hard crash hurts whoever is inside.
+        if (v.impact > 9)
+          for (const id of v.seats) {
+            const o = id !== null ? this.actorById(id) : null;
+            if (o) this.damageRaw(o, (v.impact - 9) * 5, null, 'thorax');
+          }
+      }
+      if (v.engineOn) {
+        v.noiseT -= dt;
+        if (v.noiseT <= 0) {
+          v.noiseT = 0.5;
+          this.makeNoise(v.pos.x, v.pos.y, 14 + Math.abs(v.speed) * 1.2, driver?.id ?? -1, 'step');
+        }
+      }
+      v.seats.forEach((id, s) => {
+        const o = id !== null ? this.actorById(id) : null;
+        if (!o) return;
+        const sp = seatPos(v, s);
+        o.pos.x = sp.x;
+        o.pos.y = sp.y;
+        o.vel.x = v.vel.x;
+        o.vel.y = v.vel.y;
+        o.sprinting = false;
+      });
+    }
+
+    // People are shoved out of the way of any car (wrecks too); a moving one runs them over.
+    for (const v of this.vehicles) {
+      const near = this.vehScratch;
+      near.length = 0;
+      this.hash.query(v.pos.x, v.pos.y, VEHICLE_DEFS[v.def].length / 2 + 1, near);
+      for (const b of near) {
+        if (!b.alive || b.vehicle) continue;
+        const push = pushOutOfVehicle(v, b.pos.x, b.pos.y, b.radius);
+        if (!push) continue;
+        b.pos.x += push.nx * push.depth;
+        b.pos.y += push.ny * push.depth;
+        const rel = (v.vel.x - b.vel.x) * push.nx + (v.vel.y - b.vel.y) * push.ny;
+        if (rel > 3 && this.time - (this.runOver.get(b.id) ?? -9) > 0.8) {
+          this.runOver.set(b.id, this.time);
+          const driver = v.seats[0] !== null ? this.actorById(v.seats[0]) : null;
+          // Thrown clear: a metre off the bumper, still moving.
+          b.pos.x += push.nx * 0.6;
+          b.pos.y += push.ny * 0.6;
+          b.vel.x = push.nx * rel * 0.5;
+          b.vel.y = push.ny * rel * 0.5;
+          const dmg = (rel - 3) * 14;
+          if (driver) b.lastAttacker = driver.id;
+          b.combatAt = this.time;
+          // No attacker on the event: it's the bumper, not the driver's knife (sound and blood only).
+          this.emit({ t: 'hit', target: b.id, attacker: -1, x: b.pos.x, y: b.pos.y, zone: 'thorax', damage: dmg, penetrated: false, melee: true });
+          this.emit({ t: 'vehicle', id: v.id, actor: b.id, what: 'runover', x: b.pos.x, y: b.pos.y, power: rel });
+          this.makeNoise(b.pos.x, b.pos.y, 8, driver?.id ?? -1, 'impact');
+          this.damageRaw(b, dmg * 0.5, driver, this.rng.chance(0.5) ? 'leftLeg' : 'rightLeg');
+          this.damageRaw(b, dmg * 0.5, driver, 'thorax');
+        }
+        this.resolveTiles(b);
+      }
+    }
+  }
+
+  /** Whether a drivable car can sit here without touching anything (map generation, tests). */
+  vehicleFits(v: Vehicle): boolean {
+    return !vehicleBlocked(v, this.map, this.vehicles);
+  }
+
   // ── Extraction ──────────────────────────────────────────────────────────────
 
   private updateExtraction(dt: number): void {
     const p = this.player;
     if (!p.alive) return;
-    const ex = this.map.extractions.find((e) => Math.hypot(e.x - p.pos.x, e.y - p.pos.y) < e.radius);
+    // Extracting by car isn't a thing yet: you get out at the exit.
+    const ex = p.vehicle ? undefined : this.map.extractions.find((e) => Math.hypot(e.x - p.pos.x, e.y - p.pos.y) < e.radius);
     if (!ex) {
       this.extractT = 0;
       this.extractingAt = null;

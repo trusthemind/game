@@ -4,6 +4,7 @@ import { createGrid } from '../items/inventory';
 import { GameMap, extractKind, extractSolids, extractToWorld, ROAD_EXTRACTS, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype } from './map';
 import { Tile } from './tiles';
 import { furnish } from './furniture';
+import { createVehicle, vehicleBlocked, type Vehicle, type VehicleSpawn } from '../sim/vehicle';
 
 export type MapId = 'outskirts' | 'pinehollow' | 'portkirov' | 'testsite';
 
@@ -27,9 +28,9 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
     id: 'outskirts',
     name: 'Zavadsk Outskirts',
     tagline: 'Suburbs, a fenced army depot and the forest that swallowed the motorway.',
-    size: 256,
-    districts: { town: 3, industrial: 1, military: 1, forest: 3, farm: 2 },
-    avenues: 3,
+    size: 384,
+    districts: { town: 4, industrial: 2, military: 1, forest: 5, farm: 3 },
+    avenues: 4,
     raidMinutes: 35,
     botDensity: 1,
     extractNames: ['Old Gas Station', 'Rail Bridge', 'Collapsed Tunnel', 'Checkpoint ZB-013', 'Forest Path', 'Cargo Gate', 'Dam Road', 'Outpost Kordon-7'],
@@ -393,6 +394,7 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   map.extractions = map.extractions.filter((e) => reach[map.idx(Math.floor(e.x), Math.floor(e.y))]);
 
   furnish(map);
+  placeVehicles(map, reach);
 
   // POIs for patrols: room centres + road crossings + district centres.
   for (const b of map.buildings) for (const r of b.rooms) map.pois.push({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
@@ -672,16 +674,98 @@ function scatterTrees(map: GameMap, rng: Rng): void {
     }
 }
 
+/**
+ * Settle the cars: wrecks that ended up in a tree, a wall, each other or an exit's clearing are towed away;
+ * then a drivable UAZ stands on a road within a short walk of the spawn, and a couple more further out.
+ * Own RNG stream, so it never shifts anything else on the map.
+ */
+function placeVehicles(map: GameMap, reach: Uint8Array): void {
+  const rng = new Rng((map.seed ^ 0x7e41c1e5) >>> 0);
+  const kept: Vehicle[] = [];
+  const spawns: VehicleSpawn[] = [];
+  const near = (x: number, y: number, r: number, p: { x: number; y: number }) => Math.hypot(x - p.x, y - p.y) < r;
+  for (const s of map.vehicleSpawns) {
+    const v = createVehicle(kept.length + 1, { ...s, heading: s.heading + (rng.chance(0.5) ? Math.PI : 0) + rng.range(-0.06, 0.06), variant: rng.int(0, 3) });
+    const exitBlocked = map.extractions.some((e) => near(v.pos.x, v.pos.y, 13, e)) || near(v.pos.x, v.pos.y, 5, { x: map.playerSpawn.x + 0.5, y: map.playerSpawn.y + 0.5 });
+    if (exitBlocked || vehicleBlocked(v, map, kept)) {
+      // Its trunk goes with it.
+      map.containers = map.containers.filter((c) => c.kind !== 'carTrunk' || Math.hypot(c.x + 0.5 - v.pos.x, c.y + 0.5 - v.pos.y) > 3);
+      continue;
+    }
+    kept.push(v);
+    spawns.push({ ...s, heading: v.heading, variant: v.variant });
+  }
+  // Drivable ones: on a road (or a dirt track), parked along it, reachable, and clear of everything.
+  const roadHeading = (x: number, y: number) => {
+    const t = (dx: number, dy: number) => {
+      const k = map.get(x + dx, y + dy);
+      return k === Tile.Road || k === Tile.Dirt;
+    };
+    const horiz = t(-2, 0) && t(2, 0);
+    const vert = t(0, -2) && t(0, 2);
+    if (!horiz && !vert) return null;
+    return (horiz && (!vert || rng.chance(0.5)) ? 0 : Math.PI / 2) + (rng.chance(0.5) ? Math.PI : 0);
+  };
+  const sp = { x: map.playerSpawn.x + 0.5, y: map.playerSpawn.y + 0.5 };
+  const tryPark = (ok: (x: number, y: number) => boolean, around?: { x: number; y: number; r: number }): boolean => {
+    for (let t = 0; t < 1500; t++) {
+      const x = around ? Math.round(around.x + rng.range(-around.r, around.r)) : rng.int(4, map.width - 5);
+      const y = around ? Math.round(around.y + rng.range(-around.r, around.r)) : rng.int(4, map.height - 5);
+      if (x < 4 || y < 4 || x > map.width - 5 || y > map.height - 5) continue;
+      const tile = map.get(x, y);
+      if ((tile !== Tile.Road && tile !== Tile.Dirt) || !reach[map.idx(x, y)] || !ok(x, y) || map.isIndoors(x, y)) continue;
+      const h = roadHeading(x, y);
+      if (h === null) continue;
+      const s: VehicleSpawn = { def: 'uaz469', x: x + 0.5, y: y + 0.5, heading: h + rng.range(-0.1, 0.1), variant: 0, wreck: false, fuel: rng.range(0.35, 0.8) };
+      const v = createVehicle(kept.length + 1, s);
+      if (vehicleBlocked(v, map, kept) || map.extractions.some((e) => near(s.x, s.y, 12, e))) continue;
+      kept.push(v);
+      spawns.push(s);
+      return true;
+    }
+    return false;
+  };
+  // Near the spawn first; failing a road, any open ground will do for that one.
+  if (!tryPark((x, y) => near(x, y, 28, sp) && !near(x, y, 6, sp), { ...sp, r: 28 })) parkOffRoad(sp);
+  function parkOffRoad(c: { x: number; y: number }): void {
+    for (let t = 0; t < 1500; t++) {
+      const x = Math.round(c.x + rng.range(-26, 26));
+      const y = Math.round(c.y + rng.range(-26, 26));
+      if (!map.inBounds(x, y) || !reach[map.idx(x, y)] || map.isIndoors(x, y) || near(x, y, 6, c)) continue;
+      const s: VehicleSpawn = { def: 'uaz469', x: x + 0.5, y: y + 0.5, heading: rng.range(-Math.PI, Math.PI), variant: 0, wreck: false, fuel: rng.range(0.35, 0.8) };
+      const v = createVehicle(kept.length + 1, s);
+      if (vehicleBlocked(v, map, kept) || map.extractions.some((e) => near(s.x, s.y, 12, e))) continue;
+      kept.push(v);
+      spawns.push(s);
+      return;
+    }
+  }
+  const extra = map.width >= 300 ? 3 : map.width >= 200 ? 2 : 1;
+  for (let i = 0; i < extra; i++) tryPark((x, y) => !near(x, y, 60, sp) && spawns.every((o) => o.wreck || !near(x, y, 70, o)));
+  map.vehicleSpawns = spawns;
+}
+
 function scatterCars(map: GameMap, rng: Rng, roadsX: number[], roadsY: number[]): void {
   let id = 10000;
+  // Abandoned cars are wrecks (sim/vehicle.ts), not tiles: a real 4 m body pulled to the kerb. The RNG calls
+  // are the same as when they were 2-tile blocks, so the rest of the map doesn't change.
   const tryCar = (x: number, y: number, horizontal: boolean) => {
     const cells = horizontal ? [[x, y], [x + 1, y]] : [[x, y], [x, y + 1]];
     if (!cells.every(([cx, cy]) => map.get(cx!, cy!) === Tile.Road)) return;
-    for (const [cx, cy] of cells) map.set(cx!, cy!, Tile.Car);
-    // Trunk is searchable from the road next to the car.
     const tx = horizontal ? x + 2 : x;
     const ty = horizontal ? y : y + 2;
-    if (map.get(tx, ty) === Tile.Road && rng.chance(0.6)) map.containers.push(makeContainer(id++, 'carTrunk', tx, ty, 0));
+    const trunk = map.get(tx, ty) === Tile.Road && rng.chance(0.6);
+    // Outer lane of the avenue: hug the kerb.
+    const kerb = horizontal ? (map.get(x, y - 1) === Tile.Road ? -0.35 : 0.35) : map.get(x - 1, y) === Tile.Road ? -0.35 : 0.35;
+    const cx = horizontal ? x + 1 : x + 0.5 + kerb;
+    const cy = horizontal ? y + 0.5 + kerb : y + 1;
+    map.vehicleSpawns.push({ def: 'zhiguli', x: cx, y: cy, heading: horizontal ? 0 : Math.PI / 2, variant: 0, wreck: true, fuel: 0 });
+    // Trunk is searchable from just behind the rear bumper.
+    if (trunk) {
+      const bx = horizontal ? x + 3 : x;
+      const by = horizontal ? y : y + 3;
+      if (map.get(bx, by) === Tile.Road) map.containers.push(makeContainer(id++, 'carTrunk', bx, by, 0));
+    }
   };
   for (const rx of roadsX) for (let y = 6; y < map.height - 6; y += rng.int(9, 18)) tryCar(rx + (rng.chance(0.5) ? 0 : 2), y, false);
   for (const ry of roadsY) for (let x = 6; x < map.width - 6; x += rng.int(9, 18)) tryCar(x, ry + (rng.chance(0.5) ? 0 : 2), true);
@@ -737,7 +821,7 @@ function placeBots(map: GameMap, rng: Rng, reach: Uint8Array, density: number): 
   const farFromPlayer = (x: number, y: number) => Math.hypot(x - map.playerSpawn.x, y - map.playerSpawn.y) > 40;
   // Populations scale with map area (reference: 112×112).
   const area = (map.width * map.height) / (112 * 112);
-  const scale = density * Math.min(3.2, Math.sqrt(area) * 1.15);
+  const scale = density * Math.min(4.2, Math.sqrt(area) * 1.15);
   const ok = (x: number, y: number) => map.isWalkable(x, y) && reach[map.idx(x, y)] === 1 && farFromPlayer(x, y);
   let group = 0;
   // Hostile groups start well apart so the map doesn't turn into a bloodbath in the first seconds.

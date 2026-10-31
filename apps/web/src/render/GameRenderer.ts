@@ -13,7 +13,7 @@ import {
   ToneMappingMode,
   VignetteEffect,
 } from 'postprocessing';
-import type { Interactable, Raid, RaidEvent } from '@ashfall/engine';
+import { VEHICLE_DEFS, type Interactable, type Raid, type RaidEvent } from '@ashfall/engine';
 import { CharacterView, disposeCharacterCaches, lookFor, type Appearance } from './character';
 import type { AssetLibrary } from './assets';
 import { Effects } from './effects';
@@ -25,6 +25,7 @@ import { disposeTextures } from './textures';
 import { buildRoofs, updateRoofs, type RoofSet } from './roofs';
 import { buildExtractProps, type ExtractProps } from './extracts';
 import { MapEventView } from './mapEvents';
+import { VehicleViews } from './vehicle';
 
 interface Lighting {
   bg: number;
@@ -96,6 +97,7 @@ export class GameRenderer {
   private world: WorldMeshes;
   private roofs: RoofSet;
   private events: MapEventView;
+  private vehicles: VehicleViews;
   private wasLooting = false;
   private effects: Effects;
   private views = new Map<number, CharacterView>();
@@ -208,6 +210,8 @@ export class GameRenderer {
     this.scene.add(this.effects.group);
     this.events = new MapEventView(this.uniforms);
     this.scene.add(this.events.group);
+    this.vehicles = new VehicleViews(raid, lib, this.uniforms, this.preset.shadows);
+    this.scene.add(this.vehicles.group);
 
     this.highlight = new THREE.Mesh(
       new THREE.RingGeometry(0.42, 0.5, 32).rotateX(-Math.PI / 2),
@@ -423,7 +427,8 @@ export class GameRenderer {
         );
         continue;
       }
-      const visible = a === p || !!a.companion || raid.isVisibleToPlayer(a.pos.x, a.pos.y);
+      // Inside a car nobody is drawn (seated poses come later).
+      const visible = !a.vehicle && (a === p || !!a.companion || raid.isVisibleToPlayer(a.pos.x, a.pos.y));
       const alerted =
         !!a.brain && (a.brain.state === 'engage' || a.brain.state === 'cover' || a.brain.state === 'search');
       if (a === p) {
@@ -501,12 +506,14 @@ export class GameRenderer {
     const aimY = p.intent.aimY;
     // Peek: the camera leans towards the cursor, much further while aiming.
     const lean = p.aiming ? 0.42 : 0.12;
-    const leadX = Math.max(-7, Math.min(7, (aimX - p.pos.x) * lean));
-    const leadY = Math.max(-5, Math.min(5, (aimY - p.pos.y) * lean));
+    const ride = raid.vehicleOf(p);
+    // Driving: look ahead along the road instead of at the cursor, further the faster you go.
+    const leadX = ride ? Math.max(-9, Math.min(9, ride.vel.x * 0.55)) : Math.max(-7, Math.min(7, (aimX - p.pos.x) * lean));
+    const leadY = ride ? Math.max(-6, Math.min(6, ride.vel.y * 0.55)) : Math.max(-5, Math.min(5, (aimY - p.pos.y) * lean));
     const k = 1 - Math.exp(-dt * 6);
     let fx0 = this.exitPos ? this.exitPos.x : p.pos.x + leadX;
     let fz0 = this.exitPos ? this.exitPos.y : p.pos.y + leadY;
-    let zoom = this.zoom;
+    let zoom = this.zoom * (ride ? 1.35 : 1);
     const talker = this.talkingActor !== null ? raid.actorById(this.talkingActor) : null;
     if (talker) {
       // Conversation framing: close-up on both speakers, pushed into the upper half above the dialogue box.
@@ -532,10 +539,11 @@ export class GameRenderer {
     const cz = Math.round(p.pos.y / texel) * texel;
     this.sun.position.set(cx + sd.x, sd.y, cz + sd.z);
     this.sun.target.position.set(cx, 0, cz);
-    const fx = Math.cos(p.facing);
-    const fz = Math.sin(p.facing);
+    // In a car the torch becomes the headlights.
+    const fx = Math.cos(ride ? ride.heading : p.facing);
+    const fz = Math.sin(ride ? ride.heading : p.facing);
     // On/off by intensity, never by visibility: a light appearing or vanishing changes the light count and
-    // three.js recompiles every lit shader (a visible freeze). Its shadow map only updates while it is on.
+    // three.js recompiles every lit shader (a visible freeze). Its shadow map only updates while it's on.
     const torch = p.flashlight && p.alive;
     this.flashlight.intensity = torch ? LIGHTING[this.raid.timeOfDay].flashlight : 0;
     this.flashlight.shadow.autoUpdate = torch;
@@ -545,8 +553,9 @@ export class GameRenderer {
       this.flashlight.shadow.needsUpdate = true;
       this.torchOn = torch;
     }
-    this.flashlight.position.set(p.pos.x + fx * 0.3, 1.25, p.pos.y + fz * 0.3);
-    this.flashlight.target.position.set(p.pos.x + fx * 8, 0, p.pos.y + fz * 8);
+    const lamp = ride ? { x: ride.pos.x + fx * 2.1, y: ride.pos.y + fz * 2.1, h: 0.85, reach: 14 } : { x: p.pos.x + fx * 0.3, y: p.pos.y + fz * 0.3, h: 1.25, reach: 8 };
+    this.flashlight.position.set(lamp.x, lamp.h, lamp.y);
+    this.flashlight.target.position.set(lamp.x + fx * lamp.reach, 0, lamp.y + fz * lamp.reach);
     this.playerGlow.position.set(p.pos.x, 1.6, p.pos.y);
     this.uniforms.uPlayer.value.set(p.pos.x, 1, p.pos.y);
 
@@ -556,6 +565,10 @@ export class GameRenderer {
 
     this.effects.update(dt, this.camTarget);
     this.events.update(this.raid, dt);
+    this.vehicles.update(this.raid, dt);
+    for (const v of raid.vehicles)
+      if (v.seats[0] === p.id) this.updateLabel(-5000 - v.id, `${Math.round(Math.abs(v.speed) * 3.6)} km/h · ${v.fuel.toFixed(1)} L${v.hp < VEHICLE_DEFS[v.def].hp * 0.3 ? ' · damaged' : ''}`, v.pos.x, v.pos.y, true, 'comp');
+      else this.removeLabel(-5000 - v.id);
 
     if (!this.warmed) this.prewarm();
     this.renderer.info.reset();
@@ -617,6 +630,7 @@ export class GameRenderer {
       this.labelLayer.appendChild(el);
       this.labels.set(id, el);
     }
+    if (el.textContent !== text) el.textContent = text;
     const s = this.worldToScreen(x, y, 2.1);
     el.style.display = visible && s.visible ? 'block' : 'none';
     el.style.transform = `translate(${s.x}px, ${s.y}px) translate(-50%, -100%)`;
@@ -632,6 +646,7 @@ export class GameRenderer {
     this.world.dispose();
     this.roofs.dispose();
     this.events.dispose();
+    this.vehicles.dispose();
     this.effects.dispose();
     this.composer?.dispose();
     this.extractProps.dispose();

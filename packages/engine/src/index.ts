@@ -17,6 +17,7 @@ export * from './world/fov';
 export * from './sim/types';
 export * from './sim/combat';
 export * from './sim/raid';
+export * from './sim/vehicle';
 export * from './ai/brain';
 export * from './dialogue/types';
 export * from './dialogue/runner';

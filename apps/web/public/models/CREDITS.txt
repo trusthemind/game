@@ -12,6 +12,12 @@ Ultimate Gun Pack accessories — Quaternius (CC0 1.0) — mods.glb (suppressors
 
 Item icons — game-icons.net (CC BY 3.0) by Lorc, Delapouite, Skoll, sbed and contributors — https://game-icons.net
 
+Vehicles — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Textures resized to WebP, meshopt-compressed
+(tools/assets/vehicles.mjs); turned, scaled and merged at load (apps/web/src/render/vehicle.ts):
+  vehicles.glb
+    uaz469  — "Uaz-469" by Yo.Ri  https://sketchfab.com/3d-models/uaz-469-70c8691c6fb64b859fbfc16babfa2c5f
+    zhiguli — "Zhiguli Soviet Cars" by spacelynxcanfly  https://sketchfab.com/3d-models/zhiguli-soviet-cars-7c3f4bee5d37401d853d2206dc7859fc
+
 Soviet household furniture — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Textures resized to WebP,
 meshopt-compressed (tools/assets/vehicles.mjs); turned, scaled and merged at load (apps/web/src/render/furnitureSf.ts):
   furniture_sf.glb

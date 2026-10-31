@@ -83,6 +83,8 @@ export interface Actor {
   lastAttacker: number | null;
   /** Raid time of the last shot fired or hit taken (auto-heal waits for a lull). */
   combatAt: number;
+  /** Riding in a vehicle (see sim/vehicle.ts): position follows the seat, no walking or shooting. */
+  vehicle?: { id: number; seat: number } | null;
   kills: number;
   stepT: number;
   intent: ActorIntent;
@@ -131,7 +133,8 @@ export type RaidEvent =
   | { t: 'extracted' }
   | { t: 'died' }
   | { t: 'vault'; actor: number }
-  | { t: 'glass'; x: number; y: number; idx: number };
+  | { t: 'glass'; x: number; y: number; idx: number }
+  | { t: 'vehicle'; id: number; actor: number; what: 'enter' | 'exit' | 'crash' | 'runover'; x: number; y: number; power: number };
 
 export function hostile(a: Faction, b: Faction): boolean {
   if (a === b) return false;

@@ -28,6 +28,8 @@ export interface AssetLibrary {
   outfits: Map<string, THREE.SkinnedMesh[]>;
   /** Room furniture (beds, sofas, shelves…), front facing +Z, standing on y=0. */
   furniture: Map<string, THREE.Object3D>;
+  /** Sketchfab vehicles (render/vehicle.ts normalises them): id → raw root node. */
+  vehicles: Map<string, THREE.Object3D>;
 }
 
 const BASE = `${import.meta.env.BASE_URL}models/`;
@@ -49,8 +51,8 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
     for (const c of g.scene.children) m.set(c.name, c);
     return m;
   };
-  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature'), load('mods'), load('human_m').catch(() => null), load('human_f').catch(() => null), load('hair').catch(() => null), load('furniture').catch(() => null), load('outfits').catch(() => null), load('furniture_sf').catch(() => null)]).then(
-    ([character, characterF, weapons, melee, props, nature, mods, humanM, humanF, hairDoc, furniture, outfitDoc, furnitureSf]) => {
+  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature'), load('mods'), load('human_m').catch(() => null), load('human_f').catch(() => null), load('hair').catch(() => null), load('furniture').catch(() => null), load('outfits').catch(() => null), load('furniture_sf').catch(() => null), load('vehicles').catch(() => null)]).then(
+    ([character, characterF, weapons, melee, props, nature, mods, humanM, humanF, hairDoc, furniture, outfitDoc, furnitureSf, vehicleDoc]) => {
       const hair = new Map<string, THREE.SkinnedMesh>();
       hairDoc?.scene.traverse((o) => {
         const sm = o as THREE.SkinnedMesh;
@@ -81,7 +83,7 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
           const m = o as THREE.Mesh;
           if (m.isMesh && !(m as THREE.SkinnedMesh).isSkinnedMesh) m.geometry = toCreasedNormals(m.geometry, (40 * Math.PI) / 180);
         });
-      ready = { character, characterF, humanM, humanF, hair, clips, weapons: byName(weapons), melee: byName(melee), mods: byName(mods), props: byName(props), nature: byName(nature), furniture: furniture ? byName(furniture) : new Map(), outfits };
+      ready = { character, characterF, humanM, humanF, hair, clips, weapons: byName(weapons), melee: byName(melee), mods: byName(mods), props: byName(props), nature: byName(nature), furniture: furniture ? byName(furniture) : new Map(), outfits, vehicles: vehicleDoc ? byName(vehicleDoc) : new Map() };
       addSketchfabFurniture(ready.furniture, furnitureSf);
       return ready;
     },

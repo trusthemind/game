@@ -187,6 +187,11 @@ export class GameSession {
         case 'glass':
           audio.glass(e.x, e.y);
           break;
+        case 'vehicle':
+          // Doors for getting in and out, sheet metal for crashes (no engine loop yet).
+          if (e.what === 'enter' || e.what === 'exit') audio.door(e.x, e.y);
+          else if (e.what === 'crash') audio.impact(e.x, e.y, 'metal');
+          break;
         case 'vault': {
           const a = raid.actorById(e.actor);
           if (a) audio.step(a.id, 'wood', a.pos.x, a.pos.y, 1.2, a.id === pid);
@@ -399,6 +404,9 @@ export class GameSession {
       useRaidUi.setState({ overlay: 'dialogue', dialogueActor: target.id });
     } else if (target.kind === 'window') {
       this.raid.vault(this.raid.player, target.id);
+    } else if (target.kind === 'vehicle') {
+      if (target.inside) this.raid.exitVehicle(this.raid.player);
+      else this.raid.enterVehicle(this.raid.player, target.id);
     }
   }
 

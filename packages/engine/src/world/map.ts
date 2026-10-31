@@ -1,6 +1,7 @@
 import { OPAQUE, SOLID, COVER, Tile } from './tiles';
 import type { GridContainer } from '../items/inventory';
 import type { Furniture } from './furniture';
+import type { VehicleSpawn } from '../sim/vehicle';
 
 export type BuildingKind = 'house' | 'shop' | 'clinic' | 'warehouse' | 'military' | 'apartment' | 'barn' | 'cabin';
 
@@ -186,6 +187,8 @@ export class GameMap {
   districtAt: Uint8Array;
   districts: { kind: District; x: number; y: number; name: string }[] = [];
   furniture: Furniture[] = [];
+  /** Drivable cars and roadside wrecks (sim/vehicle.ts). */
+  vehicleSpawns: VehicleSpawn[] = [];
   /** Per-tile furniture id + 1 for pieces that block movement (0 = free; 0xffff = other set dressing). */
   readonly furnitureAt: Uint16Array;
   readonly furnitureCells = new Map<number, Pick<Furniture, 'box'>[]>();
