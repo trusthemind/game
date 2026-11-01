@@ -256,11 +256,10 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   scatterTrees(map, rng);
 
   // Outdoor containers: hidden stashes in the woods.
-  let containerId = map.containers.length + 1;
   const stashes = Math.round((size * size) / 2400);
   for (let k = 0; k < stashes; k++) {
     const p = randomTile(map, rng, (x, y) => map.get(x, y) === Tile.Grass && !map.isIndoors(x, y) && countSolidAround(map, x, y) >= 2);
-    if (p) map.containers.push(makeContainer(containerId++, 'stash', p.x, p.y, 1));
+    if (p) map.containers.push(makeContainer(nextContainerId(map), 'stash', p.x, p.y, 1));
   }
 
   // ── Spawn & extractions ──
@@ -441,7 +440,7 @@ function containerYard(map: GameMap, lot: Rect, rng: Rng): void {
         map.set(x + k, y, Tile.Car);
         map.set(x + k, y + 1, Tile.Car);
       }
-      if (rng.chance(0.35)) map.containers.push(makeContainer(map.containers.length + 1, rng.chance(0.3) ? 'ammocrate' : 'crate', x + len, y + 1, 1));
+      if (rng.chance(0.35)) map.containers.push(makeContainer(nextContainerId(map), rng.chance(0.3) ? 'ammocrate' : 'crate', x + len, y + 1, 1));
     }
 }
 
@@ -524,8 +523,16 @@ function splitLots(r: Rect, rng: Rng, out: Rect[], min = 22): void {
   }
 }
 
+/** One past the highest container id so far: ids stay unique whoever adds containers, and in whatever order. */
+function nextContainerId(map: GameMap): number {
+  let id = 0;
+  for (const c of map.containers) id = Math.max(id, c.id + 1);
+  return id;
+}
+
 function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, rng: Rng): Building {
-  const margin = kind === 'military' ? 1 : rng.int(1, 2);
+  // A compound keeps a 3-tile lane between its fence (on the lot edge) and the walls, so its gates lead somewhere.
+  const margin = kind === 'military' ? 4 : rng.int(1, 2);
   const maxW = lot.w - margin * 2;
   const maxH = lot.h - margin * 2;
   const w = kind === 'military' ? maxW : Math.max(7, Math.min(maxW, rng.int(Math.ceil(maxW * 0.65), maxW)));
@@ -548,10 +555,16 @@ function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, 
   splitRooms(map, interior, rng, b.rooms, minRoom, floor);
 
   // Exterior doors (2 on each building so you can't be trapped) + windows.
-  const doorSides = rng.shuffle([0, 1, 2, 3]).slice(0, kind === 'military' ? 3 : 2);
+  // A compound gets a door on every side, facing its gates (the middle of each fence side).
+  const doorSides = kind === 'military' ? [0, 1, 2, 3] : rng.shuffle([0, 1, 2, 3]).slice(0, 2);
   for (const side of doorSides) {
     const along = side % 2 === 0 ? w : h;
-    const t = rng.int(2, along - 3);
+    const t =
+      kind === 'military'
+        ? side % 2 === 0
+          ? Math.floor((lot.x + lot.x + lot.w - 1) / 2) - x
+          : Math.floor((lot.y + lot.y + lot.h - 1) / 2) - y
+        : rng.int(2, along - 3);
     const [dx, dy] = side === 0 ? [x + t, y] : side === 1 ? [x + w - 1, y + t] : side === 2 ? [x + t, y + h - 1] : [x, y + t];
     map.set(dx, dy, floor);
     if (kind !== 'house') {
@@ -599,7 +612,7 @@ function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, 
       const spot = wallHuggingSpot(map, room, rng);
       if (!spot) continue;
       const ck = rng.weighted(ROOM_CONTAINERS[kind]);
-      map.containers.push(makeContainer(map.containers.length, ck, spot.x, spot.y, tier));
+      map.containers.push(makeContainer(nextContainerId(map), ck, spot.x, spot.y, tier));
     }
   }
   return b;
