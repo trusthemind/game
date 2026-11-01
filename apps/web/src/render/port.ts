@@ -70,21 +70,14 @@ function waterAndQuay(map: GameMap, mat: Mat, geo: Geo): THREE.Object3D[] | null
     g.computeVertexNormals();
     return g;
   };
-  // The sea: rippled blue-green with a sheen, the ripples drifting slowly (a separate texture copy, so the
-  // offset moves only this sheet).
-  const ripples = getTexture('water').clone();
-  ripples.needsUpdate = true;
-  const sheet = new THREE.Mesh(quads(sea, WATER_Y, false, 0.12), mat(new THREE.MeshStandardMaterial({ map: ripples, roughness: 0.18, metalness: 0.05 })));
-  sheet.onBeforeRender = () => {
-    const t = performance.now() / 1000;
-    ripples.offset.set(t * 0.012, Math.sin(t * 0.3) * 0.02 + t * 0.006);
-  };
+  // The sea: still, rippled blue-green with a sheen.
+  const sheet = new THREE.Mesh(quads(sea, WATER_Y, false, 0.12), mat(new THREE.MeshStandardMaterial({ map: getTexture('water'), roughness: 0.18, metalness: 0.05 })));
   const wall = new THREE.Mesh(
     quads(faces, WATER_Y - 0.4, true),
     mat(new THREE.MeshStandardMaterial({ map: getTexture('concrete'), color: 0x8a8a84, roughness: 0.9, side: THREE.DoubleSide })),
   );
   sheet.receiveShadow = true;
-  wall.matrixAutoUpdate = false;
+  sheet.matrixAutoUpdate = wall.matrixAutoUpdate = false;
   return [sheet, wall, ...quayEdge(faces, mat, geo)];
 }
 

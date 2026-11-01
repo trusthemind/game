@@ -31,12 +31,11 @@ function railings(s: Structure, mat: Mat, geo: Geo, shadows: boolean): THREE.Obj
   const len = alongX ? s.w : s.h;
   for (const side of [0, alongX ? s.h : s.w]) {
     const at = (a: number, y: number, w: number, h: number, d: number, m: THREE.Material) =>
-      alongX ? box(g, geo, m, w, h, d, s.x + a, y, s.y + side) : box(g, geo, m, d, h, w, s.x + side, y, s.y + a);
+      alongX ? box(g, geo, m, w, h, d, s.x + a, y, s.y + side, shadows) : box(g, geo, m, d, h, w, s.x + side, y, s.y + a, shadows);
     at(len / 2, -0.25, len, 0.5, 0.35, beam);
     at(len / 2, 1.0, len, 0.08, 0.08, steel);
     for (let a = 0.2; a <= len; a += 2) at(a, 0.5, 0.08, 1.0, 0.08, steel);
   }
-  g.traverse((o) => ((o as THREE.Mesh).castShadow = shadows));
   return g;
 }
 
