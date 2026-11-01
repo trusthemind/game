@@ -62,3 +62,25 @@ resized to WebP, meshopt-compressed (tools/assets/vehicles.mjs); turned, scaled 
     radiator     — "Old Radiator" by thethieme  https://sketchfab.com/3d-models/old-radiator-8a1a2e0263aa401591c1e87d824a79ef
     wardrobe_old — "Old Russian wardrobe in 1983 V 2.0" by Paule Gennadievich  https://sketchfab.com/3d-models/old-russian-wardrobe-in-1983-v-20-f0ad9f13bc784d5ebaa81e6956cf5118
     chair_old    — "Old Soviet Chair" by shaqsh  https://sketchfab.com/3d-models/old-soviet-chair-f22abd940288406b9f3079a4ee91b53c
+
+Guns built from parts — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Split into parts, brought into
+one frame per platform (scaled, turned, parts moved, the FAB handguard stretched), textures resized to WebP,
+meshopt-compressed (tools/assets/weapons.mjs):
+  ak.glb
+    AK-74M and factory parts — "AK-74M Assault Rifle" by FJH  https://sketchfab.com/3d-models/ak-74m-assault-rifle-9084c3bae8224d338103997bc3101480
+    RK-9, PT-1, B-10, B-19   — "low-poly AK-74M Zenitco" by D_U  https://sketchfab.com/3d-models/low-poly-ak-74m-zenitco-35ad8e37a513453cbbbd04064fa5fb79
+    FAB, Zhukov, MOE grip     — "AK-74 Customized." by Drus  https://sketchfab.com/3d-models/ak-74-customized-dc78efe4eab747b4be664c02e9f53f56
+    AKS-74U                   — "AKS-74U" by SpatialNeglect (sight and light left off)  https://sketchfab.com/3d-models/aks-74u-14648d9cf9804cb387f4f88e13850056
+    AKM and its furniture     — "AK-47" by SpatialNeglect  https://sketchfab.com/3d-models/ak-47-df389a54bb964955b0ede4cb8e66cfaa
+  ar.glb
+    M4 receiver, handguards, stocks, grips, magazines — "Free - M4 Modular Kit Gun" by Karnaval  https://sketchfab.com/3d-models/free-m4-modular-kit-gun-1665416c071747bb9c20aa652849b579
+  attach.glb (also simplified)
+    brake (DTK-1), fgrip (RK-1) — "low-poly AK-74M Zenitco" by D_U (above)
+    pso1      — "PSO-1/ПСО-1 Sniper Scope Lowpoly Gameready" by valterjherson1  https://sketchfab.com/3d-models/pso-1-1-sniper-scope-lowpoly-gameready-423a3bd9e2344f26b3aff82e0ae185d7
+    holo      — "EoTech EXPS3-0 Holographic Weapon Sight Lowpoly" by valterjherson1  https://sketchfab.com/3d-models/eotech-exps3-0-holographic-weapon-sight-lowpoly-45e4fcdfb1b34756ab9e866564a12f66
+    red_dot   — "Generic Red Dot Scope / Rifle Attachment Lowpoly" by valterjherson1  https://sketchfab.com/3d-models/generic-red-dot-scope-rifle-attachment-lowpoly-8bf2794c30d04fa0aed1e3df92cd8a9e
+    sup_545   — "PBS-4 / ПБС-4 Rifle Silencer/Suppressor Lowpoly" by valterjherson1  https://sketchfab.com/3d-models/pbs-4-4-rifle-silencersuppressor-lowpoly-6c39d299859944de9b6b36512fdf4f30
+    sup_dtk1p — "DTKP Suppressor/Silencer Lowpoly Gameready" by valterjherson1  https://sketchfab.com/3d-models/dtkp-suppressorsilencer-lowpoly-gameready-85ef8c1df9c44e12b1adb7b476f4c1fc
+    tac_light — "Zenitco / Зенит Perst 4 Laser Sight Attachment" by valterjherson1  https://sketchfab.com/3d-models/zenitco-perst-4-laser-sight-attachment-3ebaa8bc75c34a538f4dd28e33eda119
+    sup_556, sup_762, sup_9, sup_54r — "Suppressors 10 Pack" by The WarVet  https://sketchfab.com/3d-models/suppressors-10-pack-3a3c123f94a446589873b1d4df53c83c
+    scope_4x  — "ACOG Scope" by GC_3D_ART  https://sketchfab.com/3d-models/acog-scope-286f48a9123c4f05be81147c85f8d0d7

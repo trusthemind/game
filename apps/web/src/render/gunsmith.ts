@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { allParts, getDef, type ItemInstance } from '@ashfall/engine';
 import type { AssetLibrary } from './assets';
+import { drawnFromParts, partsGun } from './weaponAssembly';
 
 /** Which attachment model represents each mod item. */
 export const MOD_MODEL: Record<string, { model: string; scale?: number }> = {
@@ -67,6 +68,9 @@ function anchorsFor(id: string, gun: THREE.Object3D): Anchors {
 
 /** The gun model with its installed attachments mounted. Pistols get compact rail versions. */
 export function buildGun(lib: AssetLibrary, item: ItemInstance): THREE.Object3D | null {
+  // Guns built from parts (AKs, M4) once their parts have loaded.
+  const fromParts = partsGun(item);
+  if (fromParts) return fromParts;
   const src = lib.weapons.get(item.def);
   if (!src) return null;
   const gun = src.clone();
@@ -108,8 +112,9 @@ export function buildGun(lib: AssetLibrary, item: ItemInstance): THREE.Object3D 
   return gun;
 }
 
-/** Cache key for a gun's look. */
+/** Cache key for a gun's look (it changes when the gun's parts finish loading, so views and icons rebuild). */
 export function gunKey(item: ItemInstance | null | undefined): string {
   if (!item) return '';
-  return item.mods ? `${item.def}[${Object.entries(item.mods).map(([k, m]) => (m ? `${k}:${gunKey(m)}` : '')).join(',')}]` : item.def;
+  const tree = (it: ItemInstance): string => (it.mods ? `[${Object.entries(it.mods).map(([k, m]) => (m ? `${k}:${m.def}${tree(m)}` : '')).join(',')}]` : '');
+  return `${item.def}${drawnFromParts(item.def) ? '+' : ''}${tree(item)}`;
 }

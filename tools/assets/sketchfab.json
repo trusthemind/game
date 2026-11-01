@@ -273,5 +273,90 @@
   "uid": "f22abd940288406b9f3079a4ee91b53c",
   "slug": "furn_chair_soviet",
   "use": "furniture: chair"
+ },
+ {
+  "uid": "35ad8e37a513453cbbbd04064fa5fb79",
+  "slug": "gun_ak74m_zenitco",
+  "use": "weapon A2: Zenitco donor (PT-1 stock, RK-9 grip, RK-1, B-10, B-19)"
+ },
+ {
+  "uid": "dc78efe4eab747b4be664c02e9f53f56",
+  "slug": "gun_ak74_custom",
+  "use": "weapon A3: FAB handguard, Magpul stock and grip donor"
+ },
+ {
+  "uid": "df389a54bb964955b0ede4cb8e66cfaa",
+  "slug": "gun_akm_jeandiz",
+  "use": "weapon A6: AKM base"
+ },
+ {
+  "uid": "1665416c071747bb9c20aa652849b579",
+  "slug": "gun_m4_kit",
+  "use": "weapon M1: M4 modular kit base"
+ },
+ {
+  "uid": "423a3bd9e2344f26b3aff82e0ae185d7",
+  "slug": "att_pso1",
+  "use": "attachment H1: PSO-1"
+ },
+ {
+  "uid": "45e4fcdfb1b34756ab9e866564a12f66",
+  "slug": "att_eotech",
+  "use": "attachment H2: EoTech EXPS3"
+ },
+ {
+  "uid": "2c11b7ad550448f0bc67284af358e798",
+  "slug": "att_brakes",
+  "use": "attachment H3: muzzle brakes"
+ },
+ {
+  "uid": "6c39d299859944de9b6b36512fdf4f30",
+  "slug": "att_pbs4",
+  "use": "attachment H4: PBS-4"
+ },
+ {
+  "uid": "85ef8c1df9c44e12b1adb7b476f4c1fc",
+  "slug": "att_dtkp",
+  "use": "attachment H5: DTKP"
+ },
+ {
+  "uid": "3ebaa8bc75c34a538f4dd28e33eda119",
+  "slug": "att_perst4",
+  "use": "attachment H6: Perst-4"
+ },
+ {
+  "uid": "8bf2794c30d04fa0aed1e3df92cd8a9e",
+  "slug": "att_reddot",
+  "use": "attachment H7: red dot"
+ },
+ {
+  "uid": "3a3c123f94a446589873b1d4df53c83c",
+  "slug": "att_suppressors",
+  "use": "attachment H8: suppressors"
+ },
+ {
+  "uid": "0326088dab924f92b85f7a193c53d497",
+  "slug": "att_sights_kit",
+  "use": "attachment H9: sights kit"
+ },
+ {
+  "uid": "286f48a9123c4f05be81147c85f8d0d7",
+  "slug": "att_acog",
+  "use": "attachment H10: ACOG"
+ },
+ {
+  "uid": "f31877a6a4c04fb3ab3515afe9697f6c",
+  "slug": "att_ar_grips",
+  "use": "attachment H11: AR pistol grips"
+ },
+ {
+  "uid": "d02cf12ae7ba49f2bda01058ee85c661",
+  "slug": "att_pmag",
+  "use": "attachment H12: PMAG 30"
+ },
+ {
+  "uid": "72b06590aa4b4b6ab324dc7e0c11b884",
+  "slug": "att_ar_mags",
+  "use": "attachment H13: AR-15 magazines"
  }
 ]

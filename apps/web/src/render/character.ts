@@ -1509,7 +1509,8 @@ export class CharacterView {
         this.heldKind = d.melee ? 'melee' : 'gun';
         this.heavyMelee = HEAVY_MELEE.has(held.def);
         this.reverseGrip = REVERSE_GRIP.has(held.def);
-        const b = new THREE.Box3().setFromObject(src);
+        // A gun built from parts measures as built (a suppressor makes it longer).
+        const b = new THREE.Box3().setFromObject(d.melee ? src : this.held);
         this.heldLen = d.melee ? b.max.z : b.getSize(tmpV).z;
         this.heldBox.copy(b);
         this.heldDef = held.def;

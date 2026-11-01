@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   ALL_ITEMS,
   createEquipment,
@@ -13,6 +14,7 @@ import {
 } from '@ashfall/engine';
 import { BODY_IDS, bodySex, loadAssets, loadBodies } from '../render/assets';
 import { buildGun } from '../render/gunsmith';
+import { assembleGun, loadWeaponParts } from '../render/weaponAssembly';
 import { attachSkinned, cloneHuman } from '../render/human';
 import { CharacterView, lookFor, renderPortrait, type Appearance } from '../render/character';
 import type { WorldUniforms } from '../render/patches';
@@ -320,6 +322,60 @@ export function CharLab() {
         scene.add(new THREE.AmbientLight(0xffffff, 1.4));
         ground.visible = false;
       }
+      if (view === 'raw') {
+        // A raw download (dev only: copy it under public/_wtmp), side-on and from above, to see what's where.
+        cast.length = 0;
+        const src = new URLSearchParams(location.hash.split('?')[1] ?? '').get('src') ?? '';
+        const g = await new GLTFLoader().loadAsync(src);
+        const box = new THREE.Box3().setFromObject(g.scene);
+        const size = box.getSize(new THREE.Vector3());
+        const k = 1.6 / Math.max(size.x, size.y, size.z);
+        g.scene.scale.setScalar(k);
+        // The model's +Z to the right; above it the same from the top (+Y towards the camera).
+        const side = new THREE.Group().add(g.scene);
+        side.rotation.y = Math.PI / 2;
+        side.position.set(0, 1.75, 0);
+        const top = new THREE.Group().add(g.scene.clone());
+        top.rotation.set(Math.PI / 2, Math.PI / 2, 0, 'YXZ');
+        top.position.set(0, 0.85, 0);
+        scene.add(side, top);
+        cam.position.set(0, 1.3, 3.2);
+        cam.lookAt(0, 1.3, 0);
+        scene.add(new THREE.AmbientLight(0xffffff, 1.6));
+        ground.visible = false;
+      }
+      if (view === 'parts') {
+        // Guns built from parts (models/ak.glb…), side-on: the factory gun and two builds, sockets as red dots.
+        cast.length = 0;
+        const parts = await loadWeaponParts();
+        const builds: [string, [string[], string][]][] = [
+          ['ak74m', []],
+          ['ak74m', [[['pgrip'], 'ak_pg_rk9'], [['gastube'], 'ak_gt_b19'], [['gastube', 'sight'], 'holo'], [['handguard'], 'ak_hg_b10'], [['handguard', 'foregrip'], 'fgrip'], [['stock'], 'ak_st_pt1'], [['muzzle'], 'sup_545']]],
+          ['ak74m', [[['pgrip'], 'ak_pg_moe'], [['handguard'], 'ak_hg_fab'], [['handguard', 'tactical'], 'tac_light'], [['stock'], 'ak_st_zhukov'], [['side'], 'pso1'], [['muzzle'], 'sup_dtk1p']]],
+          ['aks74u', []],
+          ['akm', []],
+          ['akm', [[['handguard'], 'ak_hg_b10'], [['handguard', 'foregrip'], 'fgrip'], [['stock'], 'ak_st_zhukov'], [['muzzle'], 'sup_762'], [['side'], 'pso1']]],
+          ['m4a1', [[['sight'], 'red_dot']]],
+          ['m4a1', [[['handguard'], 'ar_hg_ris'], [['handguard', 'foregrip'], 'fgrip'], [['stock'], 'ar_st_ctr'], [['pgrip'], 'ar_pg_ergo'], [['mag'], 'mag_pmag30'], [['sight'], 'scope_4x'], [['barrel', 'muzzle'], 'sup_556']]],
+          ['m4a1', [[['barrel'], 'ar_barrel_20'], [['handguard'], 'ar_hg_m16a4'], [['handguard', 'tactical'], 'tac_light'], [['stock'], 'ar_st_a2'], [['mag'], 'mag_stanag60'], [['sight'], 'holo'], [['barrel', 'muzzle'], 'brake']]],
+        ];
+        builds.forEach(([id, swaps], i) => {
+          const it = createItem(id);
+          for (const [p, part] of swaps) if (!installPart(it, p, createItem(part))) console.warn('does not fit', id, p.join('/'), part);
+          const g = assembleGun(parts, it);
+          if (!g) return;
+          const dots: THREE.Object3D[] = [];
+          g.traverse((o) => o.name.startsWith('socket_') && dots.push(o));
+          for (const o of dots) o.add(new THREE.Mesh(new THREE.SphereGeometry(0.008), new THREE.MeshBasicMaterial({ color: 0xff2020 })));
+          g.rotation.y = Math.PI / 2;
+          g.position.set(i < 3 ? -1.1 : i < 6 ? 0 : 1.1, 1.75 - (i % 3) * 0.42, 0);
+          scene.add(g);
+        });
+        cam.position.set(0, 1.33, 3.6);
+        cam.lookAt(0, 1.33, 0);
+        scene.add(new THREE.AmbientLight(0xffffff, 1.6));
+        ground.visible = false;
+      }
       cast.forEach((c, i) => {
         const eq = createEquipment();
         for (const e of c.eq) {
@@ -373,7 +429,9 @@ export function CharLab() {
       view.startsWith('strafe') ||
       view.startsWith('melee') ||
       view === 'hats' ||
-      view === 'treat'
+      view === 'treat' ||
+      view === 'parts' ||
+      view === 'raw'
         ? []
         : ['lena', 'mykola', 'vera']) {
         const img = document.createElement('img');

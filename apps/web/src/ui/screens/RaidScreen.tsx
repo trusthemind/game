@@ -7,6 +7,7 @@ import { useProfile } from '../../state/profileStore';
 import { api } from '../../state/api';
 import { detectQuality, type QualityLevel } from '../../render/quality';
 import { loadAssets } from '../../render/assets';
+import { loadWeaponParts } from '../../render/weaponAssembly';
 import { Hud } from '../hud/Hud';
 import { WorldMenu } from '../hud/WorldMenu';
 import { Minimap } from '../hud/Minimap';
@@ -59,7 +60,8 @@ export function RaidScreen() {
           d.companionEq = draft.companionEq;
         });
         void useProfile.getState().flush();
-        return s.preloadBodies().then(() => {
+        // Bodies and gun parts in before the first frame, so nobody changes clothes or guns on screen.
+        return Promise.all([s.preloadBodies(), loadWeaponParts().catch(() => null)]).then(() => {
           if (cancelled || !s) return;
           useRaidUi.setState({ overlay: null, hud: null, messages: [], loot: null, dialogueActor: null, showPerf: profile.settings.showPerf });
           s.start();
