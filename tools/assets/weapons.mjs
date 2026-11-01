@@ -84,8 +84,9 @@ const PLATFORMS = {
       fjh: { slug: 'gun_ak74m_fjh', forward: '-z', up: 'y', mag: /^Magazine_lowT$/, unit: 0.01, bore: /^Barrel_lowT$/ },
       zenitco: { slug: 'gun_ak74m_zenitco', forward: 'x', up: 'y', mag: /^ak74 30rnd mag \(polymer\)_6$/ },
       custom: { slug: 'gun_ak74_custom', forward: 'z', up: 'y', mag: /^mag(_cap)?_low$/ },
-      aks: { slug: 'gun_aks74u_jeandiz', forward: '-z', up: 'y', mag: /^magazine$/ },
-      akm: { slug: 'gun_akm_jeandiz', forward: '-z', up: 'y', mag: /^Cube\.004$/ },
+      // Whole guns of their own size: scaled to their real length (stock out), placed by their magazine.
+      aks: { slug: 'gun_aks74u_jeandiz', forward: '-z', up: 'y', mag: /^magazine$/, length: 0.73 },
+      akm: { slug: 'gun_akm_jeandiz', forward: '-z', up: 'y', mag: /^Cube\.004$/, length: 0.88 },
     },
     // item id → [source, node names, options]. `above` / `below`: keep the triangles above / below the bore by
     // that many metres (one mesh holding two parts). `snap`: slide the part along the bore so its rear (front) end
@@ -274,7 +275,7 @@ async function buildPlatform(name, P) {
     const mag = boundsIn(pick(P.base, s.baseMag ?? b.mag), frames[P.base]);
     const unit = frameMatrix(s.forward, s.up, 1, [0, 0, 0]);
     const m = boundsIn(pick(key, s.mag), unit);
-    const k = mag.size[1] / m.size[1];
+    const k = s.length ? s.length / boundsIn(nodesOf[key].filter((n) => n.getMesh()), unit).size[2] : mag.size[1] / m.size[1];
     frames[key] = frameMatrix(s.forward, s.up, k, mag.center.map((c, i) => c - m.center[i] * k));
   }
 
@@ -380,14 +381,16 @@ async function finish(doc, scene, name, size = 1024, simplifyRatio = 0) {
 }
 
 /**
- * Height of a part's top (dir 1) or bottom (dir -1) surface along the middle 40% of its length, in the frame: the
- * rail itself rather than a sight post or a sling loop at one end.
+ * Height of a part's top (dir 1) or bottom (dir -1) surface along the middle 60% of its length, in the frame: the
+ * rail itself, not a sight post, sling loop or charging handle sticking out of it. Takes the top of each 1 cm
+ * slice near the centre line and returns the median.
  */
 function railEdge(part, dir) {
   const bb = getBounds(part);
-  const z0 = bb.min[2] + (bb.max[2] - bb.min[2]) * 0.3;
-  const z1 = bb.max[2] - (bb.max[2] - bb.min[2]) * 0.3;
-  let best = -Infinity;
+  const z0 = bb.min[2] + (bb.max[2] - bb.min[2]) * 0.2;
+  const z1 = bb.max[2] - (bb.max[2] - bb.min[2]) * 0.2;
+  const cx = (bb.min[0] + bb.max[0]) / 2;
+  const slices = new Map();
   const v = [0, 0, 0];
   part.traverse((n) => {
     const mesh = n.getMesh();
@@ -397,11 +400,14 @@ function railEdge(part, dir) {
       const pos = p.getAttribute('POSITION');
       for (let i = 0; i < pos.getCount(); i++) {
         const w = apply(m, pos.getElement(i, v));
-        if (w[2] >= z0 && w[2] <= z1) best = Math.max(best, w[1] * dir);
+        if (w[2] < z0 || w[2] > z1 || Math.abs(w[0] - cx) > 0.012) continue;
+        const k = Math.round(w[2] * 100);
+        slices.set(k, Math.max(slices.get(k) ?? -Infinity, w[1] * dir));
       }
     }
   });
-  return best * dir;
+  const tops = [...slices.values()].sort((a, b) => a - b);
+  return (tops[tops.length >> 1] ?? (dir > 0 ? bb.max[1] : -bb.min[1])) * dir;
 }
 
 function isUnder(n, scene) {

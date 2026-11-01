@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { getDef, type ItemInstance } from '@ashfall/engine';
 import { getAssets, loadAssets, type AssetLibrary } from './assets';
 import { buildGun, gunKey, MOD_MODEL } from './gunsmith';
+import { loadWeaponParts, weaponParts } from './weaponAssembly';
 import { meleeModel } from './melee3d';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import {
@@ -34,10 +35,24 @@ const PX = 112;
 export function thumbKey(item: ItemInstance): string | null {
   const d = getDef(item.def);
   if (d.weapon) return `g:${gunKey(item)}`;
+  // A gun part with its own model gets a new picture once the parts have loaded.
+  if (d.mod && weaponParts()?.has(item.def)) return `i:${item.def}+`;
   return `i:${item.def}`;
 }
 
+// Guns and parts drawn from parts: once those load, every picture that can use them is asked for again.
+let partsAsked = false;
+function wantParts(): void {
+  if (partsAsked) return;
+  partsAsked = true;
+  void loadWeaponParts().then(() => {
+    for (const fn of listeners) fn();
+  });
+}
+
 export function getThumb(item: ItemInstance): string | null {
+  const d = getDef(item.def);
+  if (d.weapon || d.mod) wantParts();
   const key = thumbKey(item);
   if (!key) return null;
   const hit = cache.get(key);
@@ -125,6 +140,16 @@ export function itemModel(lib: AssetLibrary, item: ItemInstance): { obj: THREE.O
       return side(w);
     }
     case 'mod': {
+      // Parts with a model of their own (handguards, stocks, grips, sights…), centred, side-on like the guns.
+      const part = weaponParts()?.get(id);
+      if (part) {
+        const m = part.clone();
+        m.position.sub(new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3()));
+        const w = new THREE.Group();
+        w.add(new THREE.Group().add(m));
+        w.children[0]!.rotation.y = Math.PI / 2;
+        return side(w);
+      }
       const mag = magModel(id);
       if (mag) return side(mag);
       const spec = MOD_MODEL[id];

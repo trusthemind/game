@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { useContext, useState } from 'react';
 import { create } from 'zustand';
 import { useEscape } from '../components/useEscape';
 import {
@@ -15,6 +15,7 @@ import {
   type ItemInstance,
 } from '@ashfall/engine';
 import { InvContext } from './components';
+import { GunViewer } from './GunViewer';
 import { toSource, type Resolver, type SrcRef } from './host';
 import { audio } from '../../audio/AudioEngine';
 
@@ -54,6 +55,9 @@ function stat(label: string, base: number, cur: number, fmt: (n: number) => stri
 export function WeaponModder() {
   const src = useModder((s) => s.src);
   const ctx = useContext(InvContext);
+  // The socket being pointed at (its part glows) and the part being tried on there (shown on the gun, stats diffed).
+  const [focus, setFocus] = useState<string | null>(null);
+  const [tryOn, setTryOn] = useState<{ path: string[]; def: string } | null>(null);
   useEscape(() => useModder.getState().close(), !!src);
   if (!src || !ctx) return null;
   const { host } = ctx;
@@ -65,6 +69,14 @@ export function WeaponModder() {
   const base = effectiveWeapon(createItem(gun.def));
   const cur = effectiveWeapon(gun);
   const tree = socketTree(gun);
+  const preview = (() => {
+    if (!tryOn) return null;
+    const g = structuredClone(gun);
+    return installPart(g, tryOn.path, createItem(tryOn.def)) ? g : null;
+  })();
+  const shown = preview ? effectiveWeapon(preview) : cur;
+  // Differences against the factory gun, or against the gun as it is while trying a part on.
+  const ref = preview ? cur : base;
   const grids = modGrids(host.resolver);
   const available: { item: ItemInstance; grid: string; label: string }[] = [];
   for (const g of grids) for (const p of host.resolver.grid(g.id)!.items) if (getDef(p.item.def).mod) available.push({ item: p.item, grid: g.id, label: g.label });
@@ -113,14 +125,15 @@ export function WeaponModder() {
             ✕
           </button>
         </div>
+        <GunViewer item={preview ?? gun} highlight={tryOn ? tryOn.path.join('/') : focus} />
         <div className="modder-body">
-          <div className="modder-slots">
+          <div className="modder-slots" onMouseLeave={() => (setFocus(null), setTryOn(null))}>
             {tree.map((t) => {
               const m = t.part;
               const key = t.path.join('/');
               const options = available.filter((a) => a.item.uid !== m?.uid && partFits(a.item.def, t.socket, t.host.def, gun.def));
               return (
-                <div key={key} className={`mslot ${m ? 'filled' : ''}`} style={{ marginLeft: (t.path.length - 1) * 14 }}>
+                <div key={key} className={`mslot ${m ? 'filled' : ''}`} style={{ marginLeft: (t.path.length - 1) * 14 }} onMouseEnter={() => setFocus(key)}>
                   <div className="mslot-head">
                     <span className="h small">
                       {t.socket.label}
@@ -138,7 +151,14 @@ export function WeaponModder() {
                   {options.length > 0 && (
                     <div className="mslot-opts">
                       {options.map((o) => (
-                        <button key={o.item.uid} className="mopt" onClick={() => install(t.path, o.item.uid, o.grid)} title={`From ${o.label}`}>
+                        <button
+                          key={o.item.uid}
+                          className="mopt"
+                          onClick={() => (setTryOn(null), install(t.path, o.item.uid, o.grid))}
+                          onMouseEnter={() => setTryOn({ path: t.path, def: o.item.def })}
+                          onMouseLeave={() => setTryOn(null)}
+                          title={`From ${o.label}`}
+                        >
                           <span>{getDef(o.item.def).short}</span>
                           <span className="faint small">{o.label}</span>
                         </button>
@@ -151,18 +171,18 @@ export function WeaponModder() {
             })}
           </div>
           <div className="modder-stats">
-            <div className="dim small">Stats</div>
-            {stat('Accuracy', +acc(base.spread * base.aimSpreadMul), +acc(cur.spread * cur.aimSpreadMul), (n) => `${n}`, 'up')}
-            {stat('Recoil', base.recoil * 1000, cur.recoil * 1000, (n) => n.toFixed(0), 'down')}
-            {stat('Loudness (m)', base.noise * 0.65, cur.noise * 0.65, (n) => n.toFixed(0), 'down')}
-            {stat('Magazine', base.magSize, cur.magSize, (n) => `${n}`, 'up')}
-            {stat('Reload (s)', base.reloadTime, cur.reloadTime, (n) => n.toFixed(1), 'down')}
-            {stat('Aim zoom', base.zoom, cur.zoom, (n) => `${n.toFixed(2)}×`, 'up')}
-            {stat('Mobility', base.ergo * 100, cur.ergo * 100, (n) => `${n.toFixed(0)}%`, 'up')}
-            {!cur.operable && <div className="bad small">Missing a required part — it won't fire.</div>}
+            <div className="dim small">{preview ? `Stats · with ${getDef(tryOn!.def).short}` : 'Stats'}</div>
+            {stat('Accuracy', +acc(ref.spread * ref.aimSpreadMul), +acc(shown.spread * shown.aimSpreadMul), (n) => `${n}`, 'up')}
+            {stat('Recoil', ref.recoil * 1000, shown.recoil * 1000, (n) => n.toFixed(0), 'down')}
+            {stat('Loudness (m)', ref.noise * 0.65, shown.noise * 0.65, (n) => n.toFixed(0), 'down')}
+            {stat('Magazine', ref.magSize, shown.magSize, (n) => `${n}`, 'up')}
+            {stat('Reload (s)', ref.reloadTime, shown.reloadTime, (n) => n.toFixed(1), 'down')}
+            {stat('Aim zoom', ref.zoom, shown.zoom, (n) => `${n.toFixed(2)}×`, 'up')}
+            {stat('Mobility', ref.ergo * 100, shown.ergo * 100, (n) => `${n.toFixed(0)}%`, 'up')}
+            {!shown.operable && <div className="bad small">Missing a required part — it won't fire.</div>}
             <div className="mstat">
               <span className="dim">Suppressed</span>
-              <span className={cur.suppressed ? 'good' : 'faint'}>{cur.suppressed ? 'yes — bots hear you at a third of the distance' : 'no'}</span>
+              <span className={shown.suppressed ? 'good' : 'faint'}>{shown.suppressed ? 'yes — bots hear you at a third of the distance' : 'no'}</span>
             </div>
             <p className="faint small">Damage {def.weapon!.damage}{def.weapon!.pellets ? ` ×${def.weapon!.pellets}` : ''} · {def.weapon!.rpm} rpm · {def.weapon!.caliber}</p>
           </div>

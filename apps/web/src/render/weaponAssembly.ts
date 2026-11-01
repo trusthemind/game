@@ -11,6 +11,11 @@ import { createItem, getDef, socketTree, type ItemInstance, type Preset } from '
  */
 const PLATFORMS = ['ak', 'ar', 'attach'];
 const BASE = `${import.meta.env.BASE_URL}models/`;
+/**
+ * Bump whenever tools/assets/weapons.mjs writes new glb files: the models are cached for a week (vercel.json) and
+ * the code reads their sockets, so old files with new code put sights in mid-air.
+ */
+const VERSION = 3;
 
 let pending: Promise<Map<string, THREE.Object3D>> | null = null;
 let ready: Map<string, THREE.Object3D> | null = null;
@@ -27,7 +32,7 @@ export const drawnFromParts = (def: string) => !!weaponParts()?.has(def);
 export function loadWeaponParts(): Promise<Map<string, THREE.Object3D>> {
   if (pending) return pending;
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-  pending = Promise.all(PLATFORMS.map((p) => loader.loadAsync(`${BASE}${p}.glb`).catch(() => null))).then((docs) => {
+  pending = Promise.all(PLATFORMS.map((p) => loader.loadAsync(`${BASE}${p}.glb?v=${VERSION}`).catch(() => null))).then((docs) => {
     const parts = new Map<string, THREE.Object3D>();
     docs.forEach((g, i) => {
       for (const c of g?.scene.children ?? []) {
@@ -64,6 +69,21 @@ export function partsGun(item: ItemInstance): THREE.Object3D | null {
   g.position.sub(c);
   const w = new THREE.Group();
   w.add(g);
+  // How it's held (character.ts): the right palm round the top of the pistol grip, the left under the handguard a
+  // little ahead of its middle, the butt in the shoulder; and the magazine, which comes out during a reload.
+  w.updateMatrixWorld(true);
+  const part = (socket: string) => g.children.find((o) => o.userData.socket === socket);
+  const all = new THREE.Box3().setFromObject(w);
+  const pg = part('pgrip');
+  const gb = pg ? new THREE.Box3().setFromObject(pg) : null;
+  w.userData.grip = gb ? new THREE.Vector3((gb.min.x + gb.max.x) / 2, gb.max.y - 0.03, (gb.min.z + gb.max.z) / 2) : null;
+  const hg = part('handguard');
+  const hb = hg ? new THREE.Box3().setFromObject(hg) : all;
+  const len = hb.max.z - hb.min.z;
+  w.userData.support = new THREE.Vector3(0, hg ? hb.min.y : -0.03, hg ? hb.min.z + len * 0.55 : all.max.z - (all.max.z - all.min.z) * 0.3);
+  w.userData.mag = part('mag') ?? null;
+  // The heel of the stock, on the bore line: it goes into the shoulder.
+  w.userData.butt = new THREE.Vector3(-c.x, -c.y, all.min.z);
   return w;
 }
 
@@ -95,6 +115,7 @@ export function assembleGun(parts: Map<string, THREE.Object3D>, item: ItemInstan
       obj.position.copy(v);
     }
     if (!obj) continue;
+    obj.userData.socket = r.path.join('/');
     g.add(obj);
     drawn.set(r.part, obj);
   }

@@ -1144,6 +1144,12 @@ const _ikP = new THREE.Vector3();
 const _ikS = new THREE.Vector3();
 const _ikT = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
+/** The butt's place from the right shoulder joint, in the character's frame (forward +Z, left +X): in towards the
+ * chest, a touch forward, and the bore up at the cheek. */
+const SHOULDER_POCKET = new THREE.Vector3(0.07, 0.05, 0.03);
+const _hs = new THREE.Vector3();
+const _hb = new THREE.Vector3();
+const _hg = new THREE.Vector3();
 const _palmC0 = new THREE.Vector3();
 const _palmC1 = new THREE.Vector3();
 const _palmC2 = new THREE.Vector3();
@@ -1668,6 +1674,7 @@ export class CharacterView {
     else if (gun) stance = 'Pistol_Idle_Loop';
     else if (this.heldKind === 'melee' && (alerted || a.faction === 'player')) stance = 'Sword_Idle';
     if (!this.oneShot) this.setUpper(stance, ended);
+    this.gunUp = stance === 'Pistol_Aim_Neutral' || stance === 'Pistol_Idle_Loop';
     const upperBusy = !!this.upper || (!!this.oneShot && this.oneShotLayer === 'upper');
     const layer: 'lower' | 'full' = upperBusy ? 'lower' : 'full';
 
@@ -1695,7 +1702,7 @@ export class CharacterView {
       this.mixer.update(dt);
       this.twistLegs(a, dt, moving && !zombie && !sprint && !a.crouching ? along : null);
     }
-    this.placeHeld(a);
+    this.placeHeld(a, dt);
     if (!this.hidden) this.proceduralArms(a, dt);
     this.placeTreatProp();
   }
@@ -1709,6 +1716,12 @@ export class CharacterView {
   private usePrev = 0;
   private handProp: THREE.Mesh | null = null;
   private gestureT = 0;
+  /** Holding a gun at the ready or aiming (the stance clips), when a long gun's left hand goes on the handguard. */
+  private gunUp = false;
+  /** How far a long gun is in the shoulder-and-both-hands hold (eased with the stance). */
+  private holdW = 0;
+  private supportW = 0;
+  private gunMag: THREE.Object3D | null = null;
 
   private arms(): Record<string, THREE.Bone> | null {
     if (this.armBones !== undefined) return this.armBones;
@@ -1760,7 +1773,49 @@ export class CharacterView {
   }
 
   /** A small prop (magazine, shell) carried in a hand, gripped in its palm each frame. */
+  /** The heel of the stock in the held gun's frame (a whole-gun model: the rear of its box, a quarter down). */
+  private heldButt(): THREE.Vector3 {
+    const own = this.held?.userData.butt as THREE.Vector3 | undefined;
+    if (own) return own;
+    const b = this.heldBox;
+    return _hb.set((b.min.x + b.max.x) / 2, b.max.y - (b.max.y - b.min.y) * 0.25, b.min.z);
+  }
+
+  /** The top of the pistol grip in the held gun's frame (a whole-gun model: under the box, 30% from the back). */
+  private heldGrip(): THREE.Vector3 {
+    const own = this.held?.userData.grip as THREE.Vector3 | null | undefined;
+    if (own) return own;
+    const b = this.heldBox;
+    return _hg.set((b.min.x + b.max.x) / 2, b.min.y + (b.max.y - b.min.y) * 0.4, b.min.z + (b.max.z - b.min.z) * 0.3);
+  }
+
+  /** Where the left hand holds a whole-gun model (no parts to go by): under it, a third of the way back from the muzzle. */
+  private heldSupport(): THREE.Vector3 {
+    const b = this.heldBox;
+    return _hs.set((b.min.x + b.max.x) / 2, b.min.y + (b.max.y - b.min.y) * 0.3, b.max.z - (b.max.z - b.min.z) * 0.32);
+  }
+
   private propInHand(kind: 'mag' | 'pmag' | 'shell' | null, side: 'l' | 'r' = 'l'): void {
+    // A gun built from parts hands over its own magazine (a copy, centred on the palm) instead of a box.
+    const own = kind === 'mag' ? (this.held?.userData.mag as THREE.Object3D | null | undefined) : null;
+    if (own) {
+      if (!this.gunMag || this.gunMag.userData.src !== own) {
+        if (this.gunMag) this.gear.remove(this.gunMag);
+        const copy = own.clone();
+        copy.visible = true;
+        const box = new THREE.Box3().setFromObject(copy);
+        copy.position.sub(box.getCenter(tmpV2));
+        this.gunMag = new THREE.Group().add(copy);
+        this.gunMag.userData.src = own;
+        this.gunMag.userData.size = box.getSize(new THREE.Vector3());
+        this.gear.add(this.gunMag);
+      }
+      if (this.handProp) this.handProp.visible = false;
+      this.gunMag.visible = true;
+      this.inPalm(this.gunMag, side, tmpV2.copy(this.gunMag.userData.size as THREE.Vector3));
+      return;
+    }
+    if (this.gunMag) this.gunMag.visible = false;
     if (!kind) {
       if (this.handProp) this.handProp.visible = false;
       return;
@@ -1806,6 +1861,29 @@ export class CharacterView {
       treating = this.treatGesture(a, 1 - a.useT / this.useTotal, B, fwd, up, left);
     } else this.useTotal = this.usePrev = 0;
     if (!reloading && !treating) this.propInHand(null);
+    const gunMag = this.held?.userData.mag as THREE.Object3D | null | undefined;
+    if (!reloading && gunMag) gunMag.visible = true;
+
+    // A long gun held up: the right hand on the pistol grip (through reloads too), the left under the handguard.
+    const longGun = this.heldKind === 'gun' && this.held && this.heldLen >= 0.4;
+    if (longGun && this.holdW > 0.01 && !treating) {
+      const h = this.held!;
+      h.updateMatrixWorld(true);
+      const gx = _rlX.setFromMatrixColumn(h.matrixWorld, 0).normalize();
+      const gz = _rlZ.setFromMatrixColumn(h.matrixWorld, 2).normalize();
+      // Palm against the grip's right side, fingers wrapping forward round it.
+      reachPalm(this.armRig!.r, h.localToWorld(_ikT.copy(this.heldGrip())), gz, gx, pole('r'), this.holdW);
+    }
+    this.supportW += ((!reloading && !treating && longGun && this.gunUp ? 1 : 0) - this.supportW) * Math.min(1, dt * 10);
+    if (this.supportW > 0.01 && longGun) {
+      const h = this.held!;
+      h.updateMatrixWorld(true);
+      const local = (h.userData.support as THREE.Vector3 | undefined) ?? this.heldSupport();
+      const target = h.localToWorld(_ikT.copy(local));
+      const gy = _rlY.setFromMatrixColumn(h.matrixWorld, 1).normalize();
+      const gz = _rlZ.setFromMatrixColumn(h.matrixWorld, 2).normalize();
+      reachPalm(this.armRig!.l, target, gz, gy, pole('l'), this.supportW);
+    }
     if (!treating) this.showWrap(null);
   }
 
@@ -1859,6 +1937,9 @@ export class CharacterView {
       const hg: Grip = pistol ? 'top' : 'side';
       keys = [[0, well, 'under'], [0.14, well, 'under'], [0.3, below, 'under'], [0.47, pouch, 'pouch'], [0.55, pouch, 'pouch'], [0.72, below, 'under'], [0.8, well, 'under'], [0.86, handle, hg], [0.92, back, hg], [1, handle, hg]];
       if ((u > 0.14 && u < 0.3) || (u > 0.55 && u < 0.8)) prop = pistol ? 'pmag' : 'mag';
+      // A gun built from parts: its magazine is out of the well from the strip until the new one is seated.
+      const mag = h.userData.mag as THREE.Object3D | null | undefined;
+      if (mag) mag.visible = !(u > 0.14 && u < 0.8);
     }
     const target = _ikT;
     let i = 0;
@@ -2126,7 +2207,7 @@ export class CharacterView {
   }
 
   /** Guns are placed in actor space between the hands and always point along the aim; melee rides the hand bone. */
-  private placeHeld(a: Actor): void {
+  private placeHeld(a: Actor, dt: number): void {
     const h = this.held;
     if (!h || !this.handR) return;
     this.handR.getWorldPosition(tmpV);
@@ -2137,10 +2218,19 @@ export class CharacterView {
       }
       this.gear.worldToLocal(tmpV);
       h.position.copy(tmpV);
-      // Pistols sit in front of the grip, long guns extend forward with the stock at the shoulder.
+      // Pistols sit in front of the grip; a long gun lowered hangs forward of the hands.
       h.position.z += this.heldLen < 0.4 ? this.heldLen * 0.45 : this.heldLen * 0.22;
       h.position.y += 0.04;
       h.rotation.set(0, 0, 0);
+      // A long gun held up: butt in the right shoulder, bore at cheek height (the hands go to it, proceduralArms).
+      const shoulder = this.arms()?.upperarm_r;
+      if (this.heldLen >= 0.4 && shoulder) {
+        this.holdW += ((this.gunUp ? 1 : 0) - this.holdW) * Math.min(1, dt * 10);
+        if (this.holdW > 0.001) {
+          this.gear.worldToLocal(shoulder.getWorldPosition(tmpV2)).add(SHOULDER_POCKET).sub(this.heldButt());
+          h.position.lerp(tmpV2, this.holdW);
+        }
+      } else this.holdW = 0;
     } else this.placeInFist(h);
     void a;
   }
