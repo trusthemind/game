@@ -36,7 +36,12 @@ export class PerfMonitor {
     return arr[Math.min(arr.length - 1, Math.floor(arr.length * 0.99))]!;
   }
 
-  /** Returns a new resolution scale (or the same one) given the current scale. */
+  /**
+   * Returns a new resolution scale (or the same one) given the current scale. Every change re-allocates the
+   * post-processing buffers, itself a freeze of 0.1-0.4 s, so changes are rare: one jump down to about the scale
+   * that fits the budget, and back up only after a long quiet stretch (stepping down a notch every 2 s in a
+   * firefight and back up after it was a stutter of its own).
+   */
   adapt(scale: number, dt: number): number {
     const avg = this.avgMs;
     if (this.filled < 60) return scale;
@@ -44,16 +49,16 @@ export class PerfMonitor {
     if (avg > 21) {
       this.overT += dt;
       this.underT = 0;
-      if (this.overT > 2 && scale > 0.75) {
+      if (this.overT > 3 && scale > 0.75) {
         this.overT = 0;
-        return Math.max(0.75, scale - 0.08);
+        return Math.max(0.75, Math.floor(scale * Math.sqrt(16.7 / avg) * 20) / 20);
       }
     } else if (avg < 12.5) {
       this.underT += dt;
       this.overT = 0;
-      if (this.underT > 4 && scale < 1) {
+      if (this.underT > 30 && scale < 1) {
         this.underT = 0;
-        return Math.min(1, scale + 0.08);
+        return Math.min(1, scale + 0.1);
       }
     } else {
       this.overT = this.underT = 0;

@@ -279,7 +279,23 @@ export class GameRenderer {
         o.visible = true;
       }
     });
+    // Real frames draw into the post-processing buffer (linear output), not the canvas (sRGB): compiling for the
+    // canvas built variants the game never uses, so every object compiled again the first time it came into view —
+    // the hitches in a firefight.
+    this.renderer.setRenderTarget(this.composer?.inputBuffer ?? null);
     this.renderer.compile(this.scene, this.camera);
+    this.renderer.setRenderTarget(null);
+    // Textures also go up to the GPU on first draw: send them all now rather than as things come into view.
+    const sent = new Set<THREE.Texture>();
+    this.scene.traverse((o) => {
+      const mats = (o as THREE.Mesh).material;
+      for (const m of Array.isArray(mats) ? mats : mats ? [mats] : [])
+        for (const v of Object.values(m))
+          if ((v as THREE.Texture | null)?.isTexture && !sent.has(v as THREE.Texture)) {
+            sent.add(v as THREE.Texture);
+            this.renderer.initTexture(v as THREE.Texture);
+          }
+    });
     // One real draw also builds the shadow-pass and post-processing programs.
     if (this.composer) this.composer.render(0);
     else this.renderer.render(this.scene, this.camera);
