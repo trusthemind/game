@@ -21,8 +21,6 @@ rebound to the game skeleton at load (apps/web/src/render/rebind.ts):
   fsb.glb    — "FSB Operator" by SpatialNeglect, built from clothing pieces shared by ErhanMatur, Bzovius,
                SrGeneroso, shedmon, Albin and Mayess
                https://sketchfab.com/3d-models/fsb-operator-43a561e941704eefb1ab0614be4f0049 (rifle removed)
-  fem_w1.glb — "Game Ready Low Poly Tactical Character" by DanlyVostok
-               https://sketchfab.com/3d-models/game-ready-low-poly-tactical-character-68213c7d97a04b1b963599180210f5bd
   fem_w2.glb — "FREE [Military Soldier Female Warrior] RIGGED" by BAMEN
                https://sketchfab.com/3d-models/free-military-soldier-female-warrior-rigged-ba5ad50a7a2f457a8b5ed7a84328027f
   fem_ops.glb     — "female specops" by DJMaesen (pistol, knife and goggles removed)

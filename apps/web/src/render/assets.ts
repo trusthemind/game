@@ -44,7 +44,6 @@ export const BODY_IDS = [
   'ukr_a',
   'ukr_b',
   'rus_a',
-  'fem_w1',
   'fem_w2',
   'fem_ops',
   'fem_police',

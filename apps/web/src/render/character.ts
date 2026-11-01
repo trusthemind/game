@@ -194,7 +194,7 @@ export function lookFor(seed: number, archetype: string, npcId?: string, bossId?
             ? rng.pick(sex === 'f' ? ['fem_ops', 'fem_police'] : ['swat', 'swat_mc', 'pmc_heavy', 'rus_a'])
             : rng.pick(
                 sex === 'f'
-                  ? ['fem_w1', 'fem_w2', 'fem_ops', 'fem_jacket']
+                  ? ['fem_w2', 'fem_ops', 'fem_jacket']
                   : ['pmc_a', 'fsb', 'pmc_heavy', 'swat_mc', 'ukr_a', 'ukr_b', 'rus_a'],
               ),
       };
@@ -1104,6 +1104,8 @@ function attachToBone(mesh: THREE.SkinnedMesh, boneName: string, obj: THREE.Obje
 const UPPER = /^(spine_02|spine_03|neck_01|Head|clavicle|upperarm|lowerarm|hand|index|middle|pinky|ring|thumb)/;
 const LOWER = /^(root|pelvis|spine_01|thigh|calf|foot|ball)/;
 const filtered = new Map<string, THREE.AnimationClip>();
+/** Rebound body (id|sex) → how far it's raised to stand on its soles (CharacterView.soleLift). */
+const SOLE_LIFT = new Map<string, { lift: number; hip: number }>();
 
 /** Bones whose position the clips may set on a rebound body (everything else keeps the body's own proportions). */
 const MOVING = /^(root|pelvis)\.position$/;
@@ -1195,6 +1197,8 @@ export class CharacterView {
   private human: HumanParts | null = null;
   /** Wearing a rigged model's own clothes and face (no hair, hats or outfit pieces of ours). */
   private sfBody = false;
+  /** A rebound body's lift onto its soles (soleLift), scaled each frame by the pelvis height. */
+  private stand: { lift: number; hip: number; pelvis: THREE.Bone } | null = null;
   /** Calling in an extraction on the radio (standing still in the zone while its timer runs). */
   extracting = false;
   dead = false;
@@ -1228,6 +1232,7 @@ export class CharacterView {
     this.rig = rigInfos.get(src)!;
     this.bodyMeshes = skinnedMeshes;
     const sfBody = human && look.body ? (lib.bodies.get(look.body) ?? null) : null;
+    let rebound: THREE.SkinnedMesh[] = [];
     this.sfBody = !!sfBody;
     const outfit = human && !sfBody ? outfitPieces(lib, look) : null;
     for (const m of skinnedMeshes) {
@@ -1274,8 +1279,8 @@ export class CharacterView {
       }
       if (sfBody) {
         for (const m of [human.body, human.eyes, human.brows]) if (m) m.visible = false;
-        const { meshes } = rebindToSkeleton(sfBody.scene, sfBody.animations[0], this.model, human.body.skeleton.bones, (m) => worldMat(m as THREE.MeshStandardMaterial, u, null), `${look.body}|${look.sex}`);
-        for (const m of meshes) m.castShadow = shadows;
+        ({ meshes: rebound } = rebindToSkeleton(sfBody.scene, sfBody.animations[0], this.model, human.body.skeleton.bones, (m) => worldMat(m as THREE.MeshStandardMaterial, u, null), `${look.body}|${look.sex}`));
+        for (const m of rebound) m.castShadow = shadows;
       }
     } else this.model.scale.setScalar(CHAR_SCALE);
     this.root.add(this.model);
@@ -1288,6 +1293,27 @@ export class CharacterView {
     this.buildBody(shadows);
     this.root.add(this.gear);
     this.setLower('Idle_Loop', 1, 'full');
+    const pelvis = this.skinned.skeleton.getBoneByName('pelvis');
+    if (rebound.length && pelvis) this.stand = { ...this.soleLift(`${look.body}|${look.sex}`, rebound, pelvis), pelvis };
+  }
+
+  /**
+   * How far to raise a rebound body so its soles rest on the ground standing idle (the clips keep the mannequin's
+   * pelvis height, and these bodies have longer legs, so they would stand ankle-deep), and the pelvis's height in
+   * that pose. Measured once per body.
+   */
+  private soleLift(key: string, meshes: THREE.SkinnedMesh[], pelvis: THREE.Bone): { lift: number; hip: number } {
+    let s = SOLE_LIFT.get(key);
+    if (s) return s;
+    this.mixer.update(0);
+    this.root.updateMatrixWorld(true);
+    let low = Infinity;
+    const v = new THREE.Vector3();
+    for (const m of meshes)
+      for (let i = 0, n = m.geometry.attributes.position!.count; i < n; i++) low = Math.min(low, m.getVertexPosition(i, v).applyMatrix4(m.matrixWorld).y);
+    s = { lift: Number.isFinite(low) ? -low : 0, hip: pelvis.position.length() };
+    SOLE_LIFT.set(key, s);
+    return s;
   }
 
   private bone(re: RegExp): string {
@@ -1701,6 +1727,8 @@ export class CharacterView {
       this.yawSaved.length = 0;
       this.mixer.update(dt);
       this.twistLegs(a, dt, moving && !zombie && !sprint && !a.crouching ? along : null);
+      // The longer legs hold the body up by less as the clip folds them (crouching): lift with the pelvis.
+      if (this.stand && !this.dead) this.model.position.y = (this.stand.lift * this.stand.pelvis.position.length()) / this.stand.hip;
     }
     this.placeHeld(a, dt);
     if (!this.hidden) this.proceduralArms(a, dt);
@@ -2282,6 +2310,8 @@ export class CharacterView {
   toCorpse(c: Corpse, settled = false): void {
     if (this.dead) return;
     this.dead = true;
+    // Lying down, the legs' length no longer holds the body up.
+    this.model.position.y = 0;
     this.root.position.set(c.pos.x, 0, c.pos.y);
     this.root.rotation.y = Math.PI / 2 - c.facing;
     this.setUpper(null);

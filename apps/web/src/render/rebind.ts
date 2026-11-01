@@ -117,6 +117,9 @@ for (const s of ['l', 'r']) {
   }
 }
 
+/** Foot to head along the joints, to size a body that wasn't exported standing up. */
+const CHAIN = ['foot_l', 'calf_l', 'thigh_l', 'pelvis', 'spine_01', 'spine_02', 'spine_03', 'neck_01', 'Head'];
+
 const geoCache = new WeakMap<THREE.BufferGeometry, Map<string, THREE.BufferGeometry>>();
 
 const clean = (name: string) =>
@@ -126,7 +129,7 @@ const clean = (name: string) =>
     .replace(/_\d+$/, '');
 
 export interface Rebound {
-  meshes: THREE.Object3D[];
+  meshes: THREE.SkinnedMesh[];
 }
 
 /**
@@ -179,7 +182,14 @@ export function rebindToSkeleton(
   // facing the same way (a Mixamo body may face −Z relative to ours).
   const footS = Math.min(sp('foot_l')?.y ?? 0, sp('foot_r')?.y ?? 0);
   const footT = Math.min(modelPos(ours.get('foot_l')!).y, modelPos(ours.get('foot_r')!).y);
-  const k = (modelPos(ours.get('Head')!).y - footT) / ((sp('Head')?.y ?? 1) - footS);
+  let k = (modelPos(ours.get('Head')!).y - footT) / ((sp('Head')?.y ?? 1) - footS);
+  // A body exported mid-action (crouched, a foot raised) is shorter head-over-feet than it really is, and would
+  // come out a giant: size it by the length of its joint chain from foot to head instead.
+  const chain = CHAIN.filter((n) => srcBind.has(n));
+  const along = (at: (n: string) => THREE.Vector3) => chain.slice(1).reduce((sum, n, i) => sum + at(n).distanceTo(at(chain[i]!)), 0);
+  const chainS = along((n) => sp(n)!);
+  const chainT = along((n) => modelPos(ours.get(n)!));
+  if (((sp('Head')?.y ?? 1) - footS) / chainS < (0.92 * (modelPos(ours.get('Head')!).y - footT)) / chainT) k = chainT / chainS;
   const pelS = sp('pelvis')!;
   const pelT = modelPos(ours.get('pelvis')!);
   const sideS = sp('upperarm_l')!.x - pelS.x;
@@ -221,7 +231,7 @@ export function rebindToSkeleton(
   model.updateMatrixWorld(true);
   const inverses = bones.map((b) => new THREE.Matrix4().multiplyMatrices(toModel, b.matrixWorld).invert());
 
-  const out: THREE.Object3D[] = [];
+  const out: THREE.SkinnedMesh[] = [];
   for (const sm of skinned) {
     // Source joint index → our bone index, falling back to the nearest mapped ancestor.
     const lut = sm.skeleton.bones.map((b) => {

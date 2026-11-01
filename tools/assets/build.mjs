@@ -545,10 +545,10 @@ async function buildOutfits() {
 // [source slug under sketchfab/, triangle budget, meshes to drop (by material name)]
 const BODIES = {
   // Headphones float above the cap in the source itself. (char_b_tactical is left out: its export's bind pose
-  // is broken — gloves and head land metres away — and its own clip doesn't fix it.)
+  // is broken — gloves and head land metres away — and its own clip doesn't fix it. char_w1_tactical_female is
+  // left out too: it looks poor in game.)
   pmc_a: ['char_a_tactical_suit', 18000, /^HeadphonesT/],
   fsb: ['char_e_fsb', 20000, /^(Krinkov|Null)/],
-  fem_w1: ['char_w1_tactical_female', 16000, null],
   fem_w2: ['char_w2_female_soldier', 12500, null],
   fem_ops: ['char_w5_specops', 15000, null],
   fem_police: ['char_w6_police', 15000, null],
