@@ -3,6 +3,23 @@ import type { GridContainer } from '../items/inventory';
 import type { Furniture } from './furniture';
 import type { VehicleSpawn } from '../sim/vehicle';
 
+/**
+ * A set piece the renderer builds from its record. Tiles carry what matters to play (container stacks are
+ * Tile.Container, the sea Tile.Water, a crane's legs blockers); this says what to draw there. Rects in tiles.
+ * - stack: shipping containers, `levels` high (1–3), `color` index; long side along x if w > h.
+ * - crane: a quay gantry crane straddling the quay edge; its boom reaches out over the water towards +y.
+ * - ship: a moored cargo ship lying in the water; bow towards +x if w > h.
+ */
+export interface Structure {
+  kind: 'stack' | 'crane' | 'ship';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  levels?: number;
+  color?: number;
+}
+
 export type BuildingKind = 'house' | 'shop' | 'clinic' | 'warehouse' | 'military' | 'apartment' | 'barn' | 'cabin';
 
 export type District = 'town' | 'industrial' | 'military' | 'forest' | 'farm' | 'docks';
@@ -189,6 +206,8 @@ export class GameMap {
   furniture: Furniture[] = [];
   /** Drivable cars and roadside wrecks (sim/vehicle.ts). */
   vehicleSpawns: VehicleSpawn[] = [];
+  /** Big set pieces drawn from these records (their footprint is already in the tiles): cranes, ships, stacks. */
+  structures: Structure[] = [];
   /** Per-tile furniture id + 1 for pieces that block movement (0 = free; 0xffff = other set dressing). */
   readonly furnitureAt: Uint16Array;
   readonly furnitureCells = new Map<number, Pick<Furniture, 'box'>[]>();

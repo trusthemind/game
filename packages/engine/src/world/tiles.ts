@@ -10,6 +10,12 @@ export const enum Tile {
   Fence = 8,
   Dirt = 9,
   Border = 10,
+  /** Sea or river: can't be walked, seen and shot across. */
+  Water = 11,
+  /** Railway track on gravel: walkable. */
+  Rail = 12,
+  /** A shipping container stack: solid, blocks sight and bullets. */
+  Container = 13,
 }
 
 /** Movement blocked. */
@@ -19,8 +25,8 @@ export const OPAQUE = new Uint8Array(16);
 /** Gives cover: blocks bullets, but you can see over it. */
 export const COVER = new Uint8Array(16);
 
-for (const t of [Tile.Wall, Tile.Window, Tile.Tree, Tile.Car, Tile.Fence, Tile.Border]) SOLID[t] = 1;
-for (const t of [Tile.Wall, Tile.Border]) OPAQUE[t] = 1;
-for (const t of [Tile.Wall, Tile.Border, Tile.Car, Tile.Tree]) COVER[t] = 1;
+for (const t of [Tile.Wall, Tile.Window, Tile.Tree, Tile.Car, Tile.Fence, Tile.Border, Tile.Water, Tile.Container]) SOLID[t] = 1;
+for (const t of [Tile.Wall, Tile.Border, Tile.Container]) OPAQUE[t] = 1;
+for (const t of [Tile.Wall, Tile.Border, Tile.Car, Tile.Tree, Tile.Container]) COVER[t] = 1;
 
 export const isFloorTile = (t: Tile) => t === Tile.Wood || t === Tile.Concrete;

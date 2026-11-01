@@ -5,6 +5,7 @@ import { getTexture, type TexKind } from './textures';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
 import type { AssetLibrary } from './assets';
 import { droppedJacket, jacketFabric, JACKET_COLORS, JACKET_VARIANTS } from './jacket3d';
+import { harbourPieces } from './port';
 
 export const WALL_H = 2.1;
 
@@ -20,6 +21,8 @@ const FLOOR_OF: Partial<Record<Tile, TexKind>> = {
   [Tile.Border]: 'grass',
   [Tile.Wall]: 'concrete',
   [Tile.Window]: 'concrete',
+  [Tile.Rail]: 'dirt',
+  [Tile.Container]: 'concrete',
 };
 
 const CONTAINER_SHAPE: Record<ContainerKind, { w: number; h: number; d: number; color: number }> = {
@@ -78,6 +81,8 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
   const floorBuckets = new Map<TexKind, number[]>();
   for (let y = 0; y < map.height; y++)
     for (let x = 0; x < map.width; x++) {
+      // The sea is its own sheet below the ground (port.ts).
+      if (map.get(x, y) === Tile.Water) continue;
       let kind = FLOOR_OF[map.get(x, y)] ?? 'grass';
       if (map.isIndoors(x, y) && (kind === 'concrete' || map.get(x, y) === Tile.Window)) {
         const b = map.buildings[map.buildingAt[map.idx(x, y)]! - 1];
@@ -340,6 +345,9 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
     body.receiveShadow = shadows;
     group.add(body, cabin);
   }
+
+  // ── Harbour: water and quay walls, rail track, container stacks, quay cranes, moored ships.
+  for (const o of harbourPieces(map, mat, geo, shadows)) group.add(o);
 
   // ── Loot containers: one instanced unit box scaled per kind; colour dims once searched. Wardrobes,
   // drawers and shelves use the furniture models instead (see below).

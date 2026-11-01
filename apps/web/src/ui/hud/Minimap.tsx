@@ -13,6 +13,9 @@ const COLORS: Record<number, [number, number, number]> = {
   [Tile.Fence]: [130, 130, 120],
   [Tile.Dirt]: [70, 58, 44],
   [Tile.Border]: [16, 24, 16],
+  [Tile.Water]: [26, 44, 58],
+  [Tile.Rail]: [84, 74, 64],
+  [Tile.Container]: [140, 82, 52],
 };
 
 /**

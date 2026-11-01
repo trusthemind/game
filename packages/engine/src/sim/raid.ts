@@ -949,7 +949,7 @@ export class Raid {
     } else if (blocked) {
       const tile = this.map.get(Math.floor(ex + dx * 0.08), Math.floor(ey + dy * 0.08));
       if (tile === Tile.Window) this.breakGlass(this.map.idx(Math.floor(ex + dx * 0.08), Math.floor(ey + dy * 0.08)), a);
-      const material = carHit ? 'metal' : tile === Tile.Window ? 'glass' : tile === Tile.Tree || tile === Tile.Wood ? 'wood' : tile === Tile.Car || tile === Tile.Fence ? 'metal' : 'ground';
+      const material = carHit ? 'metal' : tile === Tile.Window ? 'glass' : tile === Tile.Tree || tile === Tile.Wood ? 'wood' : tile === Tile.Car || tile === Tile.Fence || tile === Tile.Container ? 'metal' : 'ground';
       this.emit({ t: 'impact', x: ex, y: ey, material });
       this.makeNoise(ex, ey, 3, a.id, 'impact');
     }

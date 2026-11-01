@@ -20,6 +20,8 @@ export interface MapPreset {
   raidMinutes: number;
   botDensity: number;
   extractNames: string[];
+  /** A container port along the south edge: sea, piers, quay cranes, moored ships, rail and stacks (buildPort). */
+  port?: boolean;
 }
 
 /** Named locations. Sizes are in tiles (≈1 m each); the largest is ~0.07 km² of hand-reachable ground. */
@@ -49,13 +51,14 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
   portkirov: {
     id: 'portkirov',
     name: 'Port Kirov',
-    tagline: 'Dense blocks, warehouses and container stacks on the shore. Close quarters.',
+    tagline: 'A container port on the sea: cranes over the quay, ships at the berths, warehouses and blocks behind.',
     size: 224,
     districts: { town: 4, industrial: 2, docks: 2, military: 1, forest: 1 },
     avenues: 3,
     raidMinutes: 30,
     botDensity: 1.15,
     extractNames: ['Container Gate', 'Smugglers Boat', 'Tram Depot', 'Sewer Outlet', 'Crane Yard', 'North Overpass'],
+    port: true,
   },
   testsite: {
     id: 'testsite',
@@ -174,19 +177,29 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
       map.districtAt[map.idx(x, y)] = bi;
     }
 
+  // A port: the sea along the south edge, the terminal on the shore, warehouses and yards behind it.
+  const shore = size - 40;
+  const terminal = shore - 44;
+  if (preset.port) {
+    const docks = seeds.findIndex((s) => s.kind === 'docks');
+    for (let y = terminal - 30; y < size; y++) for (let x = 0; x < size; x++) if (docks >= 0) map.districtAt[map.idx(x, y)] = docks;
+  }
+
   // ── Roads ──
   const roadsX = roadLines(rng, size, preset.avenues);
-  const roadsY = roadLines(rng, size, preset.avenues);
+  // In a port no avenue runs along the terminal; the north–south ones end at its gates.
+  const roadsY = roadLines(rng, size, preset.avenues).filter((r) => !preset.port || r < terminal - 34);
+  const roadEnd = preset.port ? terminal : size - 2;
   const roadTile = (x: number, y: number) => {
     const d = map.districtOf(x, y);
     return d === 'forest' || d === 'farm' ? Tile.Dirt : Tile.Road;
   };
-  for (const rx of roadsX) for (let y = 2; y < size - 2; y++) for (let d = 0; d < 3; d++) map.set(rx + d, y, roadTile(rx + d, y));
+  for (const rx of roadsX) for (let y = 2; y < roadEnd; y++) for (let d = 0; d < 3; d++) map.set(rx + d, y, roadTile(rx + d, y));
   for (const ry of roadsY) for (let x = 2; x < size - 2; x++) for (let d = 0; d < 3; d++) map.set(x, ry + d, roadTile(x, ry + d));
 
   // Blocks between avenues.
   const xs = [2, ...roadsX.flatMap((r) => [r, r + 3]), size - 2];
-  const ys = [2, ...roadsY.flatMap((r) => [r, r + 3]), size - 2];
+  const ys = [2, ...roadsY.flatMap((r) => [r, r + 3]), preset.port ? terminal - 1 : size - 2];
   const blocks: Rect[] = [];
   for (let i = 0; i < xs.length; i += 2)
     for (let j = 0; j < ys.length; j += 2) blocks.push({ x: xs[i]! + 1, y: ys[j]! + 1, w: xs[i + 1]! - xs[i]! - 2, h: ys[j + 1]! - ys[j]! - 2 });
@@ -252,6 +265,7 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
     }
   }
 
+  const port = preset.port ? buildPort(map, rng.fork('port'), terminal, shore, roadsX) : null;
   scatterCars(map, rng, roadsX, roadsY);
   scatterTrees(map, rng);
 
@@ -323,6 +337,28 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
     return map.buildings.some((bl) => x1 > bl.x - 1 && x0 < bl.x + bl.w + 1 && y1 > bl.y - 1 && y0 < bl.y + bl.h + 1);
   };
   let extractId = 0;
+  const addExtract = (name: string, x: number, y: number, dir: number) => {
+    const ex = { id: extractId++, name, x: x + 0.5, y: y + 0.5, radius: 2.4, kind: extractKind(name), dir };
+    for (const box of extractSolids(ex)) {
+      map.addBlocker(box);
+      map.containers = map.containers.filter((k) => !(k.x + 1 > box[0] && k.x < box[2] && k.y + 1 > box[1] && k.y < box[3]));
+    }
+    map.extractions.push(ex);
+  };
+  // A port's own exits stand where they belong: the boat at the end of a pier, the crane yard on the quay, the
+  // container gate at the side of the terminal. The rest go round the edges as on any map.
+  if (port) {
+    const own: [string, number, number, number][] = [
+      ['Smugglers Boat', port.piers[0]!, shore + 22, Math.PI / 2],
+      ['Crane Yard', INSET, shore - 6, Math.PI],
+      ['Container Gate', size - 1 - INSET, terminal + 20, 0],
+    ];
+    for (const [name, x, y, dir] of own) {
+      if (!names.includes(name)) continue;
+      addExtract(name, x, y, dir);
+      for (const list of [names, roadNames, wildNames]) list.splice(list.indexOf(name), list.includes(name) ? 1 : 0);
+    }
+  }
   const exSides = [(spawnSide + 2) % 4, (spawnSide + 1) % 4, (spawnSide + 3) % 4, (spawnSide + 2) % 4, spawnSide];
   for (const side of exSides.slice(0, size >= 200 ? 5 : 3)) {
     const open = edgeTiles(side, INSET).filter(
@@ -374,6 +410,18 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
     }
     map.extractions.push(ex);
     extractId++;
+  }
+
+  // Set dressing (exit booths, embankments, crane legs) can wall off a few tiles against the edge: those grow over
+  // rather than stay a walkable pocket nobody can get to.
+  {
+    const withBlockers = floodFill(map, map.playerSpawn);
+    const saved = map.furnitureAt.slice();
+    map.furnitureAt.fill(0);
+    const without = floodFill(map, map.playerSpawn);
+    map.furnitureAt.set(saved);
+    for (let i = 0; i < without.length; i++)
+      if (without[i] && !withBlockers[i] && !saved[i]) map.tiles[i] = map.tiles[i] === Tile.Grass || map.tiles[i] === Tile.Dirt ? Tile.Tree : Tile.Fence;
   }
 
   // ── Connectivity repair: carve through trees/fences to anything important that's cut off ──
@@ -430,16 +478,63 @@ function urbanSplit(map: GameMap, b: Rect, rng: Rng): Rect[] {
   return out.filter((r) => r.w > 3 && r.h > 3);
 }
 
+/**
+ * The container port along the south edge of the map. From the town down: two rail tracks along the back of the
+ * terminal, rows of container stacks with lanes between them, the quay with its gantry cranes, then the sea with
+ * two piers and a ship moored at each berth. The avenues from town end at the terminal (its gates).
+ */
+function buildPort(map: GameMap, rng: Rng, top: number, shore: number, roadsX: number[]): { piers: number[] } {
+  const size = map.width;
+  for (let y = top; y < size - 2; y++)
+    for (let x = 2; x < size - 2; x++) map.set(x, y, y < shore ? Tile.Concrete : Tile.Water);
+  // Piers: two jetties out into the sea.
+  const piers = [Math.round(size * 0.3), Math.round(size * 0.72)];
+  for (const px of piers) for (let y = shore; y < shore + 26; y++) for (let x = px - 6; x < px + 6; x++) map.set(x, y, Tile.Concrete);
+  // Rail: two tracks behind the stacks.
+  for (const t of [top + 3, top + 7]) for (let x = 2; x < size - 2; x++) for (let d = 0; d < 2; d++) map.set(x, t + d, Tile.Rail);
+  // Stacks: rows of 20-footers, two side by side, with lanes; the avenues' lines stay open as main lanes.
+  const nearAvenue = (x0: number, x1: number) => roadsX.some((r) => r + 3 >= x0 - 2 && r <= x1 + 2);
+  for (let y0 = top + 11; y0 + 4 <= shore - 14; y0 += 7)
+    for (let x0 = 6; x0 + 6 <= size - 6; x0 += 8) {
+      if (nearAvenue(x0, x0 + 6) || rng.chance(0.12)) continue;
+      for (let k = 0; k < 2; k++) if (rng.chance(0.9)) stack(map, rng, x0, y0 + k * 2, 6, 2);
+      if (rng.chance(0.3) && map.get(x0 + 6, y0 + 1) === Tile.Concrete)
+        map.containers.push(makeContainer(nextContainerId(map), rng.chance(0.25) ? 'ammocrate' : 'crate', x0 + 6, y0 + 1, 1));
+      map.pois.push({ x: x0 + 7, y: y0 + 2 });
+    }
+  // Quay cranes: legs either side of the crane rails on the quay, the boom out over the water.
+  const craneXs = [0.12, 0.42, 0.56, 0.86].map((f) => Math.round(size * f));
+  for (const cx of craneXs) {
+    const cy = shore - 10;
+    for (const [lx, ly] of [[cx, cy], [cx + 9, cy], [cx, cy + 8], [cx + 9, cy + 8]] as const) map.addBlocker([lx, ly, lx + 1, ly + 1]);
+    map.structures.push({ kind: 'crane', x: cx, y: cy, w: 10, h: 9 });
+    map.pois.push({ x: cx + 5, y: cy + 4 });
+  }
+  // Ships at the berths: one along the quay between the piers, one beyond the second pier.
+  const berth = (x0: number, x1: number) => {
+    const len = Math.min(110, x1 - x0);
+    if (len < 40) return;
+    map.structures.push({ kind: 'ship', x: x0 + Math.round((x1 - x0 - len) / 2), y: shore + 3, w: len, h: 14 });
+  };
+  berth(piers[0]! + 9, piers[1]! - 9);
+  berth(piers[1]! + 9, size - 6);
+  return { piers };
+}
+
+/** One stack of shipping containers on a `w`×`h` footprint (6×2 is a 20-footer), 1–3 high. */
+function stack(map: GameMap, rng: Rng, x: number, y: number, w: number, h: number, maxLevels = 3): void {
+  for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) map.set(xx, yy, Tile.Container);
+  map.structures.push({ kind: 'stack', x, y, w, h, levels: rng.int(1, maxLevels), color: rng.int(0, 7) });
+}
+
 /** Shipping-container stacks (solid cover) with crates between them. */
 function containerYard(map: GameMap, lot: Rect, rng: Rng): void {
   for (let y = lot.y + 1; y < lot.y + lot.h - 1; y += 4)
     for (let x = lot.x + 1; x < lot.x + lot.w - 6; x += rng.int(7, 10)) {
       if (rng.chance(0.25)) continue;
-      const len = rng.int(4, 6);
-      for (let k = 0; k < len && x + k < lot.x + lot.w - 1; k++) {
-        map.set(x + k, y, Tile.Car);
-        map.set(x + k, y + 1, Tile.Car);
-      }
+      const len = Math.min(6, lot.x + lot.w - 1 - x);
+      if (len < 3) continue;
+      stack(map, rng, x, y, len, 2);
       if (rng.chance(0.35)) map.containers.push(makeContainer(nextContainerId(map), rng.chance(0.3) ? 'ammocrate' : 'crate', x + len, y + 1, 1));
     }
 }
