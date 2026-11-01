@@ -25,7 +25,8 @@ describe('extraction points', () => {
           const t = map.get(Math.floor(e.x), Math.floor(e.y));
           if (ROAD_EXTRACTS.has(e.kind)) {
             roadKinds++;
-            if (t === Tile.Road || t === Tile.Dirt) onRoad++;
+            // A rail bridge stands on the railway it carries out of the map.
+            if (t === Tile.Road || t === Tile.Dirt || (e.kind === 'bridge' && t === Tile.Rail)) onRoad++;
           }
           // Leaving direction points at the nearest edge.
           const ox = e.x + Math.cos(e.dir) * 10;

@@ -12,9 +12,11 @@ import type { VehicleSpawn } from '../sim/vehicle';
  * - monument: a statue on a plinth in the middle of a square.
  * - canopy: a petrol station's canopy over its pumps (pillars at the corners are blockers).
  * - garages: a row of lock-up garages (the boxes are wall tiles), doors facing +y if `color` is 0, −y if 1.
+ * - bridge: a road or railway over water; railings along both long sides (along x if w > h).
+ * - logs: a pile of sawn logs at a sawmill (a blocker), lying along x if w > h.
  */
 export interface Structure {
-  kind: 'stack' | 'crane' | 'ship' | 'monument' | 'canopy' | 'garages';
+  kind: 'stack' | 'crane' | 'ship' | 'monument' | 'canopy' | 'garages' | 'bridge' | 'logs';
   x: number;
   y: number;
   w: number;

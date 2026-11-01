@@ -27,6 +27,12 @@ export interface MapPreset {
    * five and nine storeys round courtyards, petrol stations on the avenues, car parks and lock-up garages.
    */
   city?: boolean;
+  /** A river from the north edge to the south through the west of the map, bridged where roads cross it. */
+  river?: boolean;
+  /** A railway from west to east with a platform by the town, bridged over the river. */
+  railway?: boolean;
+  /** A sawmill in the forest: clearing, saw shed, log piles. */
+  sawmill?: boolean;
 }
 
 /** Named locations. Sizes are in tiles (≈1 m each); the largest is ~0.07 km² of hand-reachable ground. */
@@ -34,13 +40,16 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
   outskirts: {
     id: 'outskirts',
     name: 'Zavadsk Outskirts',
-    tagline: 'Suburbs, a fenced army depot and the forest that swallowed the motorway.',
+    tagline: 'Suburbs on a river, the railway through them, a fenced army depot and a sawmill in the forest.',
     size: 384,
     districts: { town: 4, industrial: 2, military: 1, forest: 5, farm: 3 },
     avenues: 4,
     raidMinutes: 35,
     botDensity: 1,
     extractNames: ['Old Gas Station', 'Rail Bridge', 'Collapsed Tunnel', 'Checkpoint ZB-013', 'Forest Path', 'Cargo Gate', 'Dam Road', 'Outpost Kordon-7'],
+    river: true,
+    railway: true,
+    sawmill: true,
   },
   pinehollow: {
     id: 'pinehollow',
@@ -52,6 +61,7 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
     raidMinutes: 35,
     botDensity: 0.8,
     extractNames: ['Logging Camp', 'Ranger Tower', 'Old Mill', 'Rusty Bridge', 'Hunters’ Trail', 'Ferry Pier', 'Forest Outpost'],
+    sawmill: true,
   },
   portkirov: {
     id: 'portkirov',
@@ -224,6 +234,10 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   for (let i = 0; i < xs.length; i += 2)
     for (let j = 0; j < ys.length; j += 2) blocks.push({ x: xs[i]! + 1, y: ys[j]! + 1, w: xs[i + 1]! - xs[i]! - 2, h: ys[j + 1]! - ys[j]! - 2 });
 
+  // Outskirts: the river, then the railway (over the river on a bridge); roads they cross become bridges.
+  const river = preset.river ? carveRiver(map, rng.fork('river'), roadsX, roadsY) : null;
+  const railY = preset.railway ? layRailway(map, rng.fork('rail'), roadsY) : -1;
+
   // A city's middle block is its square, with the monument.
   const square = preset.city ? blocks.reduce((a, b) => (Math.hypot(b.x + b.w / 2 - size / 2, b.y + b.h / 2 - size / 2) < Math.hypot(a.x + a.w / 2 - size / 2, a.y + a.h / 2 - size / 2) ? b : a)) : null;
   if (square) citySquare(map, square, rng);
@@ -241,11 +255,21 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   }
 
   // Military: the biggest lot inside each military district becomes a compound.
+  // Lots the river or the railway runs through stay woods, fields or waste ground: nothing gets built on them.
+  const wet = (r: Rect) => {
+    for (let y = r.y; y < r.y + r.h; y++)
+      for (let x = r.x; x < r.x + r.w; x++) {
+        const t = map.get(x, y);
+        if (t === Tile.Water || t === Tile.Rail || (railY >= 0 && t === Tile.Concrete)) return true;
+      }
+    return false;
+  };
+  let sawmillDone = !preset.sawmill;
   const milLots = new Set<Rect>();
   map.districts.forEach((dist, di) => {
     if (dist.kind !== 'military') return;
     const mine = lots.filter((l) => map.districtAt[map.idx(Math.floor(l.r.x + l.r.w / 2), Math.floor(l.r.y + l.r.h / 2))] === di);
-    mine.sort((a, b) => b.r.w * b.r.h - a.r.w * a.r.h);
+    mine.sort((a, b) => Number(wet(a.r)) - Number(wet(b.r)) || b.r.w * b.r.h - a.r.w * a.r.h);
     if (mine[0]) milLots.add(mine[0].r);
   });
 
@@ -259,6 +283,17 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   };
   const cityState = { stations: 0, lots: 0 };
   for (const { r: lot, d } of lots) {
+    if ((river || railY >= 0) && !milLots.has(lot) && wet(lot)) {
+      if (d === 'forest') forest(map, lot, rng);
+      else if (d === 'farm') fields(map, lot, rng);
+      else decorateLot(map, lot, rng, 0.06);
+      continue;
+    }
+    if (!sawmillDone && d === 'forest' && lot.w >= 26 && lot.h >= 20) {
+      sawmillDone = true;
+      sawmill(map, lot, rng, addBuilding);
+      continue;
+    }
     if (milLots.has(lot)) {
       addBuilding(clampLot(lot, 34), 'military');
       continue;
@@ -378,6 +413,15 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
     }
     map.extractions.push(ex);
   };
+  // The rail bridge where the railway leaves to the east.
+  const placeOwn = (own: [string, number, number, number][]) => {
+    for (const [name, x, y, dir] of own) {
+      if (!names.includes(name)) continue;
+      addExtract(name, x, y, dir);
+      for (const list of [names, roadNames, wildNames]) list.splice(list.indexOf(name), list.includes(name) ? 1 : 0);
+    }
+  };
+  if (railY >= 0) placeOwn([['Rail Bridge', size - 1 - INSET, railY, 0]]);
   // A port's own exits stand where they belong: the boat at the end of a pier, the crane yard on the quay, the
   // container gate at the side of the terminal. The rest go round the edges as on any map.
   if (port) {
@@ -503,12 +547,115 @@ function urbanSplit(map: GameMap, b: Rect, rng: Rng): Rect[] {
   const cutsY: number[] = [];
   for (let x = b.x + step; x < b.x + b.w - step * 0.6; x += step + rng.int(-3, 3)) cutsX.push(x);
   for (let y = b.y + step; y < b.y + b.h - step * 0.6; y += step + rng.int(-3, 3)) cutsY.push(y);
-  for (const cx of cutsX) for (let y = b.y; y < b.y + b.h; y++) for (let k = 0; k < 2; k++) map.set(cx + k, y, Tile.Road);
-  for (const cy of cutsY) for (let x = b.x; x < b.x + b.w; x++) for (let k = 0; k < 2; k++) map.set(x, cy + k, Tile.Road);
+  // Side streets stop at the river and the railway rather than wading through them.
+  const street = (x: number, y: number) => {
+    const t = map.get(x, y);
+    if (t !== Tile.Water && t !== Tile.Rail) map.set(x, y, Tile.Road);
+  };
+  for (const cx of cutsX) for (let y = b.y; y < b.y + b.h; y++) for (let k = 0; k < 2; k++) street(cx + k, y);
+  for (const cy of cutsY) for (let x = b.x; x < b.x + b.w; x++) for (let k = 0; k < 2; k++) street(x, cy + k);
   const xs = [b.x, ...cutsX.flatMap((c) => [c, c + 2]), b.x + b.w];
   const ys = [b.y, ...cutsY.flatMap((c) => [c, c + 2]), b.y + b.h];
   for (let i = 0; i < xs.length; i += 2) for (let j = 0; j < ys.length; j += 2) out.push({ x: xs[i]!, y: ys[j]!, w: xs[i + 1]! - xs[i]!, h: ys[j + 1]! - ys[j]! });
   return out.filter((r) => r.w > 3 && r.h > 3);
+}
+
+/**
+ * A river from the north edge to the south: a slow meander through the widest gap between avenues in the west
+ * of the map, 9–11 m wide. Roads it crosses stay (bridges, with railings drawn from their records).
+ */
+function carveRiver(map: GameMap, rng: Rng, roadsX: number[], roadsY: number[]): { at: (y: number) => number } {
+  const size = map.width;
+  const edges = [2, ...roadsX.flatMap((r) => [r, r + 3]), size - 2];
+  let gap: [number, number] = [size * 0.2, size * 0.35];
+  let best = -1;
+  for (let i = 0; i < edges.length; i += 2) {
+    const [a, b] = [edges[i]!, edges[i + 1]!];
+    const c = (a + b) / 2;
+    if (c < size * 0.12 || c > size * 0.5) continue;
+    if (b - a > best) {
+      best = b - a;
+      gap = [a, b];
+    }
+  }
+  const x0 = (gap[0] + gap[1]) / 2;
+  const width = rng.int(9, 11);
+  const amp = Math.max(0, Math.min(14, (gap[1] - gap[0]) / 2 - width / 2 - 4));
+  const ph = rng.range(0, Math.PI * 2);
+  const ph2 = rng.range(0, Math.PI * 2);
+  const at = (y: number) => x0 + amp * Math.sin(y * 0.025 + ph) + Math.min(3, amp * 0.3) * Math.sin(y * 0.09 + ph2);
+  for (let y = 2; y < size - 2; y++) {
+    const cx = at(y);
+    for (let x = Math.round(cx - width / 2); x < Math.round(cx + width / 2); x++) {
+      const t = map.get(x, y);
+      if (t !== Tile.Road && t !== Tile.Dirt) map.set(x, y, Tile.Water);
+    }
+  }
+  for (const ry of roadsY) bridge(map, ry, 3);
+  return { at };
+}
+
+/** Record the bridge where a 2–3 tile wide road or track along x at `y` crosses water. */
+function bridge(map: GameMap, y: number, h: number): void {
+  let x0 = -1;
+  for (let x = 2; x < map.width - 2; x++) {
+    let over = false;
+    for (let k = -1; k <= h; k += h + 1) if (map.get(x, y + k) === Tile.Water) over = true;
+    if (over && x0 < 0) x0 = x;
+    if (!over && x0 >= 0) {
+      map.structures.push({ kind: 'bridge', x: x0 - 1, y, w: x - x0 + 2, h });
+      x0 = -1;
+    }
+  }
+}
+
+/** The railway west to east between two avenues, over the river on its own bridge, a platform by the town. */
+function layRailway(map: GameMap, rng: Rng, roadsY: number[]): number {
+  const size = map.width;
+  const edges = [2, ...roadsY.flatMap((r) => [r, r + 3]), size - 2];
+  let y = Math.round(size * 0.6);
+  let best = Infinity;
+  for (let i = 0; i < edges.length; i += 2) {
+    const c = Math.round((edges[i]! + edges[i + 1]!) / 2);
+    if (edges[i + 1]! - edges[i]! < 14) continue;
+    if (Math.abs(c - size * 0.6) < best) {
+      best = Math.abs(c - size * 0.6);
+      y = c;
+    }
+  }
+  for (let x = 2; x < size - 2; x++)
+    for (let d = 0; d < 2; d++) {
+      const t = map.get(x, y + d);
+      if (t !== Tile.Road && t !== Tile.Dirt) map.set(x, y + d, Tile.Rail);
+    }
+  // Over water the track is the bridge (rail tiles are walkable); railings come from the record.
+  for (let x = 2; x < size - 2; x++) if (map.get(x, y - 1) === Tile.Water || map.get(x, y + 2) === Tile.Water) {
+    bridge(map, y, 2);
+    break;
+  }
+  // The platform: a concrete strip beside the track in town, if the line runs through town.
+  const town = [...Array(size - 60).keys()].map((i) => i + 30).filter((x) => map.districtOf(x, y + 3) === 'town' && map.get(x, y + 3) === Tile.Grass);
+  const px = town.length ? town[Math.floor(town.length / 2)]! - 14 : Math.round(size * 0.55);
+  for (let x = px; x < px + 28; x++) for (let d = 2; d < 5; d++) if (map.get(x, y + d) === Tile.Grass) map.set(x, y + d, Tile.Concrete);
+  map.pois.push({ x: px + 14, y: y + 3 });
+  void rng;
+  return y;
+}
+
+/** A sawmill in a forest clearing: the saw shed, a drying shed, piles of logs and sawn boards. */
+function sawmill(map: GameMap, lot: Rect, rng: Rng, addBuilding: (r: Rect, k: BuildingKind) => void): void {
+  for (let y = lot.y; y < lot.y + lot.h; y++) for (let x = lot.x; x < lot.x + lot.w; x++) if (map.get(x, y) === Tile.Grass) map.set(x, y, Tile.Dirt);
+  addBuilding({ x: lot.x + 1, y: lot.y + 1, w: 16, h: 11 }, 'warehouse');
+  addBuilding({ x: lot.x + lot.w - 11, y: lot.y + 1, w: 10, h: 9 }, 'barn');
+  for (let i = 0; i < 4; i++) {
+    const x = lot.x + 2 + i * 6;
+    const y = lot.y + lot.h - 5 - (i % 2) * 3;
+    if (x + 5 > lot.x + lot.w - 1) break;
+    map.addBlocker([x, y, x + 5, y + 2]);
+    map.structures.push({ kind: 'logs', x, y, w: 5, h: 2, levels: rng.int(2, 4) });
+  }
+  map.pois.push({ x: lot.x + lot.w / 2, y: lot.y + lot.h / 2 });
+  if (rng.chance(0.7)) map.containers.push(makeContainer(nextContainerId(map), 'toolbox', lot.x + 8, lot.y + 13, 1));
 }
 
 /** The city square: paving, a monument on its plinth in the middle, lime trees at the corners. */

@@ -3,18 +3,68 @@ import type { GameMap, Structure } from '@ashfall/engine';
 import { getTexture } from './textures';
 import { WALL_H } from './world';
 
-type Mat = <M extends THREE.Material>(m: M, occlude?: 'wall' | 'canopy', fow?: boolean) => M;
+type Mat = <M extends THREE.Material>(m: M, occlude?: 'wall' | 'canopy' | 'tall', fow?: boolean) => M;
 type Geo = <G extends THREE.BufferGeometry>(g: G) => G;
 
-/** The city's set pieces from map.structures: the monument on the square, petrol station canopies, lock-up garages. */
+/**
+ * Town and country set pieces from map.structures: the monument on the square, petrol station canopies,
+ * lock-up garages, bridge railings, the sawmill's log piles.
+ */
 export function cityPieces(map: GameMap, mat: Mat, geo: Geo, shadows: boolean): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
   for (const s of map.structures) {
     if (s.kind === 'monument') out.push(monument(s, mat, geo, shadows));
     if (s.kind === 'canopy') out.push(canopy(s, mat, geo, shadows));
     if (s.kind === 'garages') out.push(garages(s, mat, geo, shadows));
+    if (s.kind === 'bridge') out.push(railings(s, mat, geo, shadows));
+    if (s.kind === 'logs') out.push(logs(s, mat, geo, shadows));
   }
   return out;
+}
+
+/** Steel railings along both sides of a bridge: posts every 2 m and a top rail, plus the deck's edge beam. */
+function railings(s: Structure, mat: Mat, geo: Geo, shadows: boolean): THREE.Object3D {
+  const g = new THREE.Group();
+  const steel = mat(new THREE.MeshStandardMaterial({ color: 0x6a6e70, roughness: 0.5, metalness: 0.6 }));
+  const beam = mat(new THREE.MeshStandardMaterial({ map: getTexture('concrete'), color: 0x9a968e, roughness: 0.9 }));
+  const alongX = s.w >= s.h;
+  const len = alongX ? s.w : s.h;
+  for (const side of [0, alongX ? s.h : s.w]) {
+    const at = (a: number, y: number, w: number, h: number, d: number, m: THREE.Material) =>
+      alongX ? box(g, geo, m, w, h, d, s.x + a, y, s.y + side) : box(g, geo, m, d, h, w, s.x + side, y, s.y + a);
+    at(len / 2, -0.25, len, 0.5, 0.35, beam);
+    at(len / 2, 1.0, len, 0.08, 0.08, steel);
+    for (let a = 0.2; a <= len; a += 2) at(a, 0.5, 0.08, 1.0, 0.08, steel);
+  }
+  g.traverse((o) => ((o as THREE.Mesh).castShadow = shadows));
+  return g;
+}
+
+/** A pile of sawn logs lying along the pile's length, `levels` high, the ends showing pale wood. */
+function logs(s: Structure, mat: Mat, geo: Geo, shadows: boolean): THREE.Object3D {
+  const bark = mat(new THREE.MeshStandardMaterial({ map: getTexture('bark'), color: 0x8a7458, roughness: 0.95 }));
+  const alongX = s.w >= s.h;
+  const len = (alongX ? s.w : s.h) - 0.2;
+  const across = alongX ? s.h : s.w;
+  const r = 0.22;
+  const per = Math.floor(across / (r * 2));
+  const levels = s.levels ?? 3;
+  const n = Array.from({ length: levels }, (_, l) => Math.max(1, per - l)).reduce((a, b) => a + b, 0);
+  const inst = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(r, r, len, 10).rotateZ(Math.PI / 2)), bark, n);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), alongX ? 0 : Math.PI / 2);
+  let i = 0;
+  for (let l = 0; l < levels; l++) {
+    const count = Math.max(1, per - l);
+    for (let k = 0; k < count; k++) {
+      const off = (k - (count - 1) / 2) * r * 2;
+      const p = alongX ? new THREE.Vector3(s.x + s.w / 2, r + l * r * 1.75, s.y + s.h / 2 + off) : new THREE.Vector3(s.x + s.w / 2 + off, r + l * r * 1.75, s.y + s.h / 2);
+      inst.setMatrixAt(i++, m.compose(p, q, new THREE.Vector3(1, 1, 1)));
+    }
+  }
+  inst.castShadow = shadows;
+  inst.receiveShadow = shadows;
+  return inst;
 }
 
 const box = (g: THREE.Group, geo: Geo, m: THREE.Material, w: number, h: number, d: number, x: number, y: number, z: number, shadows: boolean) => {
