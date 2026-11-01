@@ -5,7 +5,7 @@ import { Rng } from '@ashfall/engine';
  * Procedural textures painted into canvases at startup — no asset downloads, nothing to cache-bust,
  * and every texture is generated once and memoised.
  */
-export type TexKind = 'grass' | 'asphalt' | 'wood' | 'concrete' | 'dirt' | 'plaster' | 'bark' | 'metal' | 'roof' | 'tar' | 'facade';
+export type TexKind = 'grass' | 'asphalt' | 'wood' | 'concrete' | 'dirt' | 'plaster' | 'bark' | 'metal' | 'roof' | 'tar' | 'facade' | 'water';
 
 const cache = new Map<string, THREE.Texture>();
 const SIZE = 256;
@@ -151,6 +151,24 @@ const PAINTERS: Record<TexKind, (g: CanvasRenderingContext2D, rng: Rng) => void>
     g.fillRect(0, 0, SIZE, SIZE);
     blotches(g, rng, 40, ['#5a4c38', '#3a3126', '#544a3a'], 15, 50, 0.4);
     speckle(g, rng, 2500, ['#6a5c48', '#2a231a', '#7a6e5a'], 1, 3);
+  },
+  water(g, rng) {
+    // Open water seen from above: blue-green with lighter ripple crests and darker troughs, tiling seamlessly.
+    g.fillStyle = '#2f6272';
+    g.fillRect(0, 0, SIZE, SIZE);
+    blotches(g, rng, 30, ['#2a5866', '#36707e', '#285262'], 20, 70, 0.4);
+    for (let i = 0; i < 140; i++) {
+      const x = rng.range(0, SIZE);
+      const y = rng.range(0, SIZE);
+      const w = rng.range(10, 34);
+      g.strokeStyle = rng.chance(0.6) ? 'rgba(170,215,225,0.35)' : 'rgba(20,40,48,0.35)';
+      g.lineWidth = rng.range(1, 2.5);
+      for (const [ox, oy] of [[0, 0], [SIZE, 0], [-SIZE, 0], [0, SIZE], [0, -SIZE]]) {
+        g.beginPath();
+        g.ellipse(x + ox!, y + oy!, w, w * 0.22, 0, Math.PI * 1.05, Math.PI * 1.95);
+        g.stroke();
+      }
+    }
   },
   facade(g, rng) {
     // One bay of a Soviet panel block, one storey high (tiled 3 m across, 2.8 m up): grey panel with its seams,

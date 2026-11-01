@@ -72,7 +72,7 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
   const rng = new Rng(map.seed ^ 0x5eed);
   const materials: THREE.Material[] = [];
   const geometries: THREE.BufferGeometry[] = [];
-  const mat = <M extends THREE.Material>(m: M, occlude?: 'wall' | 'canopy', fow = true) => {
+  const mat = <M extends THREE.Material>(m: M, occlude?: 'wall' | 'canopy' | 'tall', fow = true) => {
     materials.push(patchWorldMaterial(m, u, { occlude, fow }));
     return m;
   };
@@ -129,7 +129,8 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
   {
     const g = geo(new THREE.PlaneGeometry(map.width + 120, map.height + 120).rotateX(-Math.PI / 2));
     const outer = new THREE.Mesh(g, mat(new THREE.MeshStandardMaterial({ color: 0x1a2016, roughness: 1 })));
-    outer.position.set(map.width / 2, -0.02, map.height / 2);
+    // Below the sea and the foot of the quay walls (port.ts), or it hides the water.
+    outer.position.set(map.width / 2, -1.2, map.height / 2);
     group.add(outer);
   }
 

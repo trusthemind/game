@@ -31,7 +31,9 @@ float ashBayer(vec2 p) {
  */
 export interface PatchOptions {
   fow?: boolean;
-  occlude?: 'wall' | 'canopy';
+  /** wall: x-ray between player and camera; canopy: a small hole over the player; tall: high set pieces (cranes,
+   * ships' upper works) thin out for ~10 m round the player above head height. */
+  occlude?: 'wall' | 'canopy' | 'tall';
   /** Extra shader edits applied before the fog/occlusion injection (e.g. character palettes). */
   pre?: (shader: THREE.WebGLProgramParametersWithUniforms) => void;
   key?: string;
@@ -60,7 +62,9 @@ export function patchWorldMaterial<T extends THREE.Material>(mat: T, u: WorldUni
         occ === 'wall'
           ? /* glsl */ `float dz = vFowPos.z - uPlayer.z;
              float occ = (vFowPos.y > 0.55 && dz > 0.15 && dz < 5.0) ? (1.0 - smoothstep(1.6, 3.4, abs(vFowPos.x - uPlayer.x))) * (1.0 - smoothstep(3.5, 5.0, dz)) : 0.0;`
-          : /* glsl */ `float occ = 1.0 - smoothstep(2.0, 3.6, length(vFowPos.xz - uPlayer.xz - vec2(0.0, 0.8)));`;
+          : occ === 'tall'
+            ? /* glsl */ `float occ = vFowPos.y > 2.5 ? 1.0 - smoothstep(6.0, 10.0, length(vFowPos.xz - uPlayer.xz)) : 0.0;`
+            : /* glsl */ `float occ = 1.0 - smoothstep(2.0, 3.6, length(vFowPos.xz - uPlayer.xz - vec2(0.0, 0.8)));`;
       frag = frag.replace(
         'void main() {',
         /* glsl */ `void main() {
