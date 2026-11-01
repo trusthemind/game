@@ -296,9 +296,18 @@ export class GameRenderer {
             this.renderer.initTexture(v as THREE.Texture);
           }
     });
-    // One real draw also builds the shadow-pass and post-processing programs.
+    // One real draw also builds the shadow-pass and post-processing programs. Nothing is culled in it, so every
+    // mesh's buffers go up now too (the first look at a new part of the map was a 60 ms frame).
+    const culled: THREE.Object3D[] = [];
+    this.scene.traverse((o) => {
+      if (o.frustumCulled) {
+        culled.push(o);
+        o.frustumCulled = false;
+      }
+    });
     if (this.composer) this.composer.render(0);
     else this.renderer.render(this.scene, this.camera);
+    for (const o of culled) o.frustumCulled = true;
     for (const o of hidden) o.visible = false;
   }
 

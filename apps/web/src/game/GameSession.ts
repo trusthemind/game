@@ -226,6 +226,14 @@ export class GameSession {
     return loadBodies(this.opts.assets, this.renderer.bodiesAtStart());
   }
 
+  /**
+   * Draw the first frame now: it builds every character and compiles and uploads everything the raid will draw
+   * (seconds on a slow machine), better spent behind the loading screen than as a frozen first frame of the raid.
+   */
+  warmUp(): void {
+    this.renderer.render(0, null);
+  }
+
   start(): void {
     this.last = performance.now();
     const loop = (now: number) => {

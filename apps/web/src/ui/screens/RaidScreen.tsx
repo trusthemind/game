@@ -64,6 +64,7 @@ export function RaidScreen() {
         return Promise.all([s.preloadBodies(), loadWeaponParts().catch(() => null)]).then(() => {
           if (cancelled || !s) return;
           useRaidUi.setState({ overlay: null, hud: null, messages: [], loot: null, dialogueActor: null, showPerf: profile.settings.showPerf });
+          s.warmUp();
           s.start();
           setSession(s);
           (window as unknown as { __ashfall?: GameSession }).__ashfall = s;
