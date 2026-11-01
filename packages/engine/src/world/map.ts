@@ -9,9 +9,12 @@ import type { VehicleSpawn } from '../sim/vehicle';
  * - stack: shipping containers, `levels` high (1–3), `color` index; long side along x if w > h.
  * - crane: a quay gantry crane straddling the quay edge; its boom reaches out over the water towards +y.
  * - ship: a moored cargo ship lying in the water; bow towards +x if w > h.
+ * - monument: a statue on a plinth in the middle of a square.
+ * - canopy: a petrol station's canopy over its pumps (pillars at the corners are blockers).
+ * - garages: a row of lock-up garages (the boxes are wall tiles), doors facing +y if `color` is 0, −y if 1.
  */
 export interface Structure {
-  kind: 'stack' | 'crane' | 'ship';
+  kind: 'stack' | 'crane' | 'ship' | 'monument' | 'canopy' | 'garages';
   x: number;
   y: number;
   w: number;
@@ -35,6 +38,8 @@ export interface Building extends Rect {
   id: number;
   kind: BuildingKind;
   rooms: Rect[];
+  /** Storeys drawn (the ground floor is the one you walk in; the rest is the block above it). Default 1. */
+  floors?: number;
 }
 
 export type ContainerKind =

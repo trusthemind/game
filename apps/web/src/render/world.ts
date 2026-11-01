@@ -6,6 +6,7 @@ import { patchWorldMaterial, type WorldUniforms } from './patches';
 import type { AssetLibrary } from './assets';
 import { droppedJacket, jacketFabric, JACKET_COLORS, JACKET_VARIANTS } from './jacket3d';
 import { harbourPieces } from './port';
+import { cityPieces } from './city';
 
 export const WALL_H = 2.1;
 
@@ -348,6 +349,8 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
 
   // ── Harbour: water and quay walls, rail track, container stacks, quay cranes, moored ships.
   for (const o of harbourPieces(map, mat, geo, shadows)) group.add(o);
+  // ── City: the monument on the square, petrol station canopies, lock-up garages.
+  for (const o of cityPieces(map, mat, geo, shadows)) group.add(o);
 
   // ── Loot containers: one instanced unit box scaled per kind; colour dims once searched. Wardrobes,
   // drawers and shelves use the furniture models instead (see below).

@@ -6,7 +6,7 @@ import { Tile } from './tiles';
 import { furnish } from './furniture';
 import { createVehicle, vehicleBlocked, type Vehicle, type VehicleSpawn } from '../sim/vehicle';
 
-export type MapId = 'outskirts' | 'pinehollow' | 'portkirov' | 'testsite';
+export type MapId = 'outskirts' | 'pinehollow' | 'portkirov' | 'zavadsk' | 'testsite';
 
 export interface MapPreset {
   id: MapId;
@@ -22,6 +22,11 @@ export interface MapPreset {
   extractNames: string[];
   /** A container port along the south edge: sea, piers, quay cranes, moored ships, rail and stacks (buildPort). */
   port?: boolean;
+  /**
+   * A city: a square with a monument in the middle block, a tram line along the middle avenue, panel blocks of
+   * five and nine storeys round courtyards, petrol stations on the avenues, car parks and lock-up garages.
+   */
+  city?: boolean;
 }
 
 /** Named locations. Sizes are in tiles (≈1 m each); the largest is ~0.07 km² of hand-reachable ground. */
@@ -59,6 +64,18 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
     botDensity: 1.15,
     extractNames: ['Container Gate', 'Smugglers Boat', 'Tram Depot', 'Sewer Outlet', 'Crane Yard', 'North Overpass'],
     port: true,
+  },
+  zavadsk: {
+    id: 'zavadsk',
+    name: 'Zavadsk City',
+    tagline: 'The city: panel blocks round courtyards, the square with the monument, the tram line, garages and petrol stations.',
+    size: 256,
+    districts: { town: 8, industrial: 1, military: 1 },
+    avenues: 4,
+    raidMinutes: 35,
+    botDensity: 1.1,
+    extractNames: ['Tram Depot', 'Ring Road Checkpoint', 'Old Overpass', 'River Bridge', 'Collapsed Tunnel', 'Railway Gate'],
+    city: true,
   },
   testsite: {
     id: 'testsite',
@@ -196,17 +213,25 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   };
   for (const rx of roadsX) for (let y = 2; y < roadEnd; y++) for (let d = 0; d < 3; d++) map.set(rx + d, y, roadTile(rx + d, y));
   for (const ry of roadsY) for (let x = 2; x < size - 2; x++) for (let d = 0; d < 3; d++) map.set(x, ry + d, roadTile(x, ry + d));
+  // A city's middle avenue carries the tram: a track on its east side, two tiles wide.
+  const tramX = preset.city ? roadsX[Math.floor(roadsX.length / 2)]! : -1;
+  if (tramX >= 0) for (let y = 2; y < size - 2; y++) for (let d = 3; d < 5; d++) if (map.get(tramX + d, y) !== Tile.Road) map.set(tramX + d, y, Tile.Rail);
 
   // Blocks between avenues.
-  const xs = [2, ...roadsX.flatMap((r) => [r, r + 3]), size - 2];
+  const xs = [2, ...roadsX.flatMap((r) => [r, r + (r === tramX ? 5 : 3)]), size - 2];
   const ys = [2, ...roadsY.flatMap((r) => [r, r + 3]), preset.port ? terminal - 1 : size - 2];
   const blocks: Rect[] = [];
   for (let i = 0; i < xs.length; i += 2)
     for (let j = 0; j < ys.length; j += 2) blocks.push({ x: xs[i]! + 1, y: ys[j]! + 1, w: xs[i + 1]! - xs[i]! - 2, h: ys[j + 1]! - ys[j]! - 2 });
 
+  // A city's middle block is its square, with the monument.
+  const square = preset.city ? blocks.reduce((a, b) => (Math.hypot(b.x + b.w / 2 - size / 2, b.y + b.h / 2 - size / 2) < Math.hypot(a.x + a.w / 2 - size / 2, a.y + a.h / 2 - size / 2) ? b : a)) : null;
+  if (square) citySquare(map, square, rng);
+
   // Urban blocks get secondary streets; then lots.
   const lots: { r: Rect; d: District }[] = [];
   for (const b of blocks) {
+    if (b === square) continue;
     for (const sub of urbanSplit(map, b, rng)) {
       const d = map.districtOf(Math.floor(sub.x + sub.w / 2), Math.floor(sub.y + sub.h / 2)) ?? 'forest';
       const ls: Rect[] = [];
@@ -225,10 +250,14 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   });
 
   let buildingId = 0;
-  const addBuilding = (lot: Rect, kind: BuildingKind) => {
+  const addBuilding = (lot: Rect, kind: BuildingKind, floors?: number) => {
     if (lot.w < 7 || lot.h < 7) return;
-    map.buildings.push(placeBuilding(map, lot, kind, buildingId++, rng));
+    const b = placeBuilding(map, lot, kind, buildingId++, rng);
+    // Blocks of flats stand three to five storeys in a town, five or nine in the city.
+    b.floors = floors ?? (kind === 'apartment' ? rng.int(3, 5) : 1);
+    map.buildings.push(b);
   };
+  const cityState = { stations: 0, lots: 0 };
   for (const { r: lot, d } of lots) {
     if (milLots.has(lot)) {
       addBuilding(clampLot(lot, 34), 'military');
@@ -236,6 +265,10 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
     }
     switch (d) {
       case 'town': {
+        if (preset.city) {
+          cityLot(map, lot, rng, addBuilding, cityState);
+          break;
+        }
         if (rng.chance(0.12)) decorateLot(map, lot, rng, 0.09);
         else if (lot.w >= 16 && lot.h >= 12 && rng.chance(0.35)) addBuilding(lot, 'apartment');
         else addBuilding(clampLot(lot, 16), rng.weighted([['house', 6], ['shop', 2], ['clinic', 0.8]] as const));
@@ -476,6 +509,105 @@ function urbanSplit(map: GameMap, b: Rect, rng: Rng): Rect[] {
   const ys = [b.y, ...cutsY.flatMap((c) => [c, c + 2]), b.y + b.h];
   for (let i = 0; i < xs.length; i += 2) for (let j = 0; j < ys.length; j += 2) out.push({ x: xs[i]!, y: ys[j]!, w: xs[i + 1]! - xs[i]!, h: ys[j + 1]! - ys[j]! });
   return out.filter((r) => r.w > 3 && r.h > 3);
+}
+
+/** The city square: paving, a monument on its plinth in the middle, lime trees at the corners. */
+function citySquare(map: GameMap, b: Rect, rng: Rng): void {
+  for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) map.set(x, y, Tile.Concrete);
+  const cx = Math.floor(b.x + b.w / 2);
+  const cy = Math.floor(b.y + b.h / 2);
+  map.addBlocker([cx - 1, cy - 1, cx + 2, cy + 2]);
+  map.structures.push({ kind: 'monument', x: cx - 1, y: cy - 1, w: 3, h: 3 });
+  for (const [x, y] of [[b.x + 2, b.y + 2], [b.x + b.w - 3, b.y + 2], [b.x + 2, b.y + b.h - 3], [b.x + b.w - 3, b.y + b.h - 3]] as const)
+    for (let k = 0; k < 3; k++) map.set(x + (k % 2) * (x < cx ? 3 : -3), y + k * (y < cy ? 3 : -3), Tile.Tree);
+  map.pois.push({ x: cx + 3, y: cy }, { x: b.x + 4, y: b.y + 4 }, { x: b.x + b.w - 4, y: b.y + b.h - 4 });
+  void rng;
+}
+
+/**
+ * One city lot: a panel block of five or nine storeys with its courtyard, a petrol station if it fronts an
+ * avenue (two per city), a car park, a row of lock-up garages, or a small shop or clinic.
+ */
+function cityLot(map: GameMap, lot: Rect, rng: Rng, addBuilding: (r: Rect, k: BuildingKind, floors?: number) => void, st: { stations: number; lots: number }): void {
+  st.lots++;
+  const onAvenue = [0, 1, 2, 3].some((side) => {
+    const [x, y] = side === 0 ? [lot.x + lot.w / 2, lot.y - 1] : side === 1 ? [lot.x + lot.w, lot.y + lot.h / 2] : side === 2 ? [lot.x + lot.w / 2, lot.y + lot.h] : [lot.x - 1, lot.y + lot.h / 2];
+    return map.get(Math.floor(x), Math.floor(y)) === Tile.Road;
+  });
+  if (st.stations < 2 && onAvenue && lot.w >= 16 && lot.h >= 14 && st.lots % 5 === 2) {
+    st.stations++;
+    petrolStation(map, lot, rng, addBuilding);
+    return;
+  }
+  const roll = rng.next();
+  if (lot.w >= 16 && lot.h >= 12 && roll < 0.55) {
+    addBuilding(lot, 'apartment', rng.chance(0.65) ? 5 : 9);
+    // The courtyard round it: a few trees and a bench or two in what's left of the lot.
+    decorateLot(map, lot, rng, 0.04);
+    return;
+  }
+  if (roll < 0.68 && lot.w >= 12 && lot.h >= 10) return carPark(map, lot, rng);
+  if (roll < 0.8 && lot.w >= 12 && lot.h >= 14) return garages(map, lot, rng);
+  addBuilding(clampLot(lot, 16), rng.weighted([['shop', 4], ['house', 2], ['clinic', 1]] as const));
+}
+
+/** Forecourt, a canopy over two pump islands, and the kiosk at the back. */
+function petrolStation(map: GameMap, lot: Rect, rng: Rng, addBuilding: (r: Rect, k: BuildingKind) => void): void {
+  for (let y = lot.y; y < lot.y + lot.h; y++) for (let x = lot.x; x < lot.x + lot.w; x++) map.set(x, y, Tile.Concrete);
+  const cw = Math.min(14, lot.w - 4);
+  const cx = lot.x + Math.floor((lot.w - cw) / 2);
+  const cy = lot.y + 2;
+  map.structures.push({ kind: 'canopy', x: cx, y: cy, w: cw, h: 7 });
+  for (const [px, py] of [[cx, cy], [cx + cw - 1, cy], [cx, cy + 6], [cx + cw - 1, cy + 6]] as const) map.addBlocker([px + 0.3, py + 0.3, px + 0.7, py + 0.7]);
+  for (const k of [0.33, 0.66]) {
+    const px = Math.floor(cx + cw * k);
+    map.addBlocker([px, cy + 2, px + 1, cy + 5]);
+  }
+  addBuilding({ x: lot.x + Math.floor((lot.w - 10) / 2), y: lot.y + lot.h - 9, w: 10, h: 9 }, 'shop');
+  map.pois.push({ x: cx + cw / 2, y: cy + 3.5 });
+  void rng;
+}
+
+/** Asphalt with rows of parked cars nose in, an aisle between them; a few left unlocked. */
+function carPark(map: GameMap, lot: Rect, rng: Rng): void {
+  for (let y = lot.y; y < lot.y + lot.h; y++) for (let x = lot.x; x < lot.x + lot.w; x++) map.set(x, y, Tile.Road);
+  const alongX = lot.w >= lot.h;
+  const len = alongX ? lot.w : lot.h;
+  const depth = alongX ? lot.h : lot.w;
+  const rows = depth >= 16 ? [1.6, depth - 1.6] : [1.6];
+  for (const r of rows)
+    for (let a = 2; a + 2 < len; a += 2.8) {
+      if (rng.chance(0.3)) continue;
+      const x = alongX ? lot.x + a : lot.x + r;
+      const y = alongX ? lot.y + r : lot.y + a;
+      map.vehicleSpawns.push({ def: 'zhiguli', x, y, heading: alongX ? Math.PI / 2 : 0, variant: rng.int(0, 3), wreck: true, fuel: 0 });
+      if (rng.chance(0.12)) {
+        const tx = Math.floor(alongX ? x : x + 2.6);
+        const ty = Math.floor(alongX ? y + 2.6 : y);
+        if (map.get(tx, ty) === Tile.Road) map.containers.push(makeContainer(nextContainerId(map), 'carTrunk', tx, ty, 0));
+      }
+    }
+  map.pois.push({ x: lot.x + lot.w / 2, y: lot.y + lot.h / 2 });
+}
+
+/** Lock-up garages: rows of 3×6 m boxes facing a lane, some left open with a crate inside the door. */
+function garages(map: GameMap, lot: Rect, rng: Rng): void {
+  for (let y = lot.y; y < lot.y + lot.h; y++) for (let x = lot.x; x < lot.x + lot.w; x++) map.set(x, y, Tile.Dirt);
+  const rows: [number, 0 | 1][] = lot.h >= 18 ? [[lot.y + 1, 0], [lot.y + lot.h - 7, 1]] : [[lot.y + 1, 0]];
+  for (const [y0, facing] of rows) {
+    const n = Math.floor((lot.w - 2) / 3);
+    if (n < 2) continue;
+    const x0 = lot.x + 1;
+    for (let y = y0; y < y0 + 6; y++) for (let x = x0; x < x0 + n * 3; x++) map.set(x, y, Tile.Wall);
+    map.structures.push({ kind: 'garages', x: x0, y: y0, w: n * 3, h: 6, color: facing });
+    for (let i = 0; i < n; i++)
+      if (rng.chance(0.25)) {
+        const dx = x0 + i * 3 + 1;
+        const dy = facing === 0 ? y0 + 6 : y0 - 1;
+        if (map.get(dx, dy) === Tile.Dirt) map.containers.push(makeContainer(nextContainerId(map), rng.chance(0.2) ? 'ammocrate' : 'crate', dx, dy, 1));
+      }
+  }
+  map.pois.push({ x: lot.x + lot.w / 2, y: lot.y + lot.h / 2 });
 }
 
 /**

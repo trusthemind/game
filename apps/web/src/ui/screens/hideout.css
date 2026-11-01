@@ -79,7 +79,7 @@
 .toast.bad { border-color: var(--bad); }
 
 .modal { width: min(760px, 94vw); }
-.map-picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.map-picks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .map-pick { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 10px; border: 1px solid var(--line); border-radius: 4px; background: rgba(255,255,255,.02); cursor: pointer; }
 .map-pick:hover { border-color: var(--line-2); }
 .map-pick.on { border-color: var(--accent); background: rgba(214,167,74,.07); }
@@ -87,7 +87,8 @@
 .map-thumb { display: block; height: 70px; border-radius: 3px; border: 1px solid var(--line); }
 .map-thumb.outskirts { background: linear-gradient(135deg, #3c4a2c 0 35%, #5a5b55 35% 60%, #2f3a22 60%); }
 .map-thumb.pinehollow { background: radial-gradient(circle at 30% 40%, #2c3a22, #1e2a18 60%), #1e2a18; }
-.map-thumb.portkirov { background: linear-gradient(90deg, #4a4c4a 0 70%, #24354a 70%); }
+.map-thumb.portkirov { background: linear-gradient(180deg, #4a4c4a 0 70%, #24354a 70%); }
+.map-thumb.zavadsk { background: repeating-linear-gradient(90deg, #6a6862 0 18%, #3a3c3a 18% 24%), #4a4a46; }
 
 .deploy-grid { grid-template-columns: 1fr 1fr 1.4fr 1fr; }
 .seg { display: flex; border: 1px solid var(--line-2); border-radius: 4px; overflow: hidden; }

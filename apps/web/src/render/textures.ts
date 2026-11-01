@@ -5,7 +5,7 @@ import { Rng } from '@ashfall/engine';
  * Procedural textures painted into canvases at startup — no asset downloads, nothing to cache-bust,
  * and every texture is generated once and memoised.
  */
-export type TexKind = 'grass' | 'asphalt' | 'wood' | 'concrete' | 'dirt' | 'plaster' | 'bark' | 'metal' | 'roof' | 'tar';
+export type TexKind = 'grass' | 'asphalt' | 'wood' | 'concrete' | 'dirt' | 'plaster' | 'bark' | 'metal' | 'roof' | 'tar' | 'facade';
 
 const cache = new Map<string, THREE.Texture>();
 const SIZE = 256;
@@ -151,6 +151,30 @@ const PAINTERS: Record<TexKind, (g: CanvasRenderingContext2D, rng: Rng) => void>
     g.fillRect(0, 0, SIZE, SIZE);
     blotches(g, rng, 40, ['#5a4c38', '#3a3126', '#544a3a'], 15, 50, 0.4);
     speckle(g, rng, 2500, ['#6a5c48', '#2a231a', '#7a6e5a'], 1, 3);
+  },
+  facade(g, rng) {
+    // One bay of a Soviet panel block, one storey high (tiled 3 m across, 2.8 m up): grey panel with its seams,
+    // a window with a pale frame, the edge of a balcony slab under it; the instance colour tints the panel.
+    g.fillStyle = '#d6d2c8';
+    g.fillRect(0, 0, SIZE, SIZE);
+    blotches(g, rng, 40, ['#cbc6ba', '#e0dcd2', '#c2bcae'], 15, 50, 0.35);
+    speckle(g, rng, 1500, ['#bdb6a8', '#ebe7df', '#a8a092'], 1, 2);
+    g.fillStyle = 'rgba(70,64,56,0.55)';
+    g.fillRect(0, 0, SIZE, 3);
+    g.fillRect(0, 0, 3, SIZE);
+    g.fillStyle = '#efece4';
+    g.fillRect(58, 54, 140, 120);
+    const glass = g.createLinearGradient(0, 62, 0, 166);
+    glass.addColorStop(0, '#3a4a54');
+    glass.addColorStop(1, '#1c2428');
+    g.fillStyle = glass;
+    g.fillRect(66, 62, 124, 104);
+    g.fillStyle = '#efece4';
+    g.fillRect(124, 62, 6, 104);
+    g.fillStyle = 'rgba(40,36,30,0.5)';
+    g.fillRect(40, 196, 176, 14);
+    g.fillStyle = 'rgba(90,80,65,0.18)';
+    g.fillRect(66, 166, 124, 30);
   },
   plaster(g, rng) {
     // Neutral painted plaster (instance colour tints it): soft mottling, rain streaks, grime at the base.

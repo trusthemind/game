@@ -25,13 +25,19 @@ export function buildRoofs(map: GameMap, u: WorldUniforms, shadows: boolean): Ro
     const x1 = b.x + b.w - 0.34 + 0.25;
     const z0 = b.y + 0.34 - 0.25;
     const z1 = b.y + b.h - 0.34 + 0.25;
-    const gable = GABLE.has(b.kind);
-    const g = gable ? gableGeometry(x0, x1, z0, z1, Math.min(2.2, Math.min(b.w, b.h) * 0.28)) : flatGeometry(x0, x1, z0, z1);
+    // A block of flats: the storeys above the one you walk in rise as one panel block, and vanish with the roof.
+    const tower = (b.floors ?? 1) > 1;
+    const gable = !tower && GABLE.has(b.kind);
+    const g = tower
+      ? towerGeometry(b.x + 0.05, b.x + b.w - 0.05, b.y + 0.05, b.y + b.h - 0.05, ((b.floors ?? 1) - 1) * STOREY)
+      : gable
+        ? gableGeometry(x0, x1, z0, z1, Math.min(2.2, Math.min(b.w, b.h) * 0.28))
+        : flatGeometry(x0, x1, z0, z1);
     geos.push(g);
     const mat = patchWorldMaterial(
       new THREE.MeshStandardMaterial({
-        map: getTexture(gable ? 'roof' : 'tar'),
-        color: gable ? rng.pick(ROOF_COLORS) : 0x9c9a92,
+        map: getTexture(tower ? 'facade' : gable ? 'roof' : 'tar'),
+        color: tower ? rng.pick(PANEL_COLORS) : gable ? rng.pick(ROOF_COLORS) : 0x9c9a92,
         roughness: 0.9,
         transparent: true,
         opacity: 1,
@@ -56,6 +62,40 @@ export function buildRoofs(map: GameMap, u: WorldUniforms, shadows: boolean): Ro
       for (const r of roofs) r.mat.dispose();
     },
   };
+}
+
+/** Height of one storey of a panel block. */
+const STOREY = 2.8;
+/** Panel blocks: greys, a dusty beige, a faded pastel. */
+const PANEL_COLORS = [0xe6e2d8, 0xd4d0c6, 0xe8dcc4, 0xd0d8d4, 0xe2d4c8];
+
+/**
+ * The upper storeys of a panel block: four facades from the top of the ground floor up `height` metres, one
+ * window bay per 3 m and storey, and a flat tarred roof on top (the roof's texture repeat makes it plain).
+ */
+function towerGeometry(x0: number, x1: number, z0: number, z1: number, height: number): THREE.BufferGeometry {
+  const y0 = WALL_H;
+  const y1 = WALL_H + height;
+  const p: number[] = [];
+  const uv: number[] = [];
+  const side = (ax: number, az: number, bx: number, bz: number) => {
+    const len = Math.hypot(bx - ax, bz - az) / 3;
+    const h = height / STOREY;
+    p.push(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y0, az, bx, y1, bz, ax, y1, az);
+    uv.push(0, 0, len, 0, len, h, 0, 0, len, h, 0, h);
+  };
+  side(x0, z1, x1, z1);
+  side(x1, z0, x0, z0);
+  side(x1, z1, x1, z0);
+  side(x0, z0, x0, z1);
+  // Roof: a corner of the texture's plain panel, stretched.
+  p.push(x0, y1, z0, x0, y1, z1, x1, y1, z1, x0, y1, z0, x1, y1, z1, x1, y1, z0);
+  uv.push(0.02, 0.9, 0.02, 0.98, 0.1, 0.98, 0.02, 0.9, 0.1, 0.98, 0.1, 0.9);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  return g;
 }
 
 function gableGeometry(x0: number, x1: number, z0: number, z1: number, rise: number): THREE.BufferGeometry {
