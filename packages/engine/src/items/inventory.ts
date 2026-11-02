@@ -1,4 +1,4 @@
-import { getDef, type Caliber, type ItemDef, type Preset } from './defs';
+import { getDef, type Caliber, type Category, type ItemDef, type Preset } from './defs';
 
 /** A concrete item. Containers (rigs, backpacks) carry their own grid, so dropping a backpack keeps its contents. */
 export interface ItemInstance {
@@ -173,6 +173,87 @@ export function addItem(grid: GridContainer, item: ItemInstance): boolean {
   const spot = findSpot(grid, item);
   if (!spot) return false;
   return placeAt(grid, item, spot.x, spot.y, spot.rot);
+}
+
+/** The sort button's order: what you reach for first at the top. */
+const SORT_ORDER: readonly Category[] = ['weapon', 'melee', 'mod', 'ammo', 'armor', 'helmet', 'rig', 'backpack', 'secure', 'med', 'food', 'drink', 'valuable', 'junk', 'money'];
+
+/**
+ * Tidy a grid: top up part-stacks of the same thing, then lay everything out again from the top left, grouped by
+ * kind in SORT_ORDER, the biggest first within a kind (then by name), each lying wide if it fits that way. When
+ * that layout doesn't fit (a grid packed tight by hand), it packs by size alone; when nothing fits, the grid
+ * stays as it was. Returns whether anything changed.
+ */
+export function sortGrid(grid: GridContainer): boolean {
+  const before = grid.items.map((p) => `${p.item.uid}:${p.x}:${p.y}:${!!p.item.rot}:${p.item.stack}`).join();
+  const stacks = grid.items.map((p) => p.item.stack);
+  const items = mergeStacks(grid.items.map((p) => p.item));
+  const area = (it: ItemInstance) => getDef(it.def).w * getDef(it.def).h;
+  const byKind = (a: ItemInstance, b: ItemInstance) =>
+    SORT_ORDER.indexOf(getDef(a.def).category) - SORT_ORDER.indexOf(getDef(b.def).category) ||
+    area(b) - area(a) ||
+    getDef(a.def).name.localeCompare(getDef(b.def).name) ||
+    b.stack - a.stack;
+  const bySize = (a: ItemInstance, b: ItemInstance) => area(b) - area(a) || byKind(a, b);
+  for (const order of [byKind, bySize]) {
+    const plan = pack(grid.w, grid.h, [...items].sort(order));
+    if (!plan) continue;
+    grid.items = plan.map(({ item, x, y, rot }) => {
+      item.rot = rot || undefined;
+      return { item, x, y };
+    });
+    return grid.items.map((p) => `${p.item.uid}:${p.x}:${p.y}:${!!p.item.rot}:${p.item.stack}`).join() !== before;
+  }
+  grid.items.forEach((p, i) => (p.item.stack = stacks[i]!));
+  return false;
+}
+
+/** Fill part-stacks from others of the same thing (found-in-raid ones only with each other); emptied ones go. */
+function mergeStacks(items: ItemInstance[]): ItemInstance[] {
+  const out: ItemInstance[] = [];
+  for (const it of items) {
+    const max = getDef(it.def).stackMax;
+    if (max)
+      for (const o of out) {
+        if (it.stack <= 0) break;
+        if (o.def !== it.def || !!o.fir !== !!it.fir || o.stack >= max) continue;
+        const n = Math.min(max - o.stack, it.stack);
+        o.stack += n;
+        it.stack -= n;
+      }
+    if (!max || it.stack > 0) out.push(it);
+  }
+  return out;
+}
+
+/** First fit, row by row from the top left, wide side first. Null when something doesn't fit. */
+function pack(w: number, h: number, items: ItemInstance[]): { item: ItemInstance; x: number; y: number; rot: boolean }[] | null {
+  const used = new Uint8Array(w * h);
+  const free = (x: number, y: number, fw: number, fh: number) => {
+    if (x + fw > w || y + fh > h) return false;
+    for (let j = y; j < y + fh; j++) for (let i = x; i < x + fw; i++) if (used[j * w + i]) return false;
+    return true;
+  };
+  const out: { item: ItemInstance; x: number; y: number; rot: boolean }[] = [];
+  for (const item of items) {
+    const d = getDef(item.def);
+    const rots = d.w === d.h ? [false] : d.w > d.h ? [false, true] : [true, false];
+    let spot: { x: number; y: number; rot: boolean } | null = null;
+    for (let y = 0; y < h && !spot; y++)
+      for (let x = 0; x < w && !spot; x++)
+        for (const rot of rots) {
+          const f = footprint(item, rot);
+          if (free(x, y, f.w, f.h)) {
+            spot = { x, y, rot };
+            break;
+          }
+        }
+    if (!spot) return null;
+    const f = footprint(item, spot.rot);
+    for (let j = spot.y; j < spot.y + f.h; j++) used.fill(1, j * w + spot.x, j * w + spot.x + f.w);
+    out.push({ item, ...spot });
+  }
+  return out;
 }
 
 export function removeItem(grid: GridContainer, uid: string): Placed | null {

@@ -25,6 +25,7 @@ import {
   getDef,
   reviveCompanion,
   reviveCost,
+  sortGrid,
 } from '@ashfall/engine';
 import { useApp, type HideoutTab } from '../../state/appStore';
 import { useProfile } from '../../state/profileStore';
@@ -156,6 +157,16 @@ function GearTab() {
           <span className="dim">
             <span className="kbd">⇧</span>+click to move · double-click to equip · <span className="kbd">R</span> rotate while dragging
           </span>
+          <button
+            className="btn small"
+            title="Group by kind, biggest first, and top up part-stacks"
+            onClick={() => {
+              const moved = useProfile.getState().tryMutate((d) => sortGrid(d.stash));
+              useApp.getState().toast(moved ? 'Stash sorted' : 'Already in order', moved ? 'good' : undefined);
+            }}
+          >
+            Sort
+          </button>
         </div>
         <div className="pad">
           <ItemGrid gridId="stash" cell={48} maxHeight={window.innerHeight - 190} />

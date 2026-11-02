@@ -19,6 +19,25 @@ export function sellPrice(item: ItemInstance, profile: Profile): number {
   return Math.round(itemValue(item) * (0.55 + traderDiscount(profile) / 2));
 }
 
+/**
+ * Vera's workshop brings armour or a helmet back to full for half its value times the share worn away (0 when
+ * there's nothing to mend). No discount: a repaired plate never sells for more than the repair cost.
+ */
+export function repairCost(item: ItemInstance): number {
+  const def = getDef(item.def);
+  if (!def.armor || item.dur === undefined || item.dur >= def.armor.durability) return 0;
+  return Math.max(100, Math.round(def.value * 0.5 * (1 - item.dur / def.armor.durability)));
+}
+
+export function repair(profile: Profile, item: ItemInstance): { ok: boolean; reason?: string } {
+  const cost = repairCost(item);
+  if (!cost) return { ok: false, reason: 'Nothing to repair' };
+  if (profile.money < cost) return { ok: false, reason: 'Not enough credits' };
+  profile.money -= cost;
+  item.dur = getDef(item.def).armor!.durability;
+  return { ok: true };
+}
+
 /** What the trader offers: unlocks by player level, high-end gear never sold (must be looted). */
 export function traderCatalog(profile: Profile): { def: ItemDef; stack: number; minLevel: number }[] {
   const level = levelFromXp(profile.xp).level;

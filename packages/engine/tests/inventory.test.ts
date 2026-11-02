@@ -19,6 +19,11 @@ import {
   starterKit,
   takeAmmo,
   CONTAINERS,
+  createProfile,
+  itemValue,
+  repair,
+  repairCost,
+  sortGrid,
   type ContainerKind,
 } from '../src/index';
 
@@ -113,6 +118,69 @@ describe('loot and loadouts', () => {
     for (const a of ['scav', 'raider', 'guard', 'boss'] as const) {
       const eq = generateLoadout(a, rng, 1);
       expect(eq.slots.primary || eq.slots.secondary || eq.slots.melee).toBeTruthy();
+    }
+  });
+});
+
+describe('stash sort', () => {
+  it('groups by kind, biggest first, tops up part-stacks and keeps everything', () => {
+    const g = createGrid(8, 6);
+    const items = [createItem('a_9x19', { stack: 20 }), createItem('bandage'), createItem('ak74m'), createItem('a_9x19', { stack: 30 }), createItem('paca'), createItem('pm')];
+    for (const it of items) expect(addItem(g, it)).toBe(true);
+    // addItem tops stacks up by itself; split one by hand to see the sort do it.
+    g.items.push({ item: createItem('a_9x19', { stack: 5 }), x: 7, y: 5 });
+    const total = g.items.filter((p) => p.item.def === 'a_9x19').reduce((n, p) => n + p.item.stack, 0);
+    expect(sortGrid(g)).toBe(true);
+    const order = [...g.items].sort((a, b) => a.y - b.y || a.x - b.x).map((p) => p.item.def);
+    expect(order.indexOf('ak74m')).toBeLessThan(order.indexOf('a_9x19'));
+    expect(order.indexOf('a_9x19')).toBeLessThan(order.indexOf('paca'));
+    expect(order.indexOf('paca')).toBeLessThan(order.indexOf('bandage'));
+    const ammo = g.items.filter((p) => p.item.def === 'a_9x19');
+    expect(ammo.reduce((n, p) => n + p.item.stack, 0)).toBe(total);
+    expect(ammo.filter((p) => p.item.stack < ITEMS.a_9x19!.stackMax!).length).toBeLessThanOrEqual(1);
+    // Nothing overlaps and everything is inside.
+    for (const p of g.items) expect(canPlace(g, p.item, p.x, p.y, !!p.item.rot)).toBe(true);
+    expect(sortGrid(g)).toBe(false);
+  });
+
+  it('leaves a grid it cannot lay out again as it was, stacks too', () => {
+    // More than fits (a grid shrunk under its items): no order works, so nothing may change.
+    const g = createGrid(1, 1);
+    g.items = [
+      { item: createItem('a_9x19', { stack: 10 }), x: 0, y: 0 },
+      { item: createItem('a_9x19', { stack: 15 }), x: 0, y: 0 },
+      { item: createItem('bandage'), x: 0, y: 0 },
+    ];
+    const before = JSON.stringify(g.items);
+    expect(sortGrid(g)).toBe(false);
+    expect(JSON.stringify(g.items)).toBe(before);
+  });
+});
+
+describe('armour repair', () => {
+  it('charges half the value for the share worn away and restores it', () => {
+    const p = createProfile();
+    const vest = createItem('trooper');
+    vest.dur = ITEMS.trooper!.armor!.durability / 2;
+    expect(repairCost(vest)).toBe(Math.round(ITEMS.trooper!.value * 0.25));
+    p.money = 1000;
+    expect(repair(p, vest)).toEqual({ ok: false, reason: 'Not enough credits' });
+    p.money = 100000;
+    expect(repair(p, vest).ok).toBe(true);
+    expect(vest.dur).toBe(ITEMS.trooper!.armor!.durability);
+    expect(p.money).toBe(100000 - Math.round(ITEMS.trooper!.value * 0.25));
+    expect(repairCost(vest)).toBe(0);
+    expect(repairCost(createItem('ak74m'))).toBe(0);
+  });
+
+  it('never pays for itself on resale, even at the best trader discount', () => {
+    for (const d of Object.values(ITEMS)) {
+      if (!d.armor) continue;
+      for (const f of [0.05, 0.3, 0.6, 0.95]) {
+        const worn = createItem(d.id, { dur: d.armor.durability * f });
+        const gain = (itemValue(createItem(d.id)) - itemValue(worn)) * (0.55 + 0.25 / 2);
+        expect(gain).toBeLessThan(repairCost(worn));
+      }
     }
   });
 });

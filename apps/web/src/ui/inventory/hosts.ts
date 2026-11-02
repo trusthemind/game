@@ -3,6 +3,8 @@ import {
   getDef,
   peekSource,
   removeItem,
+  repair,
+  repairCost,
   sellPrice,
   slotAccepts,
   SLOTS,
@@ -72,6 +74,23 @@ export function makeProfileHost(): InvHost {
       const out: MenuAction[] = [];
       if (src.kind === 'grid' && src.gridId === 'stash') out.push({ label: 'Equip', run: () => host.apply((r) => equipQuick(r, src, r.equipment('player')!)) });
       else out.push({ label: 'Move to stash', run: () => host.apply((r) => quickMove(toSource(r, src)!, [r.grid('stash')!])) });
+      const cost = repairCost(item);
+      if (cost)
+        out.push({
+          label: `Repair · ${fmt(cost)} ₵`,
+          run: () => {
+            let why: string | undefined;
+            const ok = store.getState().tryMutate((d) => {
+              const s = toSource(profileResolver(() => d), src);
+              const it = s && peekSource(s);
+              if (!it) return false;
+              const r = repair(d, it);
+              why = r.reason;
+              return r.ok;
+            });
+            useApp.getState().toast(ok ? `Repaired for ${fmt(cost)} ₵` : (why ?? 'Can’t repair that'), ok ? 'good' : 'bad');
+          },
+        });
       out.push({ label: `Sell · ${fmt(price)} ₵`, run: () => host.dropSpecial!('sell', src) });
       out.push({ label: 'Discard', danger: true, run: () => host.apply((r) => !!removeFrom(r, src)) });
       return out;
