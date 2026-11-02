@@ -21,7 +21,7 @@ export type Caliber = '9x18' | '9x19' | '12g' | '5.45' | '5.56' | '7.62x39' | '7
 
 export type WeaponClass = 'pistol' | 'smg' | 'rifle' | 'shotgun' | 'marksman' | 'lmg';
 /** What kind of part an attachment is. The first six are the attachment slots every older gun has. */
-export type ModSlot = 'muzzle' | 'scope' | 'grip' | 'mag' | 'stock' | 'light' | 'pgrip' | 'dustcover' | 'gastube' | 'handguard' | 'barrel';
+export type ModSlot = 'muzzle' | 'scope' | 'grip' | 'mag' | 'stock' | 'light' | 'pgrip' | 'dustcover' | 'gastube' | 'handguard' | 'barrel' | 'slide' | 'cylinder';
 export const MOD_SLOTS: readonly ModSlot[] = ['muzzle', 'scope', 'grip', 'stock', 'mag', 'light'];
 
 /**
@@ -47,7 +47,38 @@ export type Mount =
   | 'ar_buffer'
   | 'ar_pgrip'
   | 'ar_muzzle'
-  | 'stanag';
+  | 'stanag'
+  | 'pm_slide'
+  | 'pm_mag'
+  | 'mp443_slide'
+  | 'mp443_mag'
+  | 'glock_slide'
+  | 'glock_mag'
+  | 'pistol_optic'
+  | 'pistol9_muzzle'
+  | 'rhino_cylinder'
+  | 'pp19_stock'
+  | 'pp19_handguard'
+  | 'pp19_mag'
+  | 'mp5_stock'
+  | 'mp5_handguard'
+  | 'mp5_mag'
+  | 'vector_stock'
+  | 'vector_mag'
+  | 'rpk16_handguard'
+  | 'scope_rings'
+  | 'rifle762_muzzle'
+  | 'rifle54_muzzle'
+  | 'sks_mag'
+  | 'vepr_stock'
+  | 'vepr_mag'
+  | 'svd_stock'
+  | 'svd_handguard'
+  | 'svd_mag'
+  | 'sv98_mag'
+  | 'pkm_stock'
+  | 'pkm_box'
+  | 'aug_mag';
 
 /** A place on a weapon or part where another part goes. */
 export interface Socket {
@@ -210,6 +241,158 @@ const M4A1 = {
   ] as Socket[],
   preset: { barrel: ['ar_barrel_145', { muzzle: 'ar_fh_a2' }], handguard: 'ar_hg_m4', pgrip: 'ar_pg_a2', stock: 'ar_st_m4', mag: 'mag_stanag30' } as Preset,
 };
+// Pistols: the frame is the gun; the slide (a revolver's cylinder) and the magazine are parts.
+const PISTOL_RAIL: Socket = { id: 'tactical', label: 'Rail', accepts: ['picatinny'], kinds: ['light'] };
+const PM = {
+  sockets: [
+    { id: 'slide', label: 'Slide', accepts: ['pm_slide'], required: true },
+    { id: 'mag', label: 'Magazine', accepts: ['pm_mag'], required: true },
+  ] as Socket[],
+  preset: { slide: 'pm_slide', mag: 'pm_mag8' } as Preset,
+};
+const MP443 = {
+  sockets: [
+    { id: 'slide', label: 'Slide', accepts: ['mp443_slide'], required: true },
+    PISTOL_RAIL,
+    { id: 'mag', label: 'Magazine', accepts: ['mp443_mag'], required: true },
+  ] as Socket[],
+  preset: { slide: 'mp443_slide', mag: 'mp443_mag18' } as Preset,
+};
+const GLOCK17 = {
+  sockets: [
+    { id: 'slide', label: 'Slide', accepts: ['glock_slide'], required: true },
+    { id: 'muzzle', label: 'Muzzle', accepts: ['pistol9_muzzle'] },
+    PISTOL_RAIL,
+    { id: 'mag', label: 'Magazine', accepts: ['glock_mag'], required: true },
+  ] as Socket[],
+  preset: { slide: 'glock_slide', mag: 'glock_mag17' } as Preset,
+};
+const RHINO = {
+  sockets: [{ id: 'cylinder', label: 'Cylinder', accepts: ['rhino_cylinder'], required: true }] as Socket[],
+  preset: { cylinder: 'rhino_cyl' } as Preset,
+};
+// Submachine guns: each its own stock, handguard and magazine (the parts are drawn in its own model's frame, so a
+// part from another platform can't take their place); sights, lights, grips and the 9 mm suppressor bolt on.
+const SMG_TOP: Socket = { id: 'sight', label: 'Top rail', accepts: ['picatinny'], kinds: ['scope'] };
+const SMG_MUZZLE: Socket = { id: 'muzzle', label: 'Muzzle', accepts: ['pistol9_muzzle'] };
+const PP19 = {
+  sockets: [
+    SMG_TOP,
+    { id: 'handguard', label: 'Handguard', accepts: ['pp19_handguard'], required: true },
+    { id: 'stock', label: 'Stock', accepts: ['pp19_stock'] },
+    SMG_MUZZLE,
+    { id: 'mag', label: 'Magazine', accepts: ['pp19_mag'], required: true },
+  ] as Socket[],
+  preset: { handguard: 'pp19_hg', stock: 'pp19_st', mag: 'pp19_mag30' } as Preset,
+};
+const MP5 = {
+  sockets: [
+    SMG_TOP,
+    { id: 'handguard', label: 'Handguard', accepts: ['mp5_handguard'], required: true },
+    { id: 'stock', label: 'Stock', accepts: ['mp5_stock'] },
+    SMG_MUZZLE,
+    { id: 'mag', label: 'Magazine', accepts: ['mp5_mag'], required: true },
+  ] as Socket[],
+  preset: { handguard: 'mp5_hg', stock: 'mp5_st', mag: 'mp5_mag30' } as Preset,
+};
+const VECTOR = {
+  sockets: [
+    SMG_TOP,
+    { id: 'foregrip', label: 'Bottom rail', accepts: ['picatinny'], kinds: ['grip'] },
+    { id: 'tactical', label: 'Side rail', accepts: ['picatinny'], kinds: ['light'] },
+    { id: 'stock', label: 'Stock', accepts: ['vector_stock'] },
+    SMG_MUZZLE,
+    { id: 'mag', label: 'Magazine', accepts: ['vector_mag'], required: true },
+  ] as Socket[],
+  preset: { stock: 'vector_st', mag: 'vector_mag17' } as Preset,
+};
+// Rifles and machine guns. The RPK-16 is an AK (its grips, stocks, muzzle devices and magazines are the AK-74's),
+// the HK416 an AR (grips, stocks, STANAG magazines); the rest are each their own model with their own stock,
+// handguard and magazine where those come off. Marksman rifles take scope rings as well as a Picatinny rail.
+const RIFLE_TOP: Socket = { id: 'sight', label: 'Scope mount', accepts: ['picatinny', 'scope_rings'], kinds: ['scope'] };
+const DOVETAIL: Socket = { id: 'side', label: 'Side mount', accepts: ['ak_dovetail'], kinds: ['scope'] };
+const RPK16 = {
+  sockets: [
+    { id: 'pgrip', label: 'Pistol grip', accepts: ['ak_pgrip'], required: true },
+    { id: 'sight', label: 'Top rail', accepts: ['picatinny'], kinds: ['scope'] },
+    { id: 'handguard', label: 'Handguard', accepts: ['rpk16_handguard'], required: true },
+    { id: 'stock', label: 'Stock', accepts: ['ak_stock'] },
+    { id: 'muzzle', label: 'Muzzle', accepts: ['ak545_muzzle'] },
+    { id: 'mag', label: 'Magazine', accepts: ['ak545_mag'], required: true },
+  ] as Socket[],
+  preset: { pgrip: 'ak_pg_rpk16', handguard: 'rpk16_hg', stock: 'ak_st_rpk16', muzzle: 'ak_mz_rpk16', mag: 'mag_ak45' } as Preset,
+};
+const HK416 = {
+  sockets: [
+    { id: 'sight', label: 'Top rail', accepts: ['picatinny'], kinds: ['scope'] },
+    { id: 'foregrip', label: 'Bottom rail', accepts: ['picatinny'], kinds: ['grip'] },
+    { id: 'tactical', label: 'Side rail', accepts: ['picatinny'], kinds: ['light'] },
+    { id: 'muzzle', label: 'Muzzle', accepts: ['ar_muzzle'] },
+    { id: 'pgrip', label: 'Pistol grip', accepts: ['ar_pgrip'], required: true },
+    { id: 'stock', label: 'Stock', accepts: ['ar_buffer'] },
+    { id: 'mag', label: 'Magazine', accepts: ['stanag'], required: true },
+  ] as Socket[],
+  preset: { pgrip: 'ar_pg_hk416', stock: 'ar_st_hk416', mag: 'mag_stanag30' } as Preset,
+};
+const SKS = {
+  sockets: [
+    RIFLE_TOP,
+    { id: 'muzzle', label: 'Muzzle', accepts: ['rifle762_muzzle'] },
+    { id: 'mag', label: 'Magazine', accepts: ['sks_mag'], required: true },
+  ] as Socket[],
+  preset: { mag: 'sks_mag10' } as Preset,
+};
+const VEPR = {
+  sockets: [
+    RIFLE_TOP,
+    { id: 'stock', label: 'Stock', accepts: ['vepr_stock'] },
+    { id: 'muzzle', label: 'Muzzle', accepts: ['rifle762_muzzle'] },
+    { id: 'mag', label: 'Magazine', accepts: ['vepr_mag'], required: true },
+  ] as Socket[],
+  preset: { stock: 'vepr_st', mag: 'vepr_mag10' } as Preset,
+};
+const SVD = {
+  sockets: [
+    DOVETAIL,
+    RIFLE_TOP,
+    { id: 'handguard', label: 'Handguard', accepts: ['svd_handguard'], required: true },
+    { id: 'stock', label: 'Stock', accepts: ['svd_stock'] },
+    { id: 'muzzle', label: 'Muzzle', accepts: ['rifle54_muzzle'] },
+    { id: 'mag', label: 'Magazine', accepts: ['svd_mag'], required: true },
+  ] as Socket[],
+  preset: { handguard: 'svd_hg', stock: 'svd_st', mag: 'svd_mag10' } as Preset,
+};
+const SV98 = {
+  sockets: [
+    RIFLE_TOP,
+    { id: 'muzzle', label: 'Muzzle', accepts: ['rifle54_muzzle'] },
+    { id: 'mag', label: 'Magazine', accepts: ['sv98_mag'], required: true },
+  ] as Socket[],
+  preset: { mag: 'sv98_mag10' } as Preset,
+};
+const MOSIN = {
+  sockets: [RIFLE_TOP, { id: 'muzzle', label: 'Muzzle', accepts: ['rifle54_muzzle'] }] as Socket[],
+  preset: {} as Preset,
+};
+const PKM = {
+  sockets: [
+    DOVETAIL,
+    { id: 'sight', label: 'Top rail', accepts: ['picatinny'], kinds: ['scope'] },
+    { id: 'stock', label: 'Stock', accepts: ['pkm_stock'] },
+    { id: 'muzzle', label: 'Muzzle', accepts: ['rifle54_muzzle'] },
+    { id: 'mag', label: 'Ammo box', accepts: ['pkm_box'], required: true },
+  ] as Socket[],
+  preset: { stock: 'pkm_st', mag: 'pkm_box100' } as Preset,
+};
+const AUG = {
+  sockets: [
+    { id: 'sight', label: 'Top rail', accepts: ['picatinny'], kinds: ['scope'] },
+    { id: 'foregrip', label: 'Bottom rail', accepts: ['picatinny'], kinds: ['grip'] },
+    { id: 'muzzle', label: 'Muzzle', accepts: ['ar_muzzle'] },
+    { id: 'mag', label: 'Magazine', accepts: ['aug_mag'], required: true },
+  ] as Socket[],
+  preset: { mag: 'aug_mag30' } as Preset,
+};
 const RAILS = (...ids: ('foregrip' | 'tactical' | 'sight')[]): Socket[] =>
   ids.map((id) =>
     id === 'foregrip'
@@ -223,15 +406,15 @@ const AR_MUZZLE: Socket[] = [{ id: 'muzzle', label: 'Muzzle', accepts: ['ar_muzz
 const defs: ItemDef[] = [
   // ── Weapons ──────────────────────────────────────────────
   { id: 'pm', name: 'PM 9x18 pistol', short: 'PM', category: 'weapon', w: 2, h: 1, weight: 0.7, value: 9000, rarity: 1,
-    weapon: { cls: 'pistol', caliber: '9x18', damage: 28, rpm: 360, magSize: 8, spread: 0.06, range: 22, reloadTime: 1.6, noise: 22, auto: false, recoil: 0.04 } },
+    weapon: { cls: 'pistol', caliber: '9x18', damage: 28, rpm: 360, magSize: 8, spread: 0.06, range: 22, reloadTime: 1.6, noise: 22, auto: false, recoil: 0.04, ...PM } },
   { id: 'mp443', name: 'MP-443 9x19 pistol', short: 'MP-443', category: 'weapon', w: 2, h: 1, weight: 0.9, value: 21000, rarity: 2,
-    weapon: { cls: 'pistol', caliber: '9x19', damage: 34, rpm: 400, magSize: 18, spread: 0.05, range: 24, reloadTime: 1.7, noise: 24, auto: false, recoil: 0.045 } },
+    weapon: { cls: 'pistol', caliber: '9x19', damage: 34, rpm: 400, magSize: 18, spread: 0.05, range: 24, reloadTime: 1.7, noise: 24, auto: false, recoil: 0.045, ...MP443 } },
   { id: 'mp133', name: 'MP-133 12ga shotgun', short: 'MP-133', category: 'weapon', w: 4, h: 1, weight: 3.5, value: 18000, rarity: 1,
     weapon: { cls: 'shotgun', caliber: '12g', damage: 24, rpm: 70, magSize: 6, spread: 0.11, range: 16, reloadTime: 3.2, noise: 32, auto: false, pellets: 8, recoil: 0.14 } },
   { id: 'aks74u', name: 'AKS-74U carbine', short: 'AKS-74U', category: 'weapon', w: 3, h: 2, weight: 2.7, value: 34000, rarity: 2,
     weapon: { cls: 'rifle', caliber: '5.45', damage: 40, rpm: 650, magSize: 30, spread: 0.045, range: 30, reloadTime: 2.3, noise: 30, auto: true, recoil: 0.05, ...AKS74U } },
   { id: 'sks', name: 'SKS carbine', short: 'SKS', category: 'weapon', w: 4, h: 1, weight: 3.8, value: 29000, rarity: 2,
-    weapon: { cls: 'marksman', caliber: '7.62x39', damage: 54, rpm: 300, magSize: 10, spread: 0.018, range: 42, reloadTime: 2.8, noise: 34, auto: false, recoil: 0.06 } },
+    weapon: { cls: 'marksman', caliber: '7.62x39', damage: 54, rpm: 300, magSize: 10, spread: 0.018, range: 42, reloadTime: 2.8, noise: 34, auto: false, recoil: 0.06, ...SKS } },
   { id: 'ak74m', name: 'AK-74M assault rifle', short: 'AK-74M', category: 'weapon', w: 4, h: 2, weight: 3.6, value: 62000, rarity: 3,
     weapon: { cls: 'rifle', caliber: '5.45', damage: 42, rpm: 650, magSize: 30, spread: 0.028, range: 40, reloadTime: 2.4, noise: 34, auto: true, recoil: 0.04, ...AK74M } },
   { id: 'm4a1', name: 'M4A1 rifle', short: 'M4A1', category: 'weapon', w: 4, h: 2, weight: 3.2, value: 88000, rarity: 4,
@@ -239,62 +422,62 @@ const defs: ItemDef[] = [
   { id: 'akm', name: 'AKM assault rifle', short: 'AKM', category: 'weapon', w: 4, h: 2, weight: 3.8, value: 58000, rarity: 3,
     weapon: { cls: 'rifle', caliber: '7.62x39', damage: 56, rpm: 600, magSize: 30, spread: 0.032, range: 40, reloadTime: 2.5, noise: 36, auto: true, recoil: 0.06, ...AKM } },
   { id: 'svd', name: 'SVD marksman rifle', short: 'SVD', category: 'weapon', w: 5, h: 1, weight: 4.3, value: 115000, rarity: 4,
-    weapon: { cls: 'marksman', caliber: '7.62x54', damage: 86, rpm: 200, magSize: 10, spread: 0.008, range: 60, reloadTime: 3.0, noise: 42, auto: false, recoil: 0.09 } },
+    weapon: { cls: 'marksman', caliber: '7.62x54', damage: 86, rpm: 200, magSize: 10, spread: 0.008, range: 60, reloadTime: 3.0, noise: 42, auto: false, recoil: 0.09, ...SVD } },
   { id: 'pkm', name: 'PKM machine gun', short: 'PKM', category: 'weapon', w: 5, h: 2, weight: 8.9, value: 190000, rarity: 5,
-    weapon: { cls: 'lmg', caliber: '7.62x54', damage: 78, rpm: 700, magSize: 100, spread: 0.04, range: 50, reloadTime: 5.5, noise: 44, auto: true, recoil: 0.05 } },
+    weapon: { cls: 'lmg', caliber: '7.62x54', damage: 78, rpm: 700, magSize: 100, spread: 0.04, range: 50, reloadTime: 5.5, noise: 44, auto: true, recoil: 0.05, ...PKM } },
 
   { id: 'glock17', name: 'Glock 17 pistol', short: 'G17', category: 'weapon', w: 2, h: 1, weight: 0.7, value: 26000, rarity: 2,
-    weapon: { cls: 'pistol', caliber: '9x19', damage: 33, rpm: 450, magSize: 17, spread: 0.05, range: 24, reloadTime: 1.6, noise: 24, auto: false, recoil: 0.04 } },
+    weapon: { cls: 'pistol', caliber: '9x19', damage: 33, rpm: 450, magSize: 17, spread: 0.05, range: 24, reloadTime: 1.6, noise: 24, auto: false, recoil: 0.04, ...GLOCK17 } },
   { id: 'rhino', name: 'Chiappa Rhino revolver', short: 'RHINO', category: 'weapon', w: 2, h: 1, weight: 0.8, value: 38000, rarity: 3,
-    weapon: { cls: 'pistol', caliber: '9x19', damage: 46, rpm: 220, magSize: 6, spread: 0.035, range: 26, reloadTime: 2.6, noise: 26, auto: false, recoil: 0.08 } },
+    weapon: { cls: 'pistol', caliber: '9x19', damage: 46, rpm: 220, magSize: 6, spread: 0.035, range: 26, reloadTime: 2.6, noise: 26, auto: false, recoil: 0.08, ...RHINO } },
   { id: 'toz', name: 'TOZ-66 sawed-off', short: 'TOZ', category: 'weapon', w: 2, h: 1, weight: 2.1, value: 12000, rarity: 1,
     weapon: { cls: 'shotgun', caliber: '12g', damage: 26, rpm: 400, magSize: 2, spread: 0.16, range: 12, reloadTime: 2.4, noise: 34, auto: false, pellets: 9, recoil: 0.16 } },
   { id: 'pp19', name: 'PP-19-01 Vityaz SMG', short: 'VITYAZ', category: 'weapon', w: 3, h: 2, weight: 2.9, value: 39000, rarity: 2,
-    weapon: { cls: 'smg', caliber: '9x19', damage: 32, rpm: 700, magSize: 30, spread: 0.042, range: 27, reloadTime: 2.2, noise: 27, auto: true, recoil: 0.03 } },
+    weapon: { cls: 'smg', caliber: '9x19', damage: 32, rpm: 700, magSize: 30, spread: 0.042, range: 27, reloadTime: 2.2, noise: 27, auto: true, recoil: 0.03, ...PP19 } },
   { id: 'mp5', name: 'MP5 submachine gun', short: 'MP5', category: 'weapon', w: 3, h: 2, weight: 2.5, value: 45000, rarity: 3,
-    weapon: { cls: 'smg', caliber: '9x19', damage: 31, rpm: 800, magSize: 30, spread: 0.04, range: 26, reloadTime: 2.0, noise: 26, auto: true, recoil: 0.025 } },
+    weapon: { cls: 'smg', caliber: '9x19', damage: 31, rpm: 800, magSize: 30, spread: 0.04, range: 26, reloadTime: 2.0, noise: 26, auto: true, recoil: 0.025, ...MP5 } },
   { id: 'vector', name: 'KRISS Vector 9x19', short: 'VECTOR', category: 'weapon', w: 3, h: 2, weight: 2.7, value: 120000, rarity: 4,
-    weapon: { cls: 'smg', caliber: '9x19', damage: 30, rpm: 1100, magSize: 17, spread: 0.045, range: 24, reloadTime: 2.1, noise: 26, auto: true, recoil: 0.022 } },
+    weapon: { cls: 'smg', caliber: '9x19', damage: 30, rpm: 1100, magSize: 17, spread: 0.045, range: 24, reloadTime: 2.1, noise: 26, auto: true, recoil: 0.022, ...VECTOR } },
   { id: 'saiga12', name: 'Saiga-12K shotgun', short: 'SAIGA', category: 'weapon', w: 4, h: 1, weight: 3.6, value: 55000, rarity: 3,
     weapon: { cls: 'shotgun', caliber: '12g', damage: 24, rpm: 240, magSize: 5, spread: 0.1, range: 17, reloadTime: 3.0, noise: 34, auto: false, pellets: 8, recoil: 0.12 } },
   { id: 'vepr', name: 'Vepr Hunter carbine', short: 'VEPR', category: 'weapon', w: 4, h: 1, weight: 3.9, value: 33000, rarity: 2,
-    weapon: { cls: 'marksman', caliber: '7.62x39', damage: 58, rpm: 340, magSize: 10, spread: 0.016, range: 44, reloadTime: 2.7, noise: 35, auto: false, recoil: 0.065 } },
+    weapon: { cls: 'marksman', caliber: '7.62x39', damage: 58, rpm: 340, magSize: 10, spread: 0.016, range: 44, reloadTime: 2.7, noise: 35, auto: false, recoil: 0.065, ...VEPR } },
   { id: 'aug', name: 'Steyr AUG A3', short: 'AUG', category: 'weapon', w: 3, h: 2, weight: 3.4, value: 110000, rarity: 4,
-    weapon: { cls: 'rifle', caliber: '5.56', damage: 44, rpm: 700, magSize: 30, spread: 0.021, range: 44, reloadTime: 2.4, noise: 33, auto: true, recoil: 0.032 } },
+    weapon: { cls: 'rifle', caliber: '5.56', damage: 44, rpm: 700, magSize: 30, spread: 0.021, range: 44, reloadTime: 2.4, noise: 33, auto: true, recoil: 0.032, ...AUG } },
   { id: 'hk416', name: 'HK 416A5', short: 'HK416', category: 'weapon', w: 4, h: 2, weight: 3.5, value: 150000, rarity: 5,
-    weapon: { cls: 'rifle', caliber: '5.56', damage: 45, rpm: 850, magSize: 30, spread: 0.02, range: 46, reloadTime: 2.2, noise: 33, auto: true, recoil: 0.03 } },
+    weapon: { cls: 'rifle', caliber: '5.56', damage: 45, rpm: 850, magSize: 30, spread: 0.02, range: 46, reloadTime: 2.2, noise: 33, auto: true, recoil: 0.03, ...HK416 } },
   { id: 'rpk16', name: 'RPK-16 light machine gun', short: 'RPK-16', category: 'weapon', w: 5, h: 2, weight: 4.8, value: 98000, rarity: 4,
-    weapon: { cls: 'lmg', caliber: '5.45', damage: 43, rpm: 650, magSize: 45, spread: 0.03, range: 44, reloadTime: 3.2, noise: 35, auto: true, recoil: 0.035 } },
+    weapon: { cls: 'lmg', caliber: '5.45', damage: 43, rpm: 650, magSize: 45, spread: 0.03, range: 44, reloadTime: 2.86, noise: 35, auto: true, recoil: 0.035, ...RPK16 } },
   { id: 'mosin', name: 'Mosin bolt-action rifle', short: 'MOSIN', category: 'weapon', w: 5, h: 1, weight: 4.0, value: 52000, rarity: 2,
-    weapon: { cls: 'marksman', caliber: '7.62x54', damage: 98, rpm: 45, magSize: 5, spread: 0.006, range: 64, reloadTime: 3.5, noise: 44, auto: false, recoil: 0.12 } },
+    weapon: { cls: 'marksman', caliber: '7.62x54', damage: 98, rpm: 45, magSize: 5, spread: 0.006, range: 64, reloadTime: 3.5, noise: 44, auto: false, recoil: 0.12, ...MOSIN } },
   { id: 'sv98', name: 'SV-98 sniper rifle', short: 'SV-98', category: 'weapon', w: 5, h: 1, weight: 5.8, value: 165000, rarity: 5,
-    weapon: { cls: 'marksman', caliber: '7.62x54', damage: 104, rpm: 50, magSize: 10, spread: 0.004, range: 70, reloadTime: 3.2, noise: 44, auto: false, recoil: 0.11 } },
+    weapon: { cls: 'marksman', caliber: '7.62x54', damage: 104, rpm: 50, magSize: 10, spread: 0.004, range: 70, reloadTime: 3.2, noise: 44, auto: false, recoil: 0.11, ...SV98 } },
 
   // ── Weapon mods ──────────────────────────────────────────
   { id: 'sup_9', name: '9mm suppressor', short: 'SUP 9', category: 'mod', w: 2, h: 1, weight: 0.2, value: 21000, rarity: 3,
-    mod: { slot: 'muzzle', calibers: ['9x18', '9x19'], classes: ['pistol', 'smg'], noiseMul: 0.32, suppressed: true, recoilMul: 0.9, rangeMul: 0.95, ergo: 0.99 } },
+    mod: { slot: 'muzzle', mounts: ['pistol9_muzzle'], calibers: ['9x18', '9x19'], classes: ['pistol', 'smg'], noiseMul: 0.32, suppressed: true, recoilMul: 0.9, rangeMul: 0.95, ergo: 0.99 } },
   { id: 'sup_545', name: '5.45 suppressor', short: 'SUP 545', category: 'mod', w: 2, h: 1, weight: 0.4, value: 34000, rarity: 3,
     mod: { slot: 'muzzle', mounts: ['ak545_muzzle', 'aks74u_muzzle'], calibers: ['5.45'], noiseMul: 0.36, suppressed: true, recoilMul: 0.88, ergo: 0.98 } },
   { id: 'sup_556', name: '5.56 suppressor', short: 'SUP 556', category: 'mod', w: 2, h: 1, weight: 0.4, value: 39000, rarity: 4,
     mod: { slot: 'muzzle', mounts: ['ar_muzzle'], calibers: ['5.56'], noiseMul: 0.36, suppressed: true, recoilMul: 0.88, ergo: 0.98 } },
   { id: 'sup_762', name: '7.62x39 suppressor', short: 'SUP 762', category: 'mod', w: 2, h: 1, weight: 0.5, value: 36000, rarity: 3,
-    mod: { slot: 'muzzle', mounts: ['ak762_muzzle'], calibers: ['7.62x39'], noiseMul: 0.38, suppressed: true, recoilMul: 0.86, ergo: 0.98 } },
+    mod: { slot: 'muzzle', mounts: ['ak762_muzzle', 'rifle762_muzzle'], calibers: ['7.62x39'], noiseMul: 0.38, suppressed: true, recoilMul: 0.86, ergo: 0.98 } },
   { id: 'sup_54r', name: '7.62x54R suppressor', short: 'SUP 54R', category: 'mod', w: 3, h: 1, weight: 0.6, value: 62000, rarity: 4,
-    mod: { slot: 'muzzle', ids: ['svd', 'mosin', 'sv98'], noiseMul: 0.4, suppressed: true, recoilMul: 0.85, ergo: 0.97 } },
+    mod: { slot: 'muzzle', mounts: ['rifle54_muzzle'], ids: ['svd', 'mosin', 'sv98', 'pkm'], noiseMul: 0.4, suppressed: true, recoilMul: 0.85, ergo: 0.97 } },
   { id: 'brake', name: 'Muzzle brake', short: 'BRAKE', category: 'mod', w: 1, h: 1, weight: 0.15, value: 9000, rarity: 2,
-    mod: { slot: 'muzzle', mounts: ['ak545_muzzle', 'ak762_muzzle', 'ar_muzzle'], calibers: ['5.45', '5.56', '7.62x39', '7.62x54'], classes: ['rifle', 'lmg', 'marksman'], recoilMul: 0.7, noiseMul: 1.12 } },
+    mod: { slot: 'muzzle', mounts: ['ak545_muzzle', 'ak762_muzzle', 'ar_muzzle', 'rifle762_muzzle', 'rifle54_muzzle'], calibers: ['5.45', '5.56', '7.62x39', '7.62x54'], classes: ['rifle', 'lmg', 'marksman'], recoilMul: 0.7, noiseMul: 1.12 } },
   { id: 'red_dot', name: 'Red dot sight', short: 'RDS', category: 'mod', w: 1, h: 1, weight: 0.1, value: 12000, rarity: 2,
-    mod: { slot: 'scope', mounts: ['picatinny'], classes: ['pistol', 'smg', 'rifle', 'shotgun', 'lmg'], aimSpreadMul: 0.82, zoom: 1.06 } },
+    mod: { slot: 'scope', mounts: ['picatinny', 'pistol_optic'], classes: ['pistol', 'smg', 'rifle', 'shotgun', 'lmg'], aimSpreadMul: 0.82, zoom: 1.06 } },
   { id: 'holo', name: 'Holographic sight', short: 'HOLO', category: 'mod', w: 1, h: 1, weight: 0.3, value: 26000, rarity: 3,
     mod: { slot: 'scope', mounts: ['picatinny'], classes: ['smg', 'rifle', 'shotgun', 'lmg'], aimSpreadMul: 0.76, zoom: 1.1 } },
   { id: 'scope_4x', name: '4x combat scope', short: '4X', category: 'mod', w: 2, h: 1, weight: 0.5, value: 48000, rarity: 4,
     mod: { slot: 'scope', mounts: ['picatinny'], classes: ['rifle', 'marksman', 'lmg'], aimSpreadMul: 0.55, zoom: 1.4, ergo: 0.98 } },
   { id: 'scope_8x', name: '8x sniper scope', short: '8X', category: 'mod', w: 2, h: 1, weight: 0.8, value: 85000, rarity: 5,
-    mod: { slot: 'scope', classes: ['marksman'], aimSpreadMul: 0.4, zoom: 1.75, ergo: 0.96 } },
+    mod: { slot: 'scope', mounts: ['scope_rings'], classes: ['marksman'], aimSpreadMul: 0.4, zoom: 1.75, ergo: 0.96 } },
   { id: 'fgrip', name: 'Vertical foregrip', short: 'GRIP', category: 'mod', w: 1, h: 1, weight: 0.1, value: 8000, rarity: 2,
     mod: { slot: 'grip', mounts: ['picatinny'], classes: ['smg', 'rifle', 'lmg', 'shotgun'], recoilMul: 0.78, spreadMul: 0.93 } },
   { id: 'stock_tac', name: 'Tactical stock', short: 'STOCK', category: 'mod', w: 2, h: 1, weight: 0.4, value: 15000, rarity: 2,
-    mod: { slot: 'stock', mounts: ['ak_stock', 'ar_buffer'], classes: ['smg', 'rifle', 'lmg', 'marksman', 'shotgun'], recoilMul: 0.8, spreadMul: 0.95 } },
+    mod: { slot: 'stock', mounts: ['ak_stock', 'ar_buffer', 'pp19_stock', 'mp5_stock', 'vector_stock', 'vepr_stock', 'svd_stock', 'pkm_stock'], classes: ['smg', 'rifle', 'lmg', 'marksman', 'shotgun'], recoilMul: 0.8, spreadMul: 0.95 } },
   { id: 'tac_light', name: 'Tactical flashlight', short: 'LIGHT', category: 'mod', w: 1, h: 1, weight: 0.1, value: 7000, rarity: 1,
     mod: { slot: 'light', mounts: ['picatinny'], classes: ['pistol', 'smg', 'rifle', 'shotgun', 'lmg'], light: true } },
   { id: 'mag_ak45', name: 'AK 5.45 45-round mag', short: 'MAG 45', category: 'mod', w: 1, h: 2, weight: 0.3, value: 14000, rarity: 3,
@@ -306,9 +489,9 @@ const defs: ItemDef[] = [
   { id: 'mag_stanag60', name: 'STANAG 60-round mag', short: 'MAG 60', category: 'mod', w: 1, h: 2, weight: 0.4, value: 32000, rarity: 4,
     mod: { slot: 'mag', mounts: ['stanag'], ids: ['m4a1', 'hk416'], magSize: 60, reloadMul: 1.25, ergo: 0.97 } },
   { id: 'mag_9_33', name: '9x19 33-round mag', short: 'MAG 33', category: 'mod', w: 1, h: 2, weight: 0.2, value: 11000, rarity: 3,
-    mod: { slot: 'mag', ids: ['glock17', 'vector', 'mp443'], magSize: 33, reloadMul: 1.1 } },
+    mod: { slot: 'mag', mounts: ['glock_mag', 'mp443_mag', 'vector_mag'], ids: ['glock17', 'vector', 'mp443'], magSize: 33, reloadMul: 1.1 } },
   { id: 'mag_sks20', name: 'SKS 20-round mag', short: 'MAG 20', category: 'mod', w: 1, h: 1, weight: 0.2, value: 9000, rarity: 2,
-    mod: { slot: 'mag', ids: ['sks', 'vepr'], magSize: 20, reloadMul: 0.85 } },
+    mod: { slot: 'mag', mounts: ['sks_mag'], ids: ['sks', 'vepr'], magSize: 20, reloadMul: 0.85 } },
   { id: 'mag_saiga20', name: 'Saiga-12 20-round drum', short: 'DRUM 20', category: 'mod', w: 2, h: 2, weight: 1.2, value: 38000, rarity: 4,
     mod: { slot: 'mag', ids: ['saiga12'], magSize: 20, reloadMul: 1.4, ergo: 0.95 } },
 
@@ -335,6 +518,40 @@ const defs: ItemDef[] = [
   { id: 'sup_dtk1p', name: 'DTK-1P suppressor', short: 'DTK-1P', category: 'mod', w: 2, h: 1, weight: 0.45, value: 38000, rarity: 4, mod: { slot: 'muzzle', mounts: ['ak545_muzzle'], noiseMul: 0.34, suppressed: true, recoilMul: 0.86, ergo: 0.98 } },
   { id: 'aks74u_hg', name: 'AKS-74U wooden handguard', short: 'HANDGRD', category: 'mod', w: 1, h: 1, weight: 0.15, value: 2000, rarity: 1, mod: { slot: 'handguard', mounts: ['aks74u_handguard'] } },
   { id: 'aks74u_mz', name: 'AKS-74U muzzle booster', short: 'BOOSTER', category: 'mod', w: 1, h: 1, weight: 0.06, value: 1800, rarity: 1, mod: { slot: 'muzzle', mounts: ['aks74u_muzzle'] } },
+  { id: 'pm_slide', name: 'PM slide', short: 'SLIDE', category: 'mod', w: 1, h: 1, weight: 0.2, value: 1500, rarity: 1, mod: { slot: 'slide', mounts: ['pm_slide'] } },
+  { id: 'pm_mag8', name: 'PM 8-round mag', short: 'MAG 8', category: 'mod', w: 1, h: 1, weight: 0.08, value: 900, rarity: 1, mod: { slot: 'mag', mounts: ['pm_mag'] } },
+  { id: 'mp443_slide', name: 'MP-443 slide', short: 'SLIDE', category: 'mod', w: 1, h: 1, weight: 0.3, value: 3000, rarity: 1, mod: { slot: 'slide', mounts: ['mp443_slide'] } },
+  { id: 'mp443_mag18', name: 'MP-443 18-round mag', short: 'MAG 18', category: 'mod', w: 1, h: 1, weight: 0.1, value: 1400, rarity: 1, mod: { slot: 'mag', mounts: ['mp443_mag'] } },
+  { id: 'glock_slide', name: 'Glock 17 slide', short: 'SLIDE', category: 'mod', w: 1, h: 1, weight: 0.25, value: 3500, rarity: 1,
+    mod: { slot: 'slide', mounts: ['glock_slide'], sockets: [{ id: 'sight', label: 'Optic plate', accepts: ['pistol_optic'], kinds: ['scope'] }] } },
+  { id: 'glock_mag17', name: 'Glock 17-round mag', short: 'MAG 17', category: 'mod', w: 1, h: 1, weight: 0.09, value: 1500, rarity: 1, mod: { slot: 'mag', mounts: ['glock_mag'] } },
+  { id: 'pp19_hg', name: 'PP-19-01 handguard', short: 'HANDGRD', category: 'mod', w: 1, h: 1, weight: 0.15, value: 1800, rarity: 1, mod: { slot: 'handguard', mounts: ['pp19_handguard'] } },
+  { id: 'pp19_st', name: 'PP-19-01 folding stock', short: 'STOCK', category: 'mod', w: 2, h: 1, weight: 0.3, value: 2500, rarity: 1, mod: { slot: 'stock', mounts: ['pp19_stock'] } },
+  { id: 'pp19_mag30', name: 'PP-19-01 30-round mag', short: 'MAG 30', category: 'mod', w: 1, h: 2, weight: 0.18, value: 1500, rarity: 1, mod: { slot: 'mag', mounts: ['pp19_mag'] } },
+  { id: 'mp5_hg', name: 'MP5 handguard', short: 'HANDGRD', category: 'mod', w: 1, h: 1, weight: 0.12, value: 2000, rarity: 1, mod: { slot: 'handguard', mounts: ['mp5_handguard'] } },
+  { id: 'mp5_st', name: 'MP5 retractable stock', short: 'STOCK', category: 'mod', w: 2, h: 1, weight: 0.35, value: 2500, rarity: 1, mod: { slot: 'stock', mounts: ['mp5_stock'] } },
+  { id: 'mp5_mag30', name: 'MP5 30-round mag', short: 'MAG 30', category: 'mod', w: 1, h: 2, weight: 0.15, value: 1600, rarity: 1, mod: { slot: 'mag', mounts: ['mp5_mag'] } },
+  { id: 'vector_st', name: 'Vector folding stock', short: 'STOCK', category: 'mod', w: 2, h: 1, weight: 0.3, value: 4000, rarity: 1, mod: { slot: 'stock', mounts: ['vector_stock'] } },
+  { id: 'vector_mag17', name: 'Vector 17-round mag', short: 'MAG 17', category: 'mod', w: 1, h: 1, weight: 0.09, value: 1500, rarity: 1, mod: { slot: 'mag', mounts: ['vector_mag'] } },
+  // Rifles and machine guns
+  { id: 'ak_pg_rpk16', name: 'RPK-16 pistol grip', short: 'GRIP', category: 'mod', w: 1, h: 1, weight: 0.07, value: 2200, rarity: 1, mod: { slot: 'pgrip', mounts: ['ak_pgrip'] } },
+  { id: 'ak_st_rpk16', name: 'RPK-16 folding stock', short: 'STOCK', category: 'mod', w: 2, h: 1, weight: 0.35, value: 5000, rarity: 1, mod: { slot: 'stock', mounts: ['ak_stock'] } },
+  { id: 'rpk16_hg', name: 'RPK-16 rail handguard', short: 'HANDGRD', category: 'mod', w: 2, h: 1, weight: 0.3, value: 6000, rarity: 1,
+    mod: { slot: 'handguard', mounts: ['rpk16_handguard'], sockets: RAILS('foregrip', 'tactical') } },
+  { id: 'ak_mz_rpk16', name: 'RPK-16 muzzle brake', short: 'BRAKE', category: 'mod', w: 1, h: 1, weight: 0.06, value: 2500, rarity: 1, mod: { slot: 'muzzle', mounts: ['ak545_muzzle'] } },
+  { id: 'ar_pg_hk416', name: 'HK416 pistol grip', short: 'GRIP', category: 'mod', w: 1, h: 1, weight: 0.07, value: 2500, rarity: 1, mod: { slot: 'pgrip', mounts: ['ar_pgrip'] } },
+  { id: 'ar_st_hk416', name: 'HK416 slim stock', short: 'STOCK', category: 'mod', w: 2, h: 1, weight: 0.3, value: 5500, rarity: 1, mod: { slot: 'stock', mounts: ['ar_buffer'] } },
+  { id: 'sks_mag10', name: 'SKS 10-round fixed mag', short: 'MAG 10', category: 'mod', w: 1, h: 1, weight: 0.1, value: 1000, rarity: 1, mod: { slot: 'mag', mounts: ['sks_mag'], magSize: 10 } },
+  { id: 'vepr_st', name: 'Vepr thumbhole stock', short: 'STOCK', category: 'mod', w: 2, h: 1, weight: 0.5, value: 3500, rarity: 1, mod: { slot: 'stock', mounts: ['vepr_stock'] } },
+  { id: 'vepr_mag10', name: 'Vepr 10-round mag', short: 'MAG 10', category: 'mod', w: 1, h: 1, weight: 0.2, value: 1500, rarity: 1, mod: { slot: 'mag', mounts: ['vepr_mag'], magSize: 10 } },
+  { id: 'svd_st', name: 'SVD wooden stock', short: 'STOCK', category: 'mod', w: 2, h: 1, weight: 0.6, value: 5000, rarity: 1, mod: { slot: 'stock', mounts: ['svd_stock'] } },
+  { id: 'svd_hg', name: 'SVD wooden handguard', short: 'HANDGRD', category: 'mod', w: 2, h: 1, weight: 0.3, value: 3000, rarity: 1, mod: { slot: 'handguard', mounts: ['svd_handguard'] } },
+  { id: 'svd_mag10', name: 'SVD 10-round mag', short: 'MAG 10', category: 'mod', w: 1, h: 1, weight: 0.2, value: 2500, rarity: 1, mod: { slot: 'mag', mounts: ['svd_mag'], magSize: 10 } },
+  { id: 'sv98_mag10', name: 'SV-98 10-round mag', short: 'MAG 10', category: 'mod', w: 1, h: 1, weight: 0.2, value: 3000, rarity: 1, mod: { slot: 'mag', mounts: ['sv98_mag'], magSize: 10 } },
+  { id: 'pkm_st', name: 'PKM stock', short: 'STOCK', category: 'mod', w: 2, h: 1, weight: 0.6, value: 5000, rarity: 1, mod: { slot: 'stock', mounts: ['pkm_stock'] } },
+  { id: 'pkm_box100', name: 'PKM 100-round box', short: 'BOX 100', category: 'mod', w: 2, h: 2, weight: 1.0, value: 4000, rarity: 1, mod: { slot: 'mag', mounts: ['pkm_box'], magSize: 100 } },
+  { id: 'aug_mag30', name: 'AUG 30-round mag', short: 'MAG 30', category: 'mod', w: 1, h: 2, weight: 0.13, value: 2000, rarity: 1, mod: { slot: 'mag', mounts: ['aug_mag'], magSize: 30 } },
+  { id: 'rhino_cyl', name: 'Rhino 6-round cylinder', short: 'CYL', category: 'mod', w: 1, h: 1, weight: 0.15, value: 4000, rarity: 1, mod: { slot: 'cylinder', mounts: ['rhino_cylinder'] } },
   { id: 'mag_ak545_30', name: 'AK-74 30-round mag', short: 'MAG 30', category: 'mod', w: 1, h: 2, weight: 0.22, value: 1500, rarity: 1, mod: { slot: 'mag', mounts: ['ak545_mag'], magSize: 30 } },
   { id: 'mag_akm30', name: 'AKM 30-round mag', short: 'MAG 30', category: 'mod', w: 1, h: 2, weight: 0.3, value: 1500, rarity: 1, mod: { slot: 'mag', mounts: ['ak762_mag'], magSize: 30 } },
   { id: 'pso1', name: 'PSO-1 4x scope', short: 'PSO-1', category: 'mod', w: 2, h: 1, weight: 0.6, value: 42000, rarity: 4, mod: { slot: 'scope', mounts: ['ak_dovetail'], aimSpreadMul: 0.55, zoom: 1.4, ergo: 0.98 } },

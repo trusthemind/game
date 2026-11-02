@@ -23,6 +23,8 @@ const SLOT_LABEL: Record<ModSlot, string> = {
   gastube: 'Gas tube',
   handguard: 'Handguard',
   barrel: 'Barrel',
+  slide: 'Slide',
+  cylinder: 'Cylinder',
 };
 
 /** Is this gun built from parts (sockets and a part tree) rather than six fixed attachment slots? */

@@ -170,11 +170,6 @@
   "use": "weapon: AKS-74"
  },
  {
-  "uid": "14648d9cf9804cb387f4f88e13850056",
-  "slug": "gun_aks74u_jeandiz",
-  "use": "weapon: AKS-74U"
- },
- {
   "uid": "84bb0a58a18047069706047639b82899",
   "slug": "gun_ak74m_seven",
   "use": "weapon: AK-74M (alt)"
@@ -358,5 +353,90 @@
   "uid": "72b06590aa4b4b6ab324dc7e0c11b884",
   "slug": "att_ar_mags",
   "use": "attachment H13: AR-15 magazines"
+ },
+ {
+  "uid": "6d2fdd8ea83c4b7fb89f1470f0260ae4",
+  "slug": "gun_aks74u_roma",
+  "use": "weapon: AKS-74U in parts"
+ },
+ {
+  "uid": "e53424d1a7f1403f84b8ad267880f5b4",
+  "slug": "gun_pm_valter",
+  "use": "weapon: PM in parts"
+ },
+ {
+  "uid": "f02eec5ecde94cd89cb35d415b142e7c",
+  "slug": "gun_mp443_kerry",
+  "use": "weapon: MP-443 in parts"
+ },
+ {
+  "uid": "c652d5885a7042b28cb6dc8d763d7db8",
+  "slug": "gun_rhino_sasima",
+  "use": "weapon: Rhino in parts"
+ },
+ {
+  "uid": "a833e0d2540e43b78dbdda3d233d71f0",
+  "slug": "gun_g17_kerry",
+  "use": "weapon: Glock 17 in parts"
+ },
+ {
+  "uid": "2ee5373d0a32400db59a2e2cc66dcefd",
+  "slug": "gun_pp19_kerry",
+  "use": "weapon: PP-19 Vityaz in parts"
+ },
+ {
+  "uid": "0f1b8ad6022847cd92d3ef2fd8800fe2",
+  "slug": "gun_mp5_kerry",
+  "use": "weapon: MP5 in parts"
+ },
+ {
+  "uid": "ec2fb60fecaf4aea94b681a52ec7bc26",
+  "slug": "gun_vector_tt",
+  "use": "weapon: Vector in parts"
+ },
+ {
+  "uid": "7e703e3c830b434faccff29a58b5ada5",
+  "slug": "gun_rpk16_kerry",
+  "use": "weapon: RPK-16 in parts"
+ },
+ {
+  "uid": "923953dafbba4630a1df242547e297b0",
+  "slug": "gun_hk416_cloudy",
+  "use": "weapon: HK416 in parts"
+ },
+ {
+  "uid": "9e766a8eb2cf4e14bb3261e942a6b7ff",
+  "slug": "gun_svd_du",
+  "use": "weapon: SVD in parts"
+ },
+ {
+  "uid": "ea48b79acd354e4d8aa5ac901218ae5e",
+  "slug": "gun_sks_jeandiz",
+  "use": "weapon: SKS in parts"
+ },
+ {
+  "uid": "b6898c6a692842068aa815c257da2808",
+  "slug": "gun_vepr_arg",
+  "use": "weapon: Vepr Hunter in parts"
+ },
+ {
+  "uid": "9167543c8cee476a9c027dd9e6f5aee4",
+  "slug": "gun_sv98_jeandiz",
+  "use": "weapon: SV-98 in parts; its scope is the 8x"
+ },
+ {
+  "uid": "55c00242c4024307a761a89167e39a7c",
+  "slug": "gun_mosin_doink",
+  "use": "weapon: Mosin"
+ },
+ {
+  "uid": "85ad17c62c1142ebb151c39900769f75",
+  "slug": "gun_pkm_du",
+  "use": "weapon: PKM in parts"
+ },
+ {
+  "uid": "62ca412c88a64c0287774496b7f351fc",
+  "slug": "gun_aug_mobz",
+  "use": "weapon: AUG in parts"
  }
 ]

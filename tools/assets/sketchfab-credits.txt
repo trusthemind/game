@@ -22,7 +22,7 @@
 "AK-74M Assault Rifle" by FJH (https://sketchfab.com/3d-models/ak-74m-assault-rifle-9084c3bae8224d338103997bc3101480) — CC BY 4.0 — weapon: AK-74M (PBR, named parts)
 "Low-Poly AK-74M" by notcplkerry (https://sketchfab.com/3d-models/low-poly-ak-74m-e74e7e34e8d44c12a3701aa4d3d33167) — CC BY 4.0 — weapon: AK-74M (low-poly, attachments)
 "AKS-74 (game ready)" by Armored Wave (https://sketchfab.com/3d-models/aks-74-game-ready-896cdfacb60948bd89918a152d25c658) — CC BY 4.0 — weapon: AKS-74
-"AKS-74U" by SpatialNeglect (https://sketchfab.com/3d-models/aks-74u-14648d9cf9804cb387f4f88e13850056) — CC BY 4.0 — weapon: AKS-74U
+"AKS-74U PBS/АКС-74У ПБС" by chyzhykov.roman (https://sketchfab.com/3d-models/aks-74u-pbs-74-6d2fdd8ea83c4b7fb89f1470f0260ae4) — CC BY 4.0 — weapon: AKS-74U in parts
 "AK-74M" by SeveN (https://sketchfab.com/3d-models/ak-74m-84bb0a58a18047069706047639b82899) — CC BY 4.0 — weapon: AK-74M (alt)
 "AK-74 (Wooden Furniture) Gameready Free" by rwroclav (https://sketchfab.com/3d-models/ak-74-wooden-furniture-gameready-free-87a76b087e044b60ba9e9bf7ae814fb6) — CC BY 4.0 — weapon: AK-74 wooden
 "PBS-1 / ПБС-1 Serviceable Silencer/Suppressor" by valterjherson1 (https://sketchfab.com/3d-models/pbs-1-1-serviceable-silencersuppressor-3139957b69194510b4cd3fccb52a6d36) — CC BY 4.0 — weapon mod: PBS-1 suppressor
@@ -60,3 +60,19 @@
 "Rifle Parts - Pistol Grips" by Socksthecat (https://sketchfab.com/3d-models/rifle-parts-pistol-grips-f31877a6a4c04fb3ab3515afe9697f6c) — CC BY 4.0 — attachment H11: AR pistol grips
 "Magpul PMAG 30" by Diamonddogkz (https://sketchfab.com/3d-models/magpul-pmag-30-d02cf12ae7ba49f2bda01058ee85c661) — CC BY 4.0 — attachment H12: PMAG 30
 "Low-Poly AR-15 magazines" by notcplkerry (https://sketchfab.com/3d-models/low-poly-ar-15-magazines-72b06590aa4b4b6ab324dc7e0c11b884) — CC BY 4.0 — attachment H13: AR-15 magazines
+"Makarov Pistol Lowpoly" by valterjherson1 (https://sketchfab.com/3d-models/makarov-pistol-lowpoly-e53424d1a7f1403f84b8ad267880f5b4) — CC BY 4.0 — weapon: PM in parts
+"Low-Poly MP-443 "Grach" | Yarygin's Pistol" by notcplkerry (https://sketchfab.com/3d-models/low-poly-mp-443-grach-yarygins-pistol-f02eec5ecde94cd89cb35d415b142e7c) — CC BY 4.0 — weapon: MP-443 in parts
+"Chiappa Rhino 60DS" by Sasima (https://sketchfab.com/3d-models/chiappa-rhino-60ds-c652d5885a7042b28cb6dc8d763d7db8) — CC BY 4.0 — weapon: Rhino in parts
+"Low-Poly G17" by notcplkerry (https://sketchfab.com/3d-models/low-poly-g17-a833e0d2540e43b78dbdda3d233d71f0) — CC BY 4.0 — weapon: Glock 17 in parts
+"Low-Poly PP-19-01 "Vityaz"" by notcplkerry (https://sketchfab.com/3d-models/low-poly-pp-19-01-vityaz-2ee5373d0a32400db59a2e2cc66dcefd) — CC BY 4.0 — weapon: PP-19 Vityaz in parts
+"Low-Poly MP5 [remade from scratch]" by notcplkerry (https://sketchfab.com/3d-models/low-poly-mp5-remade-from-scratch-0f1b8ad6022847cd92d3ef2fd8800fe2) — CC BY 4.0 — weapon: MP5 in parts
+"Low-Poly Kriss Vector" by TastyTony (https://sketchfab.com/3d-models/low-poly-kriss-vector-ec2fb60fecaf4aea94b681a52ec7bc26) — CC BY 4.0 — weapon: Vector in parts
+"Low-Poly RPK-16" by notcplkerry (https://sketchfab.com/3d-models/low-poly-rpk-16-7e703e3c830b434faccff29a58b5ada5) — CC BY 4.0 — weapon: RPK-16 in parts
+"HK416" by CloudyRain (https://sketchfab.com/3d-models/hk416-923953dafbba4630a1df242547e297b0) — CC BY 4.0 — weapon: HK416 in parts
+"low-poly SVD (Dragunov)" by D_U (https://sketchfab.com/3d-models/low-poly-svd-dragunov-9e766a8eb2cf4e14bb3261e942a6b7ff) — CC BY 4.0 — weapon: SVD in parts
+"SKS" by SpatialNeglect (https://sketchfab.com/3d-models/sks-ea48b79acd354e4d8aa5ac901218ae5e) — CC BY 4.0 — weapon: SKS in parts
+"Vepr hunter .308 low poly" by Argentavisss (https://sketchfab.com/3d-models/vepr-hunter-308-low-poly-b6898c6a692842068aa815c257da2808) — CC BY 4.0 — weapon: Vepr Hunter in parts
+"SV-98 Sniper Rifle" by SpatialNeglect (https://sketchfab.com/3d-models/sv-98-sniper-rifle-9167543c8cee476a9c027dd9e6f5aee4) — CC BY 4.0 — weapon: SV-98 in parts; its scope is the 8x
+"Mosin Nagant M91" by Doink (https://sketchfab.com/3d-models/mosin-nagant-m91-55c00242c4024307a761a89167e39a7c) — CC BY 4.0 — weapon: Mosin
+"low-poly PKM" by D_U (https://sketchfab.com/3d-models/low-poly-pkm-85ad17c62c1142ebb151c39900769f75) — CC BY 4.0 — weapon: PKM in parts
+"Steyr AUG A3" by mobzver3d (https://sketchfab.com/3d-models/steyr-aug-a3-62ca412c88a64c0287774496b7f351fc) — CC BY 4.0 — weapon: AUG in parts

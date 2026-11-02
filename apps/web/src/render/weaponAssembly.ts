@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
-import { createItem, getDef, socketTree, type ItemInstance, type Preset } from '@ashfall/engine';
+import { noTransmission } from './noTransmission';
+import { ALL_ITEMS, createItem, getDef, socketTree, type ItemInstance, type Preset } from '@ashfall/engine';
 
 /**
  * Guns built from parts (tools/assets/weapons.mjs). Each platform glb holds its parts as root nodes named by
@@ -9,13 +10,13 @@ import { createItem, getDef, socketTree, type ItemInstance, type Preset } from '
  * its receiver plus every part in its tree added at the identity. Bolt-on parts (attach.glb, mounting point at
  * the origin) go on the empty `socket_<id>` node of the part that carries the socket.
  */
-const PLATFORMS = ['ak', 'ar', 'attach'];
+const PLATFORMS = ['ak', 'ar', 'pistol', 'smg', 'rifle', 'attach'];
 const BASE = `${import.meta.env.BASE_URL}models/`;
 /**
  * Bump whenever tools/assets/weapons.mjs writes new glb files: the models are cached for a week (vercel.json) and
  * the code reads their sockets, so old files with new code put sights in mid-air.
  */
-const VERSION = 3;
+const VERSION = 22;
 
 let pending: Promise<Map<string, THREE.Object3D>> | null = null;
 let ready: Map<string, THREE.Object3D> | null = null;
@@ -35,6 +36,7 @@ export function loadWeaponParts(): Promise<Map<string, THREE.Object3D>> {
   pending = Promise.all(PLATFORMS.map((p) => loader.loadAsync(`${BASE}${p}.glb?v=${VERSION}`).catch(() => null))).then((docs) => {
     const parts = new Map<string, THREE.Object3D>();
     docs.forEach((g, i) => {
+      if (g) noTransmission(g.scene);
       for (const c of g?.scene.children ?? []) {
         // attach.glb parts have their mounting point at the origin; the platforms' sit in the gun's frame.
         c.userData.boltOn = PLATFORMS[i] === 'attach';
@@ -76,15 +78,43 @@ export function partsGun(item: ItemInstance): THREE.Object3D | null {
   const all = new THREE.Box3().setFromObject(w);
   const pg = part('pgrip');
   const gb = pg ? new THREE.Box3().setFromObject(pg) : null;
-  w.userData.grip = gb ? new THREE.Vector3((gb.min.x + gb.max.x) / 2, gb.max.y - 0.03, (gb.min.z + gb.max.z) / 2) : null;
+  // A receiver with its pistol grip moulded on marks where the hand goes.
+  const rg = findSocket(g.children[0]!, 'grip');
+  w.userData.grip = gb
+    ? new THREE.Vector3((gb.min.x + gb.max.x) / 2, gb.max.y - 0.03, (gb.min.z + gb.max.z) / 2)
+    : rg
+      ? w.worldToLocal(rg.getWorldPosition(new THREE.Vector3()))
+      : pistolGrip(w, part);
   const hg = part('handguard');
   const hb = hg ? new THREE.Box3().setFromObject(hg) : all;
   const len = hb.max.z - hb.min.z;
-  w.userData.support = new THREE.Vector3(0, hg ? hb.min.y : -0.03, hg ? hb.min.z + len * 0.55 : all.max.z - (all.max.z - all.min.z) * 0.3);
+  const rs = findSocket(g.children[0]!, 'support');
+  w.userData.support = rs
+    ? w.worldToLocal(rs.getWorldPosition(new THREE.Vector3()))
+    : new THREE.Vector3(0, hg ? hb.min.y : -0.03, hg ? hb.min.z + len * 0.55 : all.max.z - (all.max.z - all.min.z) * 0.3);
   w.userData.mag = part('mag') ?? null;
   // The heel of the stock, on the bore line: it goes into the shoulder.
   w.userData.butt = new THREE.Vector3(-c.x, -c.y, all.min.z);
   return w;
+}
+
+/**
+ * A pistol's grip is its frame: the web of the hand just under the slide, over the middle of the magazine (it
+ * goes up the grip). A revolver: under the frame's top, a fifth of the way along from the back.
+ */
+function pistolGrip(w: THREE.Object3D, part: (socket: string) => THREE.Object3D | undefined): THREE.Vector3 | null {
+  const slide = part('slide');
+  const mag = part('mag');
+  if (slide && mag) {
+    const sb = new THREE.Box3().setFromObject(slide);
+    const mb = new THREE.Box3().setFromObject(mag);
+    return new THREE.Vector3((mb.min.x + mb.max.x) / 2, sb.min.y - 0.04, (mb.min.z + mb.max.z) / 2);
+  }
+  const cyl = part('cylinder');
+  if (!cyl) return null;
+  const all = new THREE.Box3().setFromObject(w);
+  const cb = new THREE.Box3().setFromObject(cyl);
+  return new THREE.Vector3((cb.min.x + cb.max.x) / 2, cb.min.y - 0.02, all.min.z + (all.max.z - all.min.z) * 0.2);
 }
 
 /** The gun as its parts: null when its receiver has no model yet (the caller falls back to the whole-gun model). */
@@ -102,16 +132,27 @@ export function assembleGun(parts: Map<string, THREE.Object3D>, item: ItemInstan
     // A part without a model yet (a 45-round mag, a drum) is drawn as the factory one in that socket.
     const node = parts.get(r.part.def) ?? parts.get(factoryPart(item.def, r.path) ?? '');
     let obj: THREE.Object3D | null = null;
-    if (node && !node.userData.boltOn) obj = node.clone();
+    if (node && !node.userData.boltOn) {
+      obj = node.clone();
+      // A muzzle device modelled on one gun's barrel moves onto this one's (an AK-74 brake on an RPK-16).
+      const own = MUZZLE_OF.get(node.name);
+      const host = drawn.get(r.host);
+      const at = own && own !== item.def && host && findSocket(host, r.socket.id);
+      const from = at && findSocket(parts.get(own)!, 'muzzle');
+      if (at && from) {
+        g.updateMatrixWorld(true);
+        obj.position.add(g.worldToLocal(at.getWorldPosition(v)).sub(from.position));
+      }
+    }
     else if (BARRELS[r.part.def]) obj = barrel(receiver, BARRELS[r.part.def]!);
-    else if (node) {
-      // A bolt-on part: its mounting point goes on the host's socket.
+    else if (node || MUZZLES[r.part.def]) {
+      // A bolt-on part (or a muzzle device we draw): its mounting point goes on the host's socket.
       const host = drawn.get(r.host);
       const socket = host && findSocket(host, r.socket.id);
       if (!socket) continue;
       g.updateMatrixWorld(true);
       g.worldToLocal(socket.getWorldPosition(v));
-      obj = node.clone();
+      obj = node ? node.clone() : MUZZLES[r.part.def]!();
       obj.position.copy(v);
     }
     if (!obj) continue;
@@ -122,9 +163,40 @@ export function assembleGun(parts: Map<string, THREE.Object3D>, item: ItemInstan
   return g;
 }
 
+/** Muzzle devices that come on a gun from the factory → that gun (its receiver's muzzle socket is where it sits). */
+const MUZZLE_OF = new Map<string, string>(
+  ALL_ITEMS.flatMap((d) => {
+    const m = d.weapon?.preset?.muzzle;
+    return typeof m === 'string' ? [[m, d.id] as [string, string]] : [];
+  }),
+);
+
 /** AR barrels by length from the receiver face (the kit models have none): 10.3", 14.5", 20". */
 const BARRELS: Record<string, number> = { ar_barrel_103: 0.262, ar_barrel_145: 0.368, ar_barrel_20: 0.508 };
 const barrelMat = new THREE.MeshStandardMaterial({ color: 0x1b1c1c, metalness: 0.7, roughness: 0.45 });
+
+/** Muzzle devices no download has, drawn with their mounting point at the origin: the AKS-74U's booster. */
+const MUZZLES: Record<string, () => THREE.Object3D> = { aks74u_mz: booster };
+
+/** The AKS-74U's booster: a collar on the thread, the expansion chamber, and its flared mouth, open at the front. */
+function booster(): THREE.Object3D {
+  // Radius and distance along the bore (m), outside then back along the inside of the mouth.
+  const profile = [
+    [0.0065, 0],
+    [0.0125, 0],
+    [0.0125, 0.012],
+    [0.0158, 0.016],
+    [0.0158, 0.052],
+    [0.0182, 0.068],
+    [0.0182, 0.076],
+    [0.0155, 0.076],
+    [0.0122, 0.062],
+    [0.0065, 0.062],
+  ].map(([r, z]) => new THREE.Vector2(r, z));
+  const mesh = new THREE.Mesh(new THREE.LatheGeometry(profile, 20).rotateX(Math.PI / 2), barrelMat);
+  mesh.castShadow = true;
+  return mesh;
+}
 
 /** A plain barrel with a gas block, from the receiver's `barrel` socket forwards. */
 function barrel(receiver: THREE.Object3D, length: number): THREE.Object3D {

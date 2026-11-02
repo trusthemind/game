@@ -10,7 +10,7 @@ import { applyRaidToTasks, type TaskState } from './tasks';
 import { newHideout, type HideoutState } from './hideout';
 import { companionLevel, companionRaidXp, companionState, gearTierFor, upgradeCompanionGear, type CompanionState } from './companions';
 
-export const PROFILE_VERSION = 5;
+export const PROFILE_VERSION = 8;
 
 export interface ProfileStats {
   raids: number;
@@ -104,6 +104,23 @@ export function createProfile(name = 'Survivor', id = randomId(), look: PlayerLo
 }
 
 /** Forward-migrate any older saved profile. Never throws: falls back to a fresh profile on garbage input. */
+/**
+ * Wherever a gun that is now built from parts lies (gear, stash, a companion's kit, your grave), it gets its factory
+ * parts; its old attachments go back on, or into the stash if none fits.
+ */
+function rebuildGuns(out: Profile): void {
+  const spare: ItemInstance[] = [];
+  const visit = (o: unknown): void => {
+    if (!o || typeof o !== 'object') return;
+    if (Array.isArray(o)) return o.forEach(visit);
+    const it = o as Partial<ItemInstance>;
+    if (typeof it.def === 'string' && typeof it.uid === 'string' && ITEMS[it.def]?.weapon?.sockets) spare.push(...upgradeLegacyGun(it as ItemInstance));
+    for (const v of Object.values(o)) visit(v);
+  };
+  visit(out);
+  for (const m of spare) addItem(out.stash, m);
+}
+
 export function migrateProfile(raw: unknown): Profile {
   if (!raw || typeof raw !== 'object') return createProfile();
   const p = raw as Partial<Profile> & { version?: number };
@@ -142,19 +159,24 @@ export function migrateProfile(raw: unknown): Profile {
     out.version = 4;
   }
   if (out.version < 5) {
-    // v4 → v5: AKs and the M4 are built from parts. Wherever such a gun lies (gear, stash, a companion's kit,
-    // your grave), it gets its factory parts; old attachments go back on, or into the stash if none fits.
-    const spare: ItemInstance[] = [];
-    const visit = (o: unknown): void => {
-      if (!o || typeof o !== 'object') return;
-      if (Array.isArray(o)) return o.forEach(visit);
-      const it = o as Partial<ItemInstance>;
-      if (typeof it.def === 'string' && typeof it.uid === 'string' && ITEMS[it.def]?.weapon?.sockets) spare.push(...upgradeLegacyGun(it as ItemInstance));
-      for (const v of Object.values(o)) visit(v);
-    };
-    visit(out);
-    for (const m of spare) addItem(out.stash, m);
+    // v4 → v5: AKs and the M4 are built from parts.
+    rebuildGuns(out);
     out.version = 5;
+  }
+  if (out.version < 6) {
+    // v5 → v6: pistols (slide, magazine; a revolver's cylinder).
+    rebuildGuns(out);
+    out.version = 6;
+  }
+  if (out.version < 7) {
+    // v6 → v7: submachine guns.
+    rebuildGuns(out);
+    out.version = 7;
+  }
+  if (out.version < 8) {
+    // v7 → v8: rifles and machine guns.
+    rebuildGuns(out);
+    out.version = 8;
   }
   out.companions ??= {};
   out.settings.difficulty ??= 'normal';

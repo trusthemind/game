@@ -68,14 +68,34 @@ meshopt-compressed (tools/assets/weapons.mjs):
     AK-74M and factory parts — "AK-74M Assault Rifle" by FJH  https://sketchfab.com/3d-models/ak-74m-assault-rifle-9084c3bae8224d338103997bc3101480
     RK-9, PT-1, B-10, B-19   — "low-poly AK-74M Zenitco" by D_U  https://sketchfab.com/3d-models/low-poly-ak-74m-zenitco-35ad8e37a513453cbbbd04064fa5fb79
     FAB, Zhukov, MOE grip     — "AK-74 Customized." by Drus  https://sketchfab.com/3d-models/ak-74-customized-dc78efe4eab747b4be664c02e9f53f56
-    AKS-74U                   — "AKS-74U" by SpatialNeglect (sight and light left off)  https://sketchfab.com/3d-models/aks-74u-14648d9cf9804cb387f4f88e13850056
+    AKS-74U and its handguard — "AKS-74U PBS/АКС-74У ПБС" by chyzhykov.roman (PBS-4 left off; booster drawn)  https://sketchfab.com/3d-models/aks-74u-pbs-74-6d2fdd8ea83c4b7fb89f1470f0260ae4
     AKM and its furniture     — "AK-47" by SpatialNeglect  https://sketchfab.com/3d-models/ak-47-df389a54bb964955b0ede4cb8e66cfaa
+    RPK-16, its parts, 95 drum — "Low-Poly RPK-16" by notcplkerry  https://sketchfab.com/3d-models/low-poly-rpk-16-7e703e3c830b434faccff29a58b5ada5
   ar.glb
     M4 receiver, handguards, stocks, grips, magazines — "Free - M4 Modular Kit Gun" by Karnaval  https://sketchfab.com/3d-models/free-m4-modular-kit-gun-1665416c071747bb9c20aa652849b579
+    HK416, its grip and stock — "HK416" by CloudyRain  https://sketchfab.com/3d-models/hk416-923953dafbba4630a1df242547e297b0
+  pistol.glb
+    PM, its slide and magazine — "Makarov Pistol Lowpoly" by valterjherson1  https://sketchfab.com/3d-models/makarov-pistol-lowpoly-e53424d1a7f1403f84b8ad267880f5b4
+    MP-443 and its parts       — "Low-Poly MP-443 "Grach" | Yarygin's Pistol" by notcplkerry  https://sketchfab.com/3d-models/low-poly-mp-443-grach-yarygins-pistol-f02eec5ecde94cd89cb35d415b142e7c
+    Glock 17 and its parts     — "Low-Poly G17" by notcplkerry  https://sketchfab.com/3d-models/low-poly-g17-a833e0d2540e43b78dbdda3d233d71f0
+    Rhino and its cylinder     — "Chiappa Rhino 60DS" by Sasima  https://sketchfab.com/3d-models/chiappa-rhino-60ds-c652d5885a7042b28cb6dc8d763d7db8
+  smg.glb
+    PP-19 Vityaz and its parts — "Low-Poly PP-19-01 "Vityaz"" by notcplkerry  https://sketchfab.com/3d-models/low-poly-pp-19-01-vityaz-2ee5373d0a32400db59a2e2cc66dcefd
+    MP5 and its parts          — "Low-Poly MP5 [remade from scratch]" by notcplkerry  https://sketchfab.com/3d-models/low-poly-mp5-remade-from-scratch-0f1b8ad6022847cd92d3ef2fd8800fe2
+    Vector and its parts       — "Low-Poly Kriss Vector" by TastyTony (red dot and foregrip left off)  https://sketchfab.com/3d-models/low-poly-kriss-vector-ec2fb60fecaf4aea94b681a52ec7bc26
+  rifle.glb
+    SVD and its parts         — "low-poly SVD (Dragunov)" by D_U  https://sketchfab.com/3d-models/low-poly-svd-dragunov-9e766a8eb2cf4e14bb3261e942a6b7ff
+    SKS and its magazine      — "SKS" by SpatialNeglect  https://sketchfab.com/3d-models/sks-ea48b79acd354e4d8aa5ac901218ae5e
+    Vepr Hunter and its parts — "Vepr hunter .308 low poly" by Argentavisss  https://sketchfab.com/3d-models/vepr-hunter-308-low-poly-b6898c6a692842068aa815c257da2808
+    SV-98 and its magazine    — "SV-98 Sniper Rifle" by SpatialNeglect  https://sketchfab.com/3d-models/sv-98-sniper-rifle-9167543c8cee476a9c027dd9e6f5aee4
+    Mosin                     — "Mosin Nagant M91" by Doink  https://sketchfab.com/3d-models/mosin-nagant-m91-55c00242c4024307a761a89167e39a7c
+    PKM, its stock and box    — "low-poly PKM" by D_U  https://sketchfab.com/3d-models/low-poly-pkm-85ad17c62c1142ebb151c39900769f75
+    AUG and its magazine      — "Steyr AUG A3" by mobzver3d  https://sketchfab.com/3d-models/steyr-aug-a3-62ca412c88a64c0287774496b7f351fc
   attach.glb (also simplified)
     brake (DTK-1), fgrip (RK-1) — "low-poly AK-74M Zenitco" by D_U (above)
     pso1      — "PSO-1/ПСО-1 Sniper Scope Lowpoly Gameready" by valterjherson1  https://sketchfab.com/3d-models/pso-1-1-sniper-scope-lowpoly-gameready-423a3bd9e2344f26b3aff82e0ae185d7
     holo      — "EoTech EXPS3-0 Holographic Weapon Sight Lowpoly" by valterjherson1  https://sketchfab.com/3d-models/eotech-exps3-0-holographic-weapon-sight-lowpoly-45e4fcdfb1b34756ab9e866564a12f66
+    scope_8x  — "SV-98 Sniper Rifle" by SpatialNeglect (its scope, above)
     red_dot   — "Generic Red Dot Scope / Rifle Attachment Lowpoly" by valterjherson1  https://sketchfab.com/3d-models/generic-red-dot-scope-rifle-attachment-lowpoly-8bf2794c30d04fa0aed1e3df92cd8a9e
     sup_545   — "PBS-4 / ПБС-4 Rifle Silencer/Suppressor Lowpoly" by valterjherson1  https://sketchfab.com/3d-models/pbs-4-4-rifle-silencersuppressor-lowpoly-6c39d299859944de9b6b36512fdf4f30
     sup_dtk1p — "DTKP Suppressor/Silencer Lowpoly Gameready" by valterjherson1  https://sketchfab.com/3d-models/dtkp-suppressorsilencer-lowpoly-gameready-85ef8c1df9c44e12b1adb7b476f4c1fc

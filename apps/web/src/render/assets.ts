@@ -3,6 +3,7 @@ import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { addSketchfabFurniture } from './furnitureSf';
+import { noTransmission } from './noTransmission';
 
 /**
  * Loads the CC0 model packs once per session (see tools/assets/build.mjs) and hands out clones.
@@ -73,7 +74,10 @@ export function loadBodies(lib: AssetLibrary, ids: Iterable<string | undefined>)
     let p = bodyLoads.get(id);
     if (!p) {
       p = loader.loadAsync(`${BASE}bodies/${id}.glb`).then(
-        (g) => void lib.bodies.set(id, g),
+        (g) => {
+          noTransmission(g.scene);
+          lib.bodies.set(id, g);
+        },
         () => void failedBodies.add(id),
       );
       bodyLoads.set(id, p);
@@ -95,7 +99,11 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
   const manager = new THREE.LoadingManager();
   manager.onProgress = (_url, loaded, total) => onProgress?.(loaded / total);
   const loader = new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder);
-  const load = (name: string) => loader.loadAsync(`${BASE}${name}.glb`);
+  const load = (name: string) =>
+    loader.loadAsync(`${BASE}${name}.glb`).then((g) => {
+      noTransmission(g.scene);
+      return g;
+    });
   const byName = (g: GLTF) => {
     const m = new Map<string, THREE.Object3D>();
     for (const c of g.scene.children) m.set(c.name, c);

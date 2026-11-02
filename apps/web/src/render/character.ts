@@ -6,6 +6,7 @@ import { patchWorldMaterial, type WorldUniforms } from './patches';
 import { faceTexture, type FaceSpec } from './facePainter';
 import { buildGun, gunKey } from './gunsmith';
 import { armorModel, BACKPACK_TINT, hatModel, helmetModel, rigModel, slingModel } from './gear3d';
+import { bakeRigid } from './bakeRigid';
 import { HEAVY_MELEE, meleeModel, REVERSE_GRIP } from './melee3d';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import { itemModel } from './thumbnails';
@@ -1144,11 +1145,27 @@ const _ikA = new THREE.Vector3();
 const _ikB = new THREE.Vector3();
 const _ikP = new THREE.Vector3();
 const _ikS = new THREE.Vector3();
+const _curlQ = new THREE.Quaternion();
+const _curlZ = new THREE.Vector3(0, 0, 1);
+/**
+ * How far each joint of a finger bends (radians, root to tip) round what the hand holds: a pistol grip or a
+ * handguard; the trigger finger lies straighter along the guard. Finger bones point along their local Y and bend
+ * towards the palm about their local +Z (on both hands).
+ */
+const GRIP_CURL = [1.0, 1.05, 0.7];
+const TRIGGER_CURL = [0.35, 0.45, 0.3];
+const WRAP_CURL = [0.75, 0.8, 0.5];
+const CURLED = ['index', 'middle', 'ring', 'pinky'] as const;
 const _ikT = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
+const tmpV3 = new THREE.Vector3();
 /** The butt's place from the right shoulder joint, in the character's frame (forward +Z, left +X): in towards the
  * chest, a touch forward, and the bore up at the cheek. */
-const SHOULDER_POCKET = new THREE.Vector3(0.07, 0.05, 0.03);
+const SHOULDER_POCKET = new THREE.Vector3(0.0, 0.02, 0.06);
+/** A pistol's grip held up, from the right shoulder joint: forward, in towards the middle, a touch low. */
+const PISTOL_AIM = new THREE.Vector3(0.15, -0.06, 0.46);
+/** A long gun carried at low ready: muzzle pitched down, turned in across the body (radians). */
+const LOW_READY = new THREE.Euler(0.65, 0.3, 0);
 const _hs = new THREE.Vector3();
 const _hb = new THREE.Vector3();
 const _hg = new THREE.Vector3();
@@ -1377,6 +1394,7 @@ export class CharacterView {
     this.gearAttachments = [];
     const rig = this.rig;
     const add = (bone: RegExp, obj: THREE.Object3D) => {
+      bakeRigid(obj);
       const holder = new THREE.Group();
       holder.add(obj);
       attachToBone(this.skinned, this.bone(bone), holder);
@@ -1463,7 +1481,10 @@ export class CharacterView {
           this.gearAttachments.push(m);
         }
       const shell = parts[0]!.shell;
-      for (const d of details(shell, spec, (c) => gearSkinMat(c, 0.9, this.u))) add(/^spine_03$/, d);
+      // Pouches, straps and plates: one piece, so they merge into a few meshes.
+      const all = new THREE.Group();
+      for (const d of details(shell, spec, (c) => gearSkinMat(c, 0.9, this.u))) all.add(d);
+      add(/^spine_03$/, all);
       return true;
     };
     if (s.armor && !wear(s.armor.def, ARMOR_SPECS[s.armor.def])) {
@@ -1502,11 +1523,18 @@ export class CharacterView {
         if (src) {
           bp = src.clone(true);
           const tint = new THREE.Color(BACKPACK_TINT[id] ?? 0x666666);
+          // One tinted copy per source material, so the pack's meshes merge (bakeRigid).
+          const tinted = new Map<THREE.Material, THREE.MeshStandardMaterial>();
           bp.traverse((o) => {
             const m = o as THREE.Mesh;
             if (!m.isMesh) return;
-            const mat = (m.material as THREE.MeshStandardMaterial).clone();
-            mat.color.copy(tint).multiplyScalar(0.7 + mat.color.getHSL({ h: 0, s: 0, l: 0 }).l);
+            const src = m.material as THREE.MeshStandardMaterial;
+            let mat = tinted.get(src);
+            if (!mat) {
+              mat = src.clone();
+              mat.color.copy(tint).multiplyScalar(0.7 + mat.color.getHSL({ h: 0, s: 0, l: 0 }).l);
+              tinted.set(src, mat);
+            }
             m.material = mat;
           });
           bp.rotation.y = Math.PI;
@@ -1539,6 +1567,11 @@ export class CharacterView {
       if (src) {
         this.held = d.melee ? src : buildGun(this.lib, held)!;
         this.heldKind = d.melee ? 'melee' : 'gun';
+        // A gun is one rigid thing but for the magazine (it comes out during a reload).
+        if (!d.melee) {
+          const mag = this.held.userData.mag as THREE.Object3D | null | undefined;
+          bakeRigid(this.held, new Set(mag ? [mag] : []));
+        }
         this.heavyMelee = HEAVY_MELEE.has(held.def);
         this.reverseGrip = REVERSE_GRIP.has(held.def);
         // A gun built from parts measures as built (a suppressor makes it longer).
@@ -1748,6 +1781,8 @@ export class CharacterView {
   private gunUp = false;
   /** How far a long gun is in the shoulder-and-both-hands hold (eased with the stance). */
   private holdW = 0;
+  /** 1 when a long gun is carried at low ready rather than up in the shoulder. */
+  private lowW = 0;
   private supportW = 0;
   private gunMag: THREE.Object3D | null = null;
 
@@ -1893,26 +1928,61 @@ export class CharacterView {
     if (!reloading && gunMag) gunMag.visible = true;
 
     // A long gun held up: the right hand on the pistol grip (through reloads too), the left under the handguard.
+    // A pistol from parts: the right hand round its grip, the left wrapped over it from the other side.
     const longGun = this.heldKind === 'gun' && this.held && this.heldLen >= 0.4;
-    if (longGun && this.holdW > 0.01 && !treating) {
+    const pistolUp = this.heldKind === 'gun' && !!this.held && this.heldLen < 0.4 && !!this.held.userData.grip;
+    if ((longGun || pistolUp) && this.holdW > 0.01 && !treating) {
       const h = this.held!;
       h.updateMatrixWorld(true);
       const gx = _rlX.setFromMatrixColumn(h.matrixWorld, 0).normalize();
       const gz = _rlZ.setFromMatrixColumn(h.matrixWorld, 2).normalize();
-      // Palm against the grip's right side, fingers wrapping forward round it.
+      // Palm against the grip's right side, the hand forward along it, the fingers closing round its front.
       reachPalm(this.armRig!.r, h.localToWorld(_ikT.copy(this.heldGrip())), gz, gx, pole('r'), this.holdW);
     }
-    this.supportW += ((!reloading && !treating && longGun && this.gunUp ? 1 : 0) - this.supportW) * Math.min(1, dt * 10);
-    if (this.supportW > 0.01 && longGun) {
+    this.supportW += ((!reloading && !treating && (longGun || (pistolUp && this.gunUp)) ? 1 : 0) - this.supportW) * Math.min(1, dt * 10);
+    if (this.supportW > 0.01 && pistolUp) {
+      const h = this.held!;
+      h.updateMatrixWorld(true);
+      const gx = _rlX.setFromMatrixColumn(h.matrixWorld, 0).normalize();
+      const gy = _rlY.setFromMatrixColumn(h.matrixWorld, 1).normalize();
+      const gz = _rlZ.setFromMatrixColumn(h.matrixWorld, 2).normalize();
+      // Over the right hand's fingers from the left: palm to the grip, fingers forward and down round it.
+      const target = h.localToWorld(_ikT.copy(h.userData.grip as THREE.Vector3)).addScaledVector(gx, 0.035).addScaledVector(gy, -0.015);
+      const fd = _ikS.copy(gz).multiplyScalar(0.55).addScaledVector(gy, -0.83).normalize();
+      // The wrist bends a long way round the grip here: let it, or the fingers swing back up along the forearm.
+      reachPalm(this.armRig!.l, target, fd, gx.clone().negate(), pole('l'), this.supportW, 1.6);
+      this.curlFingers('l', this.supportW, WRAP_CURL);
+    } else if (this.supportW > 0.01 && longGun) {
       const h = this.held!;
       h.updateMatrixWorld(true);
       const local = (h.userData.support as THREE.Vector3 | undefined) ?? this.heldSupport();
       const target = h.localToWorld(_ikT.copy(local));
+      const gx = _rlX.setFromMatrixColumn(h.matrixWorld, 0).normalize();
       const gy = _rlY.setFromMatrixColumn(h.matrixWorld, 1).normalize();
       const gz = _rlZ.setFromMatrixColumn(h.matrixWorld, 2).normalize();
-      reachPalm(this.armRig!.l, target, gz, gy, pole('l'), this.supportW);
+      // Palm up under the handguard, the fingers across it and forward, to close up round its far side.
+      const fd = _ikS.copy(gx).multiplyScalar(-0.75).addScaledVector(gz, 0.65).normalize();
+      reachPalm(this.armRig!.l, target, fd, gy, pole('l'), this.supportW);
+      this.curlFingers('l', this.supportW, WRAP_CURL);
     }
+    // The right hand closes round the grip, the index finger along the trigger guard.
+    if ((longGun || pistolUp) && this.holdW > 0.01 && !treating) this.curlFingers('r', this.holdW, GRIP_CURL, TRIGGER_CURL);
     if (!treating) this.showWrap(null);
+  }
+
+  private fingerBones = new Map<string, THREE.Bone | null>();
+
+  /** Bend a hand's fingers by `w` of `curl` (the index finger by `index`), undone before the next animation step. */
+  private curlFingers(side: 'l' | 'r', w: number, curl: number[], index = curl): void {
+    for (const f of CURLED)
+      for (let j = 0; j < 3; j++) {
+        const name = `${f}_0${j + 1}_${side}`;
+        let b = this.fingerBones.get(name);
+        if (b === undefined) this.fingerBones.set(name, (b = this.skinned.skeleton.getBoneByName(name) ?? null));
+        if (!b) continue;
+        this.yawSaved.push([b, b.quaternion.clone()]);
+        b.quaternion.multiply(_curlQ.setFromAxisAngle(_curlZ, (f === 'index' ? index : curl)[j]! * w));
+      }
   }
 
   /**
@@ -2250,12 +2320,23 @@ export class CharacterView {
       h.position.z += this.heldLen < 0.4 ? this.heldLen * 0.45 : this.heldLen * 0.22;
       h.position.y += 0.04;
       h.rotation.set(0, 0, 0);
-      // A long gun held up: butt in the right shoulder, bore at cheek height (the hands go to it, proceduralArms).
+      // A long gun: the butt in the right shoulder and both hands on it (proceduralArms); up at cheek height in a
+      // stance, otherwise carried at low ready, muzzle down and in across the body. Left to swing with the hand it
+      // went through the chest when running.
       const shoulder = this.arms()?.upperarm_r;
       if (this.heldLen >= 0.4 && shoulder) {
+        this.holdW += (1 - this.holdW) * Math.min(1, dt * 10);
+        this.lowW += ((this.gunUp ? 0 : 1) - this.lowW) * Math.min(1, dt * 8);
+        h.rotation.set(LOW_READY.x * this.lowW, LOW_READY.y * this.lowW, 0);
+        const butt = tmpV3.copy(this.heldButt()).applyEuler(h.rotation);
+        this.gear.worldToLocal(shoulder.getWorldPosition(tmpV2)).add(SHOULDER_POCKET).sub(butt);
+        h.position.lerp(tmpV2, this.holdW);
+      } else if (shoulder && h.userData.grip) {
+        // A pistol held up in both hands: the grip out in front of the right shoulder and in towards the middle,
+        // where an isosceles stance puts it (the hands go to it, proceduralArms).
         this.holdW += ((this.gunUp ? 1 : 0) - this.holdW) * Math.min(1, dt * 10);
         if (this.holdW > 0.001) {
-          this.gear.worldToLocal(shoulder.getWorldPosition(tmpV2)).add(SHOULDER_POCKET).sub(this.heldButt());
+          this.gear.worldToLocal(shoulder.getWorldPosition(tmpV2)).add(PISTOL_AIM).sub(h.userData.grip as THREE.Vector3);
           h.position.lerp(tmpV2, this.holdW);
         }
       } else this.holdW = 0;
@@ -2338,10 +2419,40 @@ export class CharacterView {
     }
   }
 
-  /** Corpses keep animating until the death clip finishes, then freeze. */
+  /**
+   * Corpses keep animating until the death clip finishes, then freeze. The fall plays out whether anyone sees it
+   * or not: a body you come across later is already lying there.
+   */
   updateCorpse(dt: number, visible: boolean): void {
     this.root.visible = visible;
-    if (visible) this.mixer.update(dt);
+    if (this.frozen) return;
+    this.mixer.update(dt);
+    const fall = this.oneShot as THREE.AnimationAction | null;
+    if (!fall || fall.time >= fall.getClip().duration) this.freeze();
+  }
+
+  private frozen = false;
+  /**
+   * A body that has stopped moving costs what a statue does: no more animation or matrix updates, bounds where it
+   * lies (so it's skipped off screen; living characters draw regardless, their bind-pose bounds don't follow
+   * them), its bone texture uploaded once, and no shadow (lying flat it would be a smudge under it anyway).
+   */
+  private freeze(): void {
+    this.frozen = true;
+    this.root.updateMatrixWorld(true);
+    this.root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      m.castShadow = false;
+      m.frustumCulled = true;
+      const sm = m as THREE.SkinnedMesh;
+      if (!sm.isSkinnedMesh) return;
+      sm.computeBoundingBox();
+      sm.computeBoundingSphere();
+      sm.skeleton.update();
+      sm.skeleton.update = () => {};
+    });
+    this.root.matrixWorldAutoUpdate = false;
   }
 
   dispose(): void {
