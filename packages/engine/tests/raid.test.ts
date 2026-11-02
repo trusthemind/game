@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Raid, emptyIntent, starterKit } from '../src/index';
+import { Raid, carryGrids, emptyIntent, starterKit } from '../src/index';
 
 const newRaid = (seed = 7) => new Raid({ seed, playerEq: starterKit(), mapId: 'testsite', timeOfDay: 'day' });
 
@@ -84,5 +84,46 @@ describe('raid simulation', () => {
       for (let i = 0; i < 60 * 12; i++) r.tick(1 / 60, emptyIntent());
       expect(r.player.health.parts.leftArm.light).toBe(!on);
     }
+  });
+
+  it('treats while the heal key is held; letting go or firing stops it and spends nothing', () => {
+    const r = new Raid({ seed: 7, playerEq: starterKit(), mapId: 'testsite', timeOfDay: 'day', autoHeal: false });
+    for (const a of r.actors) if (a !== r.player) a.alive = false;
+    const p = r.player;
+    p.health.parts.leftArm.light = true;
+    const held = { ...emptyIntent(), heal: true };
+    r.tick(1 / 60, held);
+    expect(p.useT).toBeGreaterThan(0);
+    const uid = p.useUid;
+    const carried = () => carryGrids(p.eq).flatMap((g) => g.items).find((x) => x.item.uid === uid)?.item;
+    const uses = carried()?.uses;
+    // Let go half-way: stopped, the med as it was, still bleeding.
+    r.tick(1 / 60, emptyIntent());
+    expect(p.useT).toBe(0);
+    expect(carried()?.uses).toBe(uses);
+    expect(p.health.parts.leftArm.light).toBe(true);
+    // Hold again and pull the trigger: stopped, and it doesn't start over while firing.
+    r.tick(1 / 60, held);
+    expect(p.useT).toBeGreaterThan(0);
+    r.tick(1 / 60, { ...held, fire: true, firePressed: true });
+    expect(p.useT).toBe(0);
+    // Held all the way: treated.
+    for (let i = 0; i < 60 * 12 && p.health.parts.leftArm.light; i++) r.tick(1 / 60, held);
+    expect(p.health.parts.leftArm.light).toBe(false);
+  });
+
+  it('automatic treatment waits after you let go of the heal key or fire', () => {
+    const r = new Raid({ seed: 7, playerEq: starterKit(), mapId: 'testsite', timeOfDay: 'day', autoHeal: true });
+    for (const a of r.actors) if (a !== r.player) a.alive = false;
+    const p = r.player;
+    p.health.parts.leftArm.light = true;
+    r.tick(1 / 60, { ...emptyIntent(), heal: true });
+    r.tick(1 / 60, emptyIntent());
+    // Let go: it doesn't carry on by itself straight away…
+    for (let i = 0; i < 60 * 2; i++) r.tick(1 / 60, emptyIntent());
+    expect(p.useT).toBe(0);
+    // …only once you've left it alone for a while.
+    for (let i = 0; i < 60 * 2; i++) r.tick(1 / 60, emptyIntent());
+    expect(p.useT).toBeGreaterThan(0);
   });
 });

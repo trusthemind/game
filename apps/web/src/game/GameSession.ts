@@ -376,11 +376,10 @@ export class GameSession {
           this.input.toggleCrouch();
           break;
         case 'heal': {
+          // The treatment itself runs while the key is held (Input.poll → intent.heal).
           const m = raid.bestMed(p);
-          if (m) {
-            this.input.intent.use = m.uid;
-            ui.pushMessage(`Using ${getDef(m.def).name}`, 'info');
-          } else ui.pushMessage(raid.medHint(p), 'bad');
+          if (m) ui.pushMessage(`Treating with ${getDef(m.def).name} — hold Q`, 'info');
+          else ui.pushMessage(raid.medHint(p), 'bad');
           break;
         }
         case 'eat': {
@@ -444,7 +443,15 @@ export class GameSession {
     };
     if (Math.hypot(w.x - p.pos.x, w.y - p.pos.y) < 0.7) {
       title = 'You';
-      opts.push({ label: 'Treat wounds (Q)', run: () => this.input.queueAction('heal') });
+      // One med from the menu (the key treats for as long as it's held).
+      opts.push({
+        label: 'Treat wounds (hold Q)',
+        run: () => {
+          const m = this.raid.bestMed(p);
+          if (m) this.input.intent.use = m.uid;
+          else useRaidUi.getState().pushMessage(this.raid.medHint(p), 'bad');
+        },
+      });
       opts.push({ label: 'Eat or drink (V)', run: () => this.input.queueAction('eat') });
       opts.push({ label: 'Open inventory', run: () => this.openOverlay('inventory') });
       opts.push({ label: p.flashlight ? 'Flashlight off' : 'Flashlight on', run: () => (p.flashlight = !p.flashlight) });

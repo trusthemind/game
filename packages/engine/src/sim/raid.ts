@@ -198,6 +198,8 @@ export class Raid {
 
   time = 0;
   autoHeal = true;
+  /** Last time the player held the heal key or the trigger: the automatic treatment waits 3 s after either. */
+  private manualAt = -Infinity;
   readonly timeLimit: number;
   readonly difficulty: Difficulty;
   /** Named bosses on this map this raid. */
@@ -724,7 +726,18 @@ export class Raid {
     }
 
     // Item use (meds / food).
-    if (a === this.player && this.autoHeal && !it.use && a.useT <= 0 && a.reloadT <= 0 && !a.sprinting && this.time - a.combatAt > 3) {
+    // Holding the heal key treats with one med after another; letting go, or pulling the trigger (the shot goes),
+    // stops it. A shot also stops the automatic treatment.
+    if (a.useT > 0 && ((a.useHeld && !it.heal) || (a === this.player && it.fire && !a.vehicle))) this.cancelUse(a);
+    if (it.heal && !it.use && !it.fire && a.useT <= 0 && a.reloadT <= 0) {
+      const med = this.bestMed(a);
+      if (med) {
+        this.startUse(a, med.uid, null);
+        a.useHeld = a.useT > 0;
+      }
+    }
+    if (a === this.player && (it.heal || it.fire)) this.manualAt = this.time;
+    if (a === this.player && this.autoHeal && !it.use && a.useT <= 0 && a.reloadT <= 0 && !a.sprinting && this.time - a.combatAt > 3 && this.time - this.manualAt > 3) {
       const med = this.autoMed(a);
       if (med) {
         this.startUse(a, med.uid, null);
@@ -1160,8 +1173,18 @@ export class Raid {
     a.reloadT = 0;
   }
 
+  /** Stop a use half-way: nothing is spent, nothing applied. */
+  private cancelUse(a: Actor): void {
+    a.useT = 0;
+    a.useUid = null;
+    a.useDef = null;
+    a.usePart = null;
+    a.useHeld = false;
+  }
+
   private finishUse(a: Actor): void {
     const uid = a.useUid;
+    a.useHeld = false;
     a.useUid = null;
     a.useDef = null;
     if (!uid) return;

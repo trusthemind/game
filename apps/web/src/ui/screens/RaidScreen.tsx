@@ -150,7 +150,7 @@ function FirstRaidHints() {
           ['LMB', 'fire · R reload · 1/2/3 weapons'],
           ['E', 'search / loot / climb windows'],
           ['Quick RMB', 'actions on anything you click'],
-          ['Tab', 'inventory · Q heal · V eat/drink'],
+          ['Tab', 'inventory · hold Q heal · V eat/drink'],
           ['M', 'map — find a green exit and stay in it'],
         ].map(([k, v]) => (
           <div key={k}>
@@ -303,7 +303,7 @@ function HealthPanel() {
         ))}
       </div>
       <p className="dim small">
-        <span className="kbd">Q</span> auto-treat · <span className="kbd">V</span> eat / drink · double-click a med to use it
+        hold <span className="kbd">Q</span> to treat · <span className="kbd">V</span> eat / drink · double-click a med to use it
       </p>
     </div>
   );

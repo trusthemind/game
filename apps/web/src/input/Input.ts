@@ -125,6 +125,7 @@ export class Input {
       it.moveX = it.moveY = 0;
       it.fire = false;
       it.sprint = false;
+      it.heal = false;
       return it;
     }
     it.moveX = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
@@ -132,6 +133,7 @@ export class Input {
     it.sprint = k.has('ShiftLeft') || k.has('ShiftRight');
     it.crouch = this.crouch;
     it.fire = this.mouseDown;
+    it.heal = k.has('KeyQ');
     // Hold right mouse (or ctrl+click on a trackpad) to aim.
     it.aim = this.aimDown || k.has('ControlLeft') || k.has('AltLeft');
     return it;

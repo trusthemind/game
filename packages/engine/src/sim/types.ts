@@ -28,11 +28,13 @@ export interface ActorIntent {
   use: string | null;
   /** Body part to treat with `use` (null = pick automatically). */
   useOn?: BodyPart | null;
+  /** Heal key held: one med after another while there's something to treat; let go and it stops. */
+  heal?: boolean;
 }
 
 export const emptyIntent = (): ActorIntent => ({
   moveX: 0, moveY: 0, aimX: 0, aimY: 0, sprint: false, crouch: false, aim: false,
-  fire: false, firePressed: false, reload: false, switchTo: null, use: null,
+  fire: false, firePressed: false, reload: false, switchTo: null, use: null, heal: false,
 });
 
 export interface Actor {
@@ -68,6 +70,8 @@ export interface Actor {
   /** Item definition being used (for the animation), null when idle. */
   useDef: string | null;
   usePart: BodyPart | null;
+  /** The use in progress was started by holding the heal key (letting go cancels it). */
+  useHeld?: boolean;
   crouching: boolean;
   sprinting: boolean;
   /** Ran out of stamina: no sprinting until it recovers. */
