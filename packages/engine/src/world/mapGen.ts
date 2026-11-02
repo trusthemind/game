@@ -221,15 +221,21 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
     const d = map.districtOf(x, y);
     return d === 'forest' || d === 'farm' ? Tile.Dirt : Tile.Road;
   };
-  for (const rx of roadsX) for (let y = 2; y < roadEnd; y++) for (let d = 0; d < 3; d++) map.set(rx + d, y, roadTile(rx + d, y));
-  for (const ry of roadsY) for (let x = 2; x < size - 2; x++) for (let d = 0; d < 3; d++) map.set(x, ry + d, roadTile(x, ry + d));
+  // The road network as laid (avenues and streets), as against yards and car parks that are road tiles too.
+  const network = new Uint8Array(size * size);
+  const lay = (x: number, y: number, t: Tile) => {
+    map.set(x, y, t);
+    network[map.idx(x, y)] = 1;
+  };
+  for (const rx of roadsX) for (let y = 2; y < roadEnd; y++) for (let d = 0; d < AVENUE_W; d++) lay(rx + d, y, roadTile(rx + d, y));
+  for (const ry of roadsY) for (let x = 2; x < size - 2; x++) for (let d = 0; d < AVENUE_W; d++) lay(x, ry + d, roadTile(x, ry + d));
   // A city's middle avenue carries the tram: a track on its east side, two tiles wide.
   const tramX = preset.city ? roadsX[Math.floor(roadsX.length / 2)]! : -1;
-  if (tramX >= 0) for (let y = 2; y < size - 2; y++) for (let d = 3; d < 5; d++) if (map.get(tramX + d, y) !== Tile.Road) map.set(tramX + d, y, Tile.Rail);
+  if (tramX >= 0) for (let y = 2; y < size - 2; y++) for (let d = AVENUE_W; d < AVENUE_W + 2; d++) if (map.get(tramX + d, y) !== Tile.Road) map.set(tramX + d, y, Tile.Rail);
 
   // Blocks between avenues.
-  const xs = [2, ...roadsX.flatMap((r) => [r, r + (r === tramX ? 5 : 3)]), size - 2];
-  const ys = [2, ...roadsY.flatMap((r) => [r, r + 3]), preset.port ? terminal - 1 : size - 2];
+  const xs = [2, ...roadsX.flatMap((r) => [r, r + AVENUE_W + (r === tramX ? 2 : 0)]), size - 2];
+  const ys = [2, ...roadsY.flatMap((r) => [r, r + AVENUE_W]), preset.port ? terminal - 1 : size - 2];
   const blocks: Rect[] = [];
   for (let i = 0; i < xs.length; i += 2)
     for (let j = 0; j < ys.length; j += 2) blocks.push({ x: xs[i]! + 1, y: ys[j]! + 1, w: xs[i + 1]! - xs[i]! - 2, h: ys[j + 1]! - ys[j]! - 2 });
@@ -246,7 +252,7 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   const lots: { r: Rect; d: District }[] = [];
   for (const b of blocks) {
     if (b === square) continue;
-    for (const sub of urbanSplit(map, b, rng)) {
+    for (const sub of urbanSplit(map, b, rng, network)) {
       const d = map.districtOf(Math.floor(sub.x + sub.w / 2), Math.floor(sub.y + sub.h / 2)) ?? 'forest';
       const ls: Rect[] = [];
       splitLots(sub, rng, ls, d === 'town' ? 22 : d === 'military' ? 40 : 30);
@@ -518,11 +524,11 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   map.extractions = map.extractions.filter((e) => reach[map.idx(Math.floor(e.x), Math.floor(e.y))]);
 
   furnish(map);
-  placeVehicles(map, reach);
+  placeVehicles(map, reach, network);
 
   // POIs for patrols: room centres + road crossings + district centres.
   for (const b of map.buildings) for (const r of b.rooms) map.pois.push({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
-  for (const rx of roadsX) for (const ry of roadsY) map.pois.push({ x: rx + 1.5, y: ry + 1.5 });
+  for (const rx of roadsX) for (const ry of roadsY) map.pois.push({ x: rx + AVENUE_W / 2, y: ry + AVENUE_W / 2 });
   for (const d of map.districts) map.pois.push({ x: d.x, y: d.y });
   map.pois = map.pois.filter((p) => map.isWalkable(Math.floor(p.x), Math.floor(p.y)) && reach[map.idx(Math.floor(p.x), Math.floor(p.y))]);
 
@@ -538,7 +544,7 @@ function clampLot(r: Rect, max: number, rng?: Rng): Rect {
 }
 
 /** Town/industrial blocks get 2-wide side streets every ~24 tiles. */
-function urbanSplit(map: GameMap, b: Rect, rng: Rng): Rect[] {
+function urbanSplit(map: GameMap, b: Rect, rng: Rng, network: Uint8Array): Rect[] {
   const d = map.districtOf(Math.floor(b.x + b.w / 2), Math.floor(b.y + b.h / 2));
   if (d !== 'town' && d !== 'industrial' && d !== 'docks') return [b];
   const step = d === 'town' ? 24 : 32;
@@ -550,12 +556,16 @@ function urbanSplit(map: GameMap, b: Rect, rng: Rng): Rect[] {
   // Side streets stop at the river and the railway rather than wading through them.
   const street = (x: number, y: number) => {
     const t = map.get(x, y);
-    if (t !== Tile.Water && t !== Tile.Rail) map.set(x, y, Tile.Road);
+    if (t === Tile.Water || t === Tile.Rail) return;
+    map.set(x, y, Tile.Road);
+    network[map.idx(x, y)] = 1;
   };
-  for (const cx of cutsX) for (let y = b.y; y < b.y + b.h; y++) for (let k = 0; k < 2; k++) street(cx + k, y);
-  for (const cy of cutsY) for (let x = b.x; x < b.x + b.w; x++) for (let k = 0; k < 2; k++) street(x, cy + k);
-  const xs = [b.x, ...cutsX.flatMap((c) => [c, c + 2]), b.x + b.w];
-  const ys = [b.y, ...cutsY.flatMap((c) => [c, c + 2]), b.y + b.h];
+  // One tile past the block on each side: blocks keep a tile of verge from the avenues, and a street that stops
+  // short of the avenue doesn't join it.
+  for (const cx of cutsX) for (let y = b.y - 1; y < b.y + b.h + 1; y++) for (let k = 0; k < STREET_W; k++) street(cx + k, y);
+  for (const cy of cutsY) for (let x = b.x - 1; x < b.x + b.w + 1; x++) for (let k = 0; k < STREET_W; k++) street(x, cy + k);
+  const xs = [b.x, ...cutsX.flatMap((c) => [c, c + STREET_W]), b.x + b.w];
+  const ys = [b.y, ...cutsY.flatMap((c) => [c, c + STREET_W]), b.y + b.h];
   for (let i = 0; i < xs.length; i += 2) for (let j = 0; j < ys.length; j += 2) out.push({ x: xs[i]!, y: ys[j]!, w: xs[i + 1]! - xs[i]!, h: ys[j + 1]! - ys[j]! });
   return out.filter((r) => r.w > 3 && r.h > 3);
 }
@@ -566,7 +576,7 @@ function urbanSplit(map: GameMap, b: Rect, rng: Rng): Rect[] {
  */
 function carveRiver(map: GameMap, rng: Rng, roadsX: number[], roadsY: number[]): { at: (y: number) => number } {
   const size = map.width;
-  const edges = [2, ...roadsX.flatMap((r) => [r, r + 3]), size - 2];
+  const edges = [2, ...roadsX.flatMap((r) => [r, r + AVENUE_W]), size - 2];
   let gap: [number, number] = [size * 0.2, size * 0.35];
   let best = -1;
   for (let i = 0; i < edges.length; i += 2) {
@@ -591,11 +601,11 @@ function carveRiver(map: GameMap, rng: Rng, roadsX: number[], roadsY: number[]):
       if (t !== Tile.Road && t !== Tile.Dirt) map.set(x, y, Tile.Water);
     }
   }
-  for (const ry of roadsY) bridge(map, ry, 3);
+  for (const ry of roadsY) bridge(map, ry, AVENUE_W);
   return { at };
 }
 
-/** Record the bridge where a 2–3 tile wide road or track along x at `y` crosses water. */
+/** Record the bridge where a road or track `h` tiles wide along x at `y` crosses water. */
 function bridge(map: GameMap, y: number, h: number): void {
   let x0 = -1;
   for (let x = 2; x < map.width - 2; x++) {
@@ -612,7 +622,7 @@ function bridge(map: GameMap, y: number, h: number): void {
 /** The railway west to east between two avenues, over the river on its own bridge, a platform by the town. */
 function layRailway(map: GameMap, rng: Rng, roadsY: number[]): number {
   const size = map.width;
-  const edges = [2, ...roadsY.flatMap((r) => [r, r + 3]), size - 2];
+  const edges = [2, ...roadsY.flatMap((r) => [r, r + AVENUE_W]), size - 2];
   let y = Math.round(size * 0.6);
   let best = Infinity;
   for (let i = 0; i < edges.length; i += 2) {
@@ -772,7 +782,7 @@ function buildPort(map: GameMap, rng: Rng, top: number, shore: number, roadsX: n
   // Rail: two tracks behind the stacks.
   for (const t of [top + 3, top + 7]) for (let x = 2; x < size - 2; x++) for (let d = 0; d < 2; d++) map.set(x, t + d, Tile.Rail);
   // Stacks: rows of 20-footers, two side by side, with lanes; the avenues' lines stay open as main lanes.
-  const nearAvenue = (x0: number, x1: number) => roadsX.some((r) => r + 3 >= x0 - 2 && r <= x1 + 2);
+  const nearAvenue = (x0: number, x1: number) => roadsX.some((r) => r + AVENUE_W >= x0 - 2 && r <= x1 + 2);
   for (let y0 = top + 11; y0 + 4 <= shore - 14; y0 += 7)
     for (let x0 = 6; x0 + 6 <= size - 6; x0 += 8) {
       if (nearAvenue(x0, x0 + 6) || rng.chance(0.12)) continue;
@@ -870,6 +880,11 @@ function carveTo(map: GameMap, a: { x: number; y: number }, b: { x: number; y: n
     }
   }
 }
+
+/** Main avenues: two lanes, room for a car each way past a wreck at the kerb. */
+const AVENUE_W = 6;
+/** Side streets in town, industry and the docks: a car each way. */
+const STREET_W = 4;
 
 function roadLines(rng: Rng, size: number, n: number): number[] {
   const out: number[] = [];
@@ -1066,7 +1081,7 @@ function scatterTrees(map: GameMap, rng: Rng): void {
  * then a drivable UAZ stands on a road within a short walk of the spawn, and a couple more further out.
  * Own RNG stream, so it never shifts anything else on the map.
  */
-function placeVehicles(map: GameMap, reach: Uint8Array): void {
+function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array): void {
   const rng = new Rng((map.seed ^ 0x7e41c1e5) >>> 0);
   const kept: Vehicle[] = [];
   const spawns: VehicleSpawn[] = [];
@@ -1082,16 +1097,26 @@ function placeVehicles(map: GameMap, reach: Uint8Array): void {
     kept.push(v);
     spawns.push({ ...s, heading: v.heading, variant: v.variant });
   }
-  // Drivable ones: on a road (or a dirt track), parked along it, reachable, and clear of everything.
+  // Drivable ones: on the road network (an avenue or a street, not a yard or a car park), parked along it,
+  // reachable, and clear of everything.
   const roadHeading = (x: number, y: number) => {
     const t = (dx: number, dy: number) => {
       const k = map.get(x + dx, y + dy);
-      return k === Tile.Road || k === Tile.Dirt;
+      return (k === Tile.Road || k === Tile.Dirt) && map.inBounds(x + dx, y + dy) && network[map.idx(x + dx, y + dy)] === 1;
     };
-    const horiz = t(-2, 0) && t(2, 0);
-    const vert = t(0, -2) && t(0, 2);
+    // A street or an avenue across (with the tram, 8 wide), not a crossing.
+    const road = (ax: number, ay: number) => {
+      let w = 1;
+      for (const sg of [1, -1]) for (let k = 1; k <= AVENUE_W + 2 && t(ax * k * sg, ay * k * sg); k++) w++;
+      return w >= STREET_W && w <= AVENUE_W + 2;
+    };
+    const horiz = t(-2, 0) && t(2, 0) && road(0, 1);
+    const vert = t(0, -2) && t(0, 2) && road(1, 0);
     if (!horiz && !vert) return null;
-    return (horiz && (!vert || rng.chance(0.5)) ? 0 : Math.PI / 2) + (rng.chance(0.5) ? Math.PI : 0);
+    const h = horiz && (!vert || rng.chance(0.5)) ? 0 : Math.PI / 2;
+    // Nose towards the middle of the map, not into a dead end at its edge.
+    const inward = Math.cos(h) * (map.width / 2 - x) + Math.sin(h) * (map.height / 2 - y) >= 0;
+    return h + (inward ? 0 : Math.PI);
   };
   const sp = { x: map.playerSpawn.x + 0.5, y: map.playerSpawn.y + 0.5 };
   const tryPark = (ok: (x: number, y: number) => boolean, around?: { x: number; y: number; r: number }): boolean => {
@@ -1100,20 +1125,24 @@ function placeVehicles(map: GameMap, reach: Uint8Array): void {
       const y = around ? Math.round(around.y + rng.range(-around.r, around.r)) : rng.int(4, map.height - 5);
       if (x < 4 || y < 4 || x > map.width - 5 || y > map.height - 5) continue;
       const tile = map.get(x, y);
-      if ((tile !== Tile.Road && tile !== Tile.Dirt) || !reach[map.idx(x, y)] || !ok(x, y) || map.isIndoors(x, y)) continue;
+      if ((tile !== Tile.Road && tile !== Tile.Dirt) || !network[map.idx(x, y)] || !reach[map.idx(x, y)] || !ok(x, y) || map.isIndoors(x, y)) continue;
       const h = roadHeading(x, y);
       if (h === null) continue;
       const s: VehicleSpawn = { def: 'uaz469', x: x + 0.5, y: y + 0.5, heading: h + rng.range(-0.1, 0.1), variant: 0, wreck: false, fuel: rng.range(0.35, 0.8) };
       const v = createVehicle(kept.length + 1, s);
       if (vehicleBlocked(v, map, kept) || map.extractions.some((e) => near(s.x, s.y, 12, e))) continue;
+      // Room to pull away: a car length clear ahead, not nose to tail with a wreck.
+      const ahead = createVehicle(0, { ...s, x: s.x + Math.cos(s.heading) * 4.5, y: s.y + Math.sin(s.heading) * 4.5 });
+      if (vehicleBlocked(ahead, map, kept)) continue;
       kept.push(v);
       spawns.push(s);
       return true;
     }
     return false;
   };
-  // Near the spawn first; failing a road, any open ground will do for that one.
-  if (!tryPark((x, y) => near(x, y, 28, sp) && !near(x, y, 6, sp), { ...sp, r: 28 })) parkOffRoad(sp);
+  // Near the spawn first, then on the nearest road a little further out; failing a road, any open ground will do.
+  if (!tryPark((x, y) => near(x, y, 28, sp) && !near(x, y, 6, sp), { ...sp, r: 28 }) && !tryPark((x, y) => near(x, y, 50, sp) && !near(x, y, 6, sp), { ...sp, r: 50 }))
+    parkOffRoad(sp);
   function parkOffRoad(c: { x: number; y: number }): void {
     for (let t = 0; t < 1500; t++) {
       const x = Math.round(c.x + rng.range(-26, 26));
@@ -1134,16 +1163,20 @@ function placeVehicles(map: GameMap, reach: Uint8Array): void {
 
 function scatterCars(map: GameMap, rng: Rng, roadsX: number[], roadsY: number[]): void {
   let id = 10000;
-  // Abandoned cars are wrecks (sim/vehicle.ts), not tiles: a real 4 m body pulled to the kerb. The RNG calls
-  // are the same as when they were 2-tile blocks, so the rest of the map doesn't change.
-  const tryCar = (x: number, y: number, horizontal: boolean) => {
+  // Abandoned cars are wrecks (sim/vehicle.ts), not tiles: a real 4 m body pulled to the kerb, the middle of the
+  // avenue left clear. Not in a crossing (it would stand across the other avenue's lanes) and not across the
+  // mouth of a street that joins the avenue on its side.
+  const crossing = (x: number, y: number, horizontal: boolean) =>
+    horizontal ? roadsX.some((rx) => x + 3 >= rx - 1 && x <= rx + AVENUE_W) : roadsY.some((ry) => y + 3 >= ry - 1 && y <= ry + AVENUE_W);
+  /** `out`: which side the kerb is on (−1 the low side, +1 the high side). */
+  const tryCar = (x: number, y: number, horizontal: boolean, out: -1 | 1) => {
     const cells = horizontal ? [[x, y], [x + 1, y]] : [[x, y], [x, y + 1]];
-    if (!cells.every(([cx, cy]) => map.get(cx!, cy!) === Tile.Road)) return;
+    if (!cells.every(([cx, cy]) => map.get(cx!, cy!) === Tile.Road) || crossing(x, y, horizontal)) return;
+    for (let k = -2; k < 6; k++) if (horizontal ? map.get(x + k, y + out) === Tile.Road : map.get(x + out, y + k) === Tile.Road) return;
     const tx = horizontal ? x + 2 : x;
     const ty = horizontal ? y : y + 2;
     const trunk = map.get(tx, ty) === Tile.Road && rng.chance(0.6);
-    // Outer lane of the avenue: hug the kerb.
-    const kerb = horizontal ? (map.get(x, y - 1) === Tile.Road ? -0.35 : 0.35) : map.get(x - 1, y) === Tile.Road ? -0.35 : 0.35;
+    const kerb = -out * 0.35;
     const cx = horizontal ? x + 1 : x + 0.5 + kerb;
     const cy = horizontal ? y + 0.5 + kerb : y + 1;
     map.vehicleSpawns.push({ def: 'zhiguli', x: cx, y: cy, heading: horizontal ? 0 : Math.PI / 2, variant: 0, wreck: true, fuel: 0 });
@@ -1154,8 +1187,16 @@ function scatterCars(map: GameMap, rng: Rng, roadsX: number[], roadsY: number[])
       if (map.get(bx, by) === Tile.Road) map.containers.push(makeContainer(id++, 'carTrunk', bx, by, 0));
     }
   };
-  for (const rx of roadsX) for (let y = 6; y < map.height - 6; y += rng.int(9, 18)) tryCar(rx + (rng.chance(0.5) ? 0 : 2), y, false);
-  for (const ry of roadsY) for (let x = 6; x < map.width - 6; x += rng.int(9, 18)) tryCar(x, ry + (rng.chance(0.5) ? 0 : 2), true);
+  for (const rx of roadsX)
+    for (let y = 6; y < map.height - 6; y += rng.int(9, 18)) {
+      const low = rng.chance(0.5);
+      tryCar(rx + (low ? 0 : AVENUE_W - 1), y, false, low ? -1 : 1);
+    }
+  for (const ry of roadsY)
+    for (let x = 6; x < map.width - 6; x += rng.int(9, 18)) {
+      const low = rng.chance(0.5);
+      tryCar(x, ry + (low ? 0 : AVENUE_W - 1), true, low ? -1 : 1);
+    }
 }
 
 function countSolidAround(map: GameMap, x: number, y: number): number {

@@ -140,3 +140,44 @@ describe('vehicles in a raid', () => {
     expect(target.hp).toBeLessThan(hp0);
   });
 });
+
+describe('cars on the maps', () => {
+  it('the drivable one by the spawn stands on a proper road and can drive a long way along it', () => {
+    for (const mapId of ['outskirts', 'pinehollow', 'portkirov', 'zavadsk'] as const)
+      for (const seed of [1, 2]) {
+        const map = generateMap(seed, { mapId, botDensity: 0 });
+        const wrecks = map.vehicleSpawns.filter((s) => s.wreck).map((s, i) => createVehicle(1000 + i, s));
+        const sp = { x: map.playerSpawn.x + 0.5, y: map.playerSpawn.y + 0.5 };
+        const car = map.vehicleSpawns.find((s) => !s.wreck && Math.hypot(s.x - sp.x, s.y - sp.y) < 50);
+        expect(car, `${mapId} ${seed}`).toBeDefined();
+        const isRoad = (x: number, y: number) => map.get(x, y) === Tile.Road || map.get(x, y) === Tile.Dirt;
+        const cx = Math.floor(car!.x);
+        const cy = Math.floor(car!.y);
+        expect(isRoad(cx, cy), `${mapId} ${seed}`).toBe(true);
+        // Across the car (perpendicular to its heading) the road is at least a street wide.
+        const [ax, ay] = Math.abs(Math.cos(car!.heading)) > 0.5 ? [0, 1] : [1, 0];
+        let w = 1;
+        for (const sg of [1, -1]) for (let k = 1; k < 8 && isRoad(cx + ax * k * sg, cy + ay * k * sg); k++) w++;
+        expect(w, `${mapId} ${seed}`).toBeGreaterThanOrEqual(4);
+        // Along road tiles a UAZ fits on (either way round), past the wrecks, it gets well away.
+        const fits = (x: number, y: number) =>
+          [0, Math.PI / 2].some((h) => !vehicleBlocked(createVehicle(1, { def: 'uaz469', x: x + 0.5, y: y + 0.5, heading: h, variant: 0, wreck: false, fuel: 1 }), map, wrecks));
+        const seen = new Set([map.idx(cx, cy)]);
+        const q = [[cx, cy]];
+        let far = 0;
+        while (q.length && far < 150) {
+          const [x, y] = q.pop()!;
+          far = Math.max(far, Math.hypot(x! - cx, y! - cy));
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+            const nx = x! + dx;
+            const ny = y! + dy;
+            const i = map.idx(nx, ny);
+            if (!map.inBounds(nx, ny) || seen.has(i) || !isRoad(nx, ny)) continue;
+            seen.add(i);
+            if (fits(nx, ny)) q.push([nx, ny]);
+          }
+        }
+        expect(far, `${mapId} ${seed}`).toBeGreaterThanOrEqual(150);
+      }
+  }, 60000);
+});
