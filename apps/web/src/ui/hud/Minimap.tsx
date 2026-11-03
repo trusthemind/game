@@ -19,7 +19,7 @@ const COLORS: Record<number, [number, number, number]> = {
 };
 
 /**
- * Explored-only minimap (exploration matters: you only see what you've seen).
+ * The whole map (you have it from the start): what you can see right now is brighter. Bosses are always marked.
  * Pixels are rebuilt at 4 Hz into an ImageData, then drawn rotated/cropped around the player.
  */
 export function Minimap({ raid, size = 196, full = false }: { raid: Raid; size?: number; full?: boolean }) {
@@ -45,11 +45,6 @@ export function Minimap({ raid, size = 196, full = false }: { raid: Raid; size?:
       const d = img.data;
       for (let i = 0; i < map.tiles.length; i++) {
         const o = i * 4;
-        if (!raid.explored[i]) {
-          d[o] = d[o + 1] = d[o + 2] = 8;
-          d[o + 3] = 255;
-          continue;
-        }
         const c = COLORS[map.tiles[i]!] ?? [60, 60, 60];
         const k = raid.playerFov[i] ? 1 : 0.55;
         d[o] = c[0] * k;
@@ -93,7 +88,7 @@ export function Minimap({ raid, size = 196, full = false }: { raid: Raid; size?:
         ctx.fill();
       }
       for (const a of raid.actors) {
-        if (!a.alive || a === raid.player) continue;
+        if (!a.alive || a === raid.player || a.bossId) continue;
         // Hostiles your spotter companion has eyes on show up even outside your own sight.
         const spotted = (a.spottedUntil ?? 0) > raid.time;
         if (!a.companion && !spotted && !raid.isVisibleToPlayer(a.pos.x, a.pos.y)) continue;
@@ -101,6 +96,27 @@ export function Minimap({ raid, size = 196, full = false }: { raid: Raid; size?:
         ctx.beginPath();
         ctx.arc(a.pos.x, a.pos.y, 0.8, 0, Math.PI * 2);
         ctx.fill();
+      }
+      // Bosses: wherever they are, seen or not.
+      for (const a of raid.actors) {
+        if (!a.alive || !a.bossId) continue;
+        const r = full ? 2.4 : 1.6;
+        ctx.fillStyle = '#ff3b2f';
+        ctx.strokeStyle = '#ffd2c8';
+        ctx.lineWidth = full ? 0.7 : 0.5;
+        ctx.beginPath();
+        ctx.arc(a.pos.x, a.pos.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        if (full) {
+          ctx.font = `600 ${(11 * dpr) / scale}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.lineWidth = (3 * dpr) / scale;
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+          ctx.strokeText(a.name, a.pos.x, a.pos.y - r - 1.2);
+          ctx.fillStyle = '#ffb0a6';
+          ctx.fillText(a.name, a.pos.x, a.pos.y - r - 1.2);
+        }
       }
       ctx.translate(p.x, p.y);
       ctx.rotate(raid.player.facing);

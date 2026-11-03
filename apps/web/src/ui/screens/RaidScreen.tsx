@@ -179,7 +179,7 @@ function RaidOverlays({ session }: { session: GameSession }) {
         <div className="overlay center" onClick={() => session.closeOverlay()}>
           <div className="panel map-panel">
             <div className="panel-title">
-              <span>Map · explored areas</span>
+              <span>Map · bosses in red</span>
               <span className="kbd">M</span>
             </div>
             <Minimap raid={session.raid} size={Math.min(720, window.innerHeight - 140)} full />
