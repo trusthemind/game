@@ -21,12 +21,14 @@ export function sellPrice(item: ItemInstance, profile: Profile): number {
 
 /**
  * Vera's workshop brings armour or a helmet back to full for half its value times the share worn away (0 when
- * there's nothing to mend). No discount: a repaired plate never sells for more than the repair cost.
+ * there's nothing to mend), and never for more than she'd pay for it as it is: mending a wreck can't cost more
+ * than selling it.
  */
 export function repairCost(item: ItemInstance): number {
   const def = getDef(item.def);
   if (!def.armor || item.dur === undefined || item.dur >= def.armor.durability) return 0;
-  return Math.max(100, Math.round(def.value * 0.5 * (1 - item.dur / def.armor.durability)));
+  const cost = def.value * 0.5 * (1 - item.dur / def.armor.durability);
+  return Math.max(100, Math.round(Math.min(cost, itemValue(item) * 0.55)));
 }
 
 export function repair(profile: Profile, item: ItemInstance): { ok: boolean; reason?: string } {

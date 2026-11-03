@@ -16,7 +16,7 @@ const BASE = `${import.meta.env.BASE_URL}models/`;
  * Bump whenever tools/assets/weapons.mjs writes new glb files: the models are cached for a week (vercel.json) and
  * the code reads their sockets, so old files with new code put sights in mid-air.
  */
-const VERSION = 22;
+const VERSION = 23;
 
 let pending: Promise<Map<string, THREE.Object3D>> | null = null;
 let ready: Map<string, THREE.Object3D> | null = null;
@@ -40,6 +40,7 @@ export function loadWeaponParts(): Promise<Map<string, THREE.Object3D>> {
       for (const c of g?.scene.children ?? []) {
         // attach.glb parts have their mounting point at the origin; the platforms' sit in the gun's frame.
         c.userData.boltOn = PLATFORMS[i] === 'attach';
+        c.userData.platform = PLATFORMS[i];
         c.traverse((o) => {
           if ((o as THREE.Mesh).isMesh) o.castShadow = true;
         });
@@ -134,14 +135,19 @@ export function assembleGun(parts: Map<string, THREE.Object3D>, item: ItemInstan
     let obj: THREE.Object3D | null = null;
     if (node && !node.userData.boltOn) {
       obj = node.clone();
-      // A muzzle device modelled on one gun's barrel moves onto this one's (an AK-74 brake on an RPK-16).
-      const own = MUZZLE_OF.get(node.name);
-      const host = drawn.get(r.host);
-      const at = own && own !== item.def && host && findSocket(host, r.socket.id);
-      const from = at && findSocket(parts.get(own)!, 'muzzle');
-      if (at && from) {
-        g.updateMatrixWorld(true);
-        obj.position.add(g.worldToLocal(at.getWorldPosition(v)).sub(from.position));
+      // Modelled on another gun (an AKM gas tube or an RPK-16 stock on an AK-74M, a Zenitco handguard made to fit
+      // the AK-74M on an AKM): it moves by how far this gun's factory part sits from that gun's.
+      const home = HOME.get(node.name) ?? PLATFORM_GUN[node.userData.platform as string];
+      if (home && home !== item.def && r.host === item) {
+        if (r.socket.id === 'muzzle') {
+          const at = findSocket(drawn.get(item)!, 'muzzle');
+          const from = parts.get(home) && findSocket(parts.get(home)!, 'muzzle');
+          if (at && from) obj.position.add(at.position).sub(from.position);
+        } else {
+          const here = parts.get(factoryPart(item.def, r.path) ?? '');
+          const there = parts.get(factoryPart(home, r.path) ?? '');
+          if (here && there) obj.position.add(seat(here, r.socket.id)).sub(seat(there, r.socket.id));
+        }
       }
     }
     else if (BARRELS[r.part.def]) obj = barrel(receiver, BARRELS[r.part.def]!);
@@ -163,13 +169,39 @@ export function assembleGun(parts: Map<string, THREE.Object3D>, item: ItemInstan
   return g;
 }
 
-/** Muzzle devices that come on a gun from the factory → that gun (its receiver's muzzle socket is where it sits). */
-const MUZZLE_OF = new Map<string, string>(
-  ALL_ITEMS.flatMap((d) => {
-    const m = d.weapon?.preset?.muzzle;
-    return typeof m === 'string' ? [[m, d.id] as [string, string]] : [];
-  }),
-);
+/** Each factory part → the gun it comes on (its model sits where it does on that gun). */
+const HOME = new Map<string, string>();
+for (const d of ALL_ITEMS) {
+  const walk = (p: Preset | undefined) => {
+    for (const e of Object.values(p ?? {})) {
+      const id = typeof e === 'string' ? e : e[0];
+      if (!HOME.has(id)) HOME.set(id, d.id);
+      if (typeof e !== 'string') walk(e[1]);
+    }
+  };
+  walk(d.weapon?.preset);
+}
+/** Aftermarket parts are made to fit their platform's own gun (the Zenitco kit fits the AK-74M). */
+const PLATFORM_GUN: Record<string, string> = { ak: 'ak74m', ar: 'm4a1', pistol: 'pm', smg: 'pp19', rifle: 'svd' };
+
+const seats = new Map<string, THREE.Vector3>();
+/**
+ * Where a part meets the gun, from its box: a stock's, a grip's and a magazine's top front (a magazine's front lug,
+ * a grip's top behind the trigger guard), a dust cover's top rear, a handguard's or gas tube's rear on its middle.
+ */
+function seat(part: THREE.Object3D, socket: string): THREE.Vector3 {
+  const key = `${part.name}:${socket}`;
+  let p = seats.get(key);
+  if (!p) {
+    part.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(part);
+    const front = socket === 'stock' || socket === 'pgrip';
+    const top = socket === 'stock' || socket === 'pgrip' || socket === 'mag' || socket === 'dustcover';
+    p = new THREE.Vector3((b.min.x + b.max.x) / 2, top ? b.max.y : (b.min.y + b.max.y) / 2, front ? b.max.z : b.min.z);
+    seats.set(key, p);
+  }
+  return p;
+}
 
 /** AR barrels by length from the receiver face (the kit models have none): 10.3", 14.5", 20". */
 const BARRELS: Record<string, number> = { ar_barrel_103: 0.262, ar_barrel_145: 0.368, ar_barrel_20: 0.508 };

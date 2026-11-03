@@ -1,4 +1,4 @@
-import { useContext, useState } from 'react';
+import { useContext, useState, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { useEscape } from '../components/useEscape';
 import {
@@ -115,6 +115,58 @@ export function WeaponModder() {
       return true;
     });
 
+  // A socket and, inside it, the sockets on whatever is in it (a handguard's rails, a barrel's muzzle).
+  const slotCard = (t: (typeof tree)[number]): ReactNode => {
+    const m = t.part;
+    const key = t.path.join('/');
+    const nested = t.path.length > 1;
+    const options = available.filter((a) => a.item.uid !== m?.uid && partFits(a.item.def, t.socket, t.host.def, gun.def));
+    const kids = tree.filter((c) => c.path.length === t.path.length + 1 && c.path.slice(0, -1).join('/') === key);
+    return (
+      <div
+        key={key}
+        className={`mslot ${m ? 'filled' : ''} ${nested ? 'sub' : ''}`}
+        onMouseEnter={(e) => (e.stopPropagation(), setFocus(key))}
+      >
+        <div className="mslot-head">
+          <span className="h small">
+            {t.socket.label}
+            {t.socket.required && !m && <span className="bad"> · required</span>}
+          </span>
+          {m ? (
+            <button className="btn small" onClick={() => remove(t.path)}>
+              Remove
+            </button>
+          ) : (
+            <span className="faint small">empty</span>
+          )}
+        </div>
+        {m && <div className="mslot-cur">{getDef(m.def).name}</div>}
+        {options.length > 0 && (
+          <div className="mslot-opts">
+            {options.map((o) => (
+              <button
+                key={o.item.uid}
+                className="mopt"
+                onClick={() => (setTryOn(null), install(t.path, o.item.uid, o.grid))}
+                onMouseEnter={() => setTryOn({ path: t.path, def: o.item.def })}
+                onMouseLeave={() => setTryOn(null)}
+                title={`${getDef(o.item.def).name} — from ${o.label}`}
+              >
+                <span>{getDef(o.item.def).name}</span>
+                <span className="faint small">{o.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {!m && !options.length && (
+          <div className="faint small">{nested ? 'Nothing for it in your stash.' : 'No compatible parts — buy from Vera or loot gun-part boxes.'}</div>
+        )}
+        {kids.length > 0 && <div className="mslot-kids">{kids.map((c) => slotCard(c))}</div>}
+      </div>
+    );
+  };
+
   const acc = (spread: number) => `${Math.max(0, Math.round(100 - spread * 1000))}`;
   return (
     <div className="modal-backdrop fade-in" onClick={() => useModder.getState().close()} onPointerDown={(e) => e.stopPropagation()}>
@@ -128,50 +180,10 @@ export function WeaponModder() {
         <GunViewer item={preview ?? gun} highlight={tryOn ? tryOn.path.join('/') : focus} />
         <div className="modder-body">
           <div className="modder-slots" onMouseLeave={() => (setFocus(null), setTryOn(null))}>
-            {tree.map((t) => {
-              const m = t.part;
-              const key = t.path.join('/');
-              const options = available.filter((a) => a.item.uid !== m?.uid && partFits(a.item.def, t.socket, t.host.def, gun.def));
-              return (
-                <div key={key} className={`mslot ${m ? 'filled' : ''}`} style={{ marginLeft: (t.path.length - 1) * 14 }} onMouseEnter={() => setFocus(key)}>
-                  <div className="mslot-head">
-                    <span className="h small">
-                      {t.socket.label}
-                      {t.socket.required && !m && <span className="bad"> · required</span>}
-                    </span>
-                    {m ? (
-                      <button className="btn small" onClick={() => remove(t.path)}>
-                        Remove
-                      </button>
-                    ) : (
-                      <span className="faint small">empty</span>
-                    )}
-                  </div>
-                  {m && <div className="mslot-cur">{getDef(m.def).name}</div>}
-                  {options.length > 0 && (
-                    <div className="mslot-opts">
-                      {options.map((o) => (
-                        <button
-                          key={o.item.uid}
-                          className="mopt"
-                          onClick={() => (setTryOn(null), install(t.path, o.item.uid, o.grid))}
-                          onMouseEnter={() => setTryOn({ path: t.path, def: o.item.def })}
-                          onMouseLeave={() => setTryOn(null)}
-                          title={`From ${o.label}`}
-                        >
-                          <span>{getDef(o.item.def).short}</span>
-                          <span className="faint small">{o.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {!m && !options.length && <div className="faint small">No compatible parts — buy from Vera or loot gun-part boxes.</div>}
-                </div>
-              );
-            })}
+            {tree.filter((t) => t.path.length === 1).map((t) => slotCard(t))}
           </div>
           <div className="modder-stats">
-            <div className="dim small">{preview ? `Stats · with ${getDef(tryOn!.def).short}` : 'Stats'}</div>
+            <div className="dim small">{preview ? `Stats · with ${getDef(tryOn!.def).name}` : 'Stats'}</div>
             {stat('Accuracy', +acc(ref.spread * ref.aimSpreadMul), +acc(shown.spread * shown.aimSpreadMul), (n) => `${n}`, 'up')}
             {stat('Recoil', ref.recoil * 1000, shown.recoil * 1000, (n) => n.toFixed(0), 'down')}
             {stat('Loudness (m)', ref.noise * 0.65, shown.noise * 0.65, (n) => n.toFixed(0), 'down')}

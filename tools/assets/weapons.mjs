@@ -370,13 +370,17 @@ const PLATFORMS = {
  * attach.glb: one root node per part, its mounting point at the origin, the bore direction +Z, up +Y, in metres:
  * sights stand on the origin (bottom centre), muzzle devices start at it (rear centre), grips hang from it (top
  * centre), lights touch it with their +X face (they go on the right-hand rail). A part goes to its socket as is.
- * id → [slug, nodes, muzzle-ward axis, up axis, real length along the bore in metres (grips: height), mount]
+ * id → [slug, nodes, muzzle-ward axis, up axis, real length along the bore in metres (grips: height), mount, options]
  */
 const ATTACH = {
-  pso1: ['att_pso1', /./, 'z', 'y', 0.375, 'base'],
-  holo: ['att_eotech', /./, 'z', 'y', 0.1, 'base'],
+  // Its download has the eyepiece towards the muzzle. Mirrored end to end: turned round, the bracket would be on
+  // the wrong side for an AK's left-hand dovetail.
+  pso1: ['att_pso1', /./, 'z', 'y', 0.375, 'base', { mirror: true }],
+  // Window towards the shooter, battery cap forward.
+  holo: ['att_eotech', /./, '-z', 'y', 0.1, 'base'],
   red_dot: ['att_reddot', /./, 'z', 'y', 0.07, 'base'],
-  scope_4x: ['att_acog', /./, 'x', 'y', 0.15, 'base'],
+  // The housing with the fibre optic forward, the eyepiece towards the shooter.
+  scope_4x: ['att_acog', /./, '-x', 'y', 0.15, 'base'],
   sup_545: ['att_pbs4', /./, 'z', 'y', 0.2, 'rear'],
   sup_dtk1p: ['att_dtkp', /^wRing#/, 'z', 'y', 0.186, 'rear'],
   sup_556: ['att_suppressors', /^Socom_4#/, 'x', 'y', 0.16, 'rear'],
@@ -399,7 +403,7 @@ async function buildAttach() {
   doc.createBuffer();
   const scene = doc.createScene('attach');
   const loaded = {};
-  for (const [id, [slug, re, forward, up, len, mount]] of Object.entries(ATTACH)) {
+  for (const [id, [slug, re, forward, up, len, mount, opts]] of Object.entries(ATTACH)) {
     if (!loaded[slug]) {
       const file = path.join(SRC, 'sketchfab', slug, 'scene.gltf');
       if (!fs.existsSync(file)) throw new Error(`missing ${slug} (run tools/assets/sketchfab.mjs)`);
@@ -426,6 +430,8 @@ async function buildAttach() {
       side: [box.max[0], box.center[1], box.center[2]],
     }[mount];
     const m = frameMatrix(forward, up, k, o.map((v) => -v * k));
+    // `mirror`: flipped end to end (transformPrimitive turns the faces round for a mirroring matrix).
+    if (opts?.mirror) for (const i of [2, 6, 10, 14]) m[i] = -m[i];
     const part = doc.createNode(id);
     for (const n of meshNodes) {
       const mtx = mul(m, n.getWorldMatrix());

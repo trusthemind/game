@@ -91,6 +91,9 @@
 .mslot-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .mslot-cur { font-size: 13px; color: var(--text); }
 .mslot-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Sockets on the part in a socket sit inside its card, hung off a line. */
+.mslot-kids { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding-left: 10px; border-left: 2px solid var(--line); }
+.mslot.sub { padding: 8px; background: rgba(255, 255, 255, 0.02); }
 .mopt { display: flex; flex-direction: column; align-items: flex-start; padding: 5px 8px; border: 1px dashed var(--line); border-radius: 3px; background: transparent; color: var(--text); cursor: pointer; font: inherit; }
 .mopt:hover { border-style: solid; border-color: var(--accent); }
 .modder-stats { display: flex; flex-direction: column; gap: 6px; }

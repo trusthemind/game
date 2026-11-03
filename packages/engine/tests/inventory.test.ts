@@ -23,6 +23,7 @@ import {
   itemValue,
   repair,
   repairCost,
+  sellPrice,
   sortGrid,
   type ContainerKind,
 } from '../src/index';
@@ -173,13 +174,14 @@ describe('armour repair', () => {
     expect(repairCost(createItem('ak74m'))).toBe(0);
   });
 
-  it('never pays for itself on resale, even at the best trader discount', () => {
+  it('never costs more than the armour sells for as it is', () => {
+    const p = createProfile();
     for (const d of Object.values(ITEMS)) {
       if (!d.armor) continue;
-      for (const f of [0.05, 0.3, 0.6, 0.95]) {
+      for (const f of [0, 0.05, 0.3, 0.6, 0.95]) {
         const worn = createItem(d.id, { dur: d.armor.durability * f });
-        const gain = (itemValue(createItem(d.id)) - itemValue(worn)) * (0.55 + 0.25 / 2);
-        expect(gain).toBeLessThan(repairCost(worn));
+        expect(repairCost(worn)).toBeLessThanOrEqual(Math.max(100, sellPrice(worn, p)));
+        expect(repairCost(worn)).toBeLessThanOrEqual(Math.round(d.value * 0.5 * (1 - f)) + 1);
       }
     }
   });
