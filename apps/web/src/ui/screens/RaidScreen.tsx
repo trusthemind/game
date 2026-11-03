@@ -334,6 +334,7 @@ function PauseMenu({ session }: { session: GameSession }) {
       <div className="panel pause">
         <div className="panel-title">
           <span>Paused</span>
+          <span className="faint small">build {import.meta.env.VITE_BUILD}</span>
           <span className="kbd">Esc</span>
         </div>
         <div className="pause-body">

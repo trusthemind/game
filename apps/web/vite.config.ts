@@ -5,6 +5,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
+  // Which build is running, shown in the menu and the pause screen (Vercel passes the commit).
+  define: { 'import.meta.env.VITE_BUILD': JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'dev') },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },

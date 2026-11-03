@@ -6,6 +6,7 @@ export function cleanModel(root: THREE.Object3D): void {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
     dropBadTangents(mesh.geometry);
+    fixZeroNormals(mesh.geometry);
     noTransmission(mesh);
   });
 }
@@ -23,6 +24,19 @@ function dropBadTangents(g: THREE.BufferGeometry): void {
       g.deleteAttribute('tangent');
       return;
     }
+}
+
+/** A zero-length normal (a few in the whole-gun models and a sofa) normalises into NaN too: point it up. */
+function fixZeroNormals(g: THREE.BufferGeometry): void {
+  const n = g.attributes.normal;
+  if (!n) return;
+  let fixed = false;
+  for (let i = 0; i < n.count; i++)
+    if (!(Math.hypot(n.getX(i), n.getY(i), n.getZ(i)) > 0.1)) {
+      n.setXYZ(i, 0, 1, 0);
+      fixed = true;
+    }
+  if (fixed) n.needsUpdate = true;
 }
 
 /**

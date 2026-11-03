@@ -75,7 +75,7 @@ export function MainMenu() {
         </div>
         <div className="menu-foot">
           <SyncBadge />
-          <span className="faint">v0.1 · best with a mouse · press F3 in raid for perf stats</span>
+          <span className="faint">v0.1 · build {import.meta.env.VITE_BUILD} · best with a mouse · press F3 in raid for perf stats</span>
         </div>
       </div>
     </div>
