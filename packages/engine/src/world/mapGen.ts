@@ -372,8 +372,11 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   };
   // Player spawn: on a road at the map edge if possible, otherwise an open clearing — never in a bush.
   const spawnSide = rng.int(0, 3);
-  let spawnCands = edgeTiles(spawnSide, 6).filter((p) => p.road && clear(p.x, p.y, 1));
-  if (!spawnCands.length) spawnCands = edgeTiles(spawnSide, 7).filter((p) => clear(p.x, p.y, 2));
+  // Not where the rail bridge exit goes (east edge, on the line): its embankment would bury the spawn, and
+  // with the spawn walled in every exit counts as unreachable and is dropped.
+  const offRail = (p: { x: number; y: number }) => railY < 0 || Math.hypot(p.x - (size - 10), p.y - railY) > 24;
+  let spawnCands = edgeTiles(spawnSide, 6).filter((p) => p.road && clear(p.x, p.y, 1) && offRail(p));
+  if (!spawnCands.length) spawnCands = edgeTiles(spawnSide, 7).filter((p) => clear(p.x, p.y, 2) && offRail(p));
   if (!spawnCands.length) {
     const p = findOpenTile(map, rng);
     spawnCands = [{ ...p, road: true }];
@@ -508,6 +511,9 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   }
 
   // ── Connectivity repair: carve through trees/fences to anything important that's cut off ──
+  // Whatever was built over the spawn since it was picked, the player starts on the nearest open tile: from a
+  // blocked one nothing is reachable and every exit would be dropped below.
+  if (!map.isWalkable(map.playerSpawn.x, map.playerSpawn.y)) map.playerSpawn = nearestWalkable(map, map.playerSpawn);
   let reach = floodFill(map, map.playerSpawn);
   const important = [
     ...map.extractions.map((e) => ({ x: Math.floor(e.x), y: Math.floor(e.y) })),
@@ -1216,6 +1222,17 @@ function randomTile(map: GameMap, rng: Rng, pred: (x: number, y: number) => bool
 
 function findOpenTile(map: GameMap, rng: Rng): { x: number; y: number } {
   return randomTile(map, rng, (x, y) => map.get(x, y) === Tile.Road) ?? { x: map.width >> 1, y: map.height >> 1 };
+}
+
+/** The walkable tile closest to `p` (rings outwards), or `p` itself if there's none. */
+function nearestWalkable(map: GameMap, p: { x: number; y: number }): { x: number; y: number } {
+  for (let r = 1; r < Math.max(map.width, map.height); r++)
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        if (map.isWalkable(p.x + dx, p.y + dy) && map.get(p.x + dx, p.y + dy) !== Tile.Water) return { x: p.x + dx, y: p.y + dy };
+      }
+  return p;
 }
 
 export function floodFill(map: GameMap, start: { x: number; y: number }): Uint8Array {

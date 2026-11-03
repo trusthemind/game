@@ -72,3 +72,21 @@ describe('extraction points', () => {
       }
   });
 });
+
+describe('every raid has a way out', () => {
+  it('Outskirts seed 18: the spawn was buried under the rail bridge exit and every exit got dropped', () => {
+    const m = generateMap(18, { mapId: 'outskirts' });
+    expect(m.isWalkable(m.playerSpawn.x, m.playerSpawn.y)).toBe(true);
+    expect(m.extractions.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('spawns stand free and reach at least four exits on every map', () => {
+    for (const id of ['outskirts', 'pinehollow', 'portkirov', 'zavadsk'] as MapId[])
+      for (const seed of [3, 18, 77, 4242]) {
+        const m = generateMap(seed, { mapId: id });
+        const reach = floodFill(m, m.playerSpawn);
+        const open = m.extractions.filter((e) => reach[m.idx(Math.floor(e.x), Math.floor(e.y))]);
+        expect(open.length, `${id} seed ${seed}`).toBeGreaterThanOrEqual(4);
+      }
+  }, 60000);
+});
