@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
-import { noTransmission } from './noTransmission';
+import { cleanModel } from './cleanModel';
 import { ALL_ITEMS, createItem, getDef, socketTree, type ItemInstance, type Preset } from '@ashfall/engine';
 
 /**
@@ -36,7 +36,7 @@ export function loadWeaponParts(): Promise<Map<string, THREE.Object3D>> {
   pending = Promise.all(PLATFORMS.map((p) => loader.loadAsync(`${BASE}${p}.glb?v=${VERSION}`).catch(() => null))).then((docs) => {
     const parts = new Map<string, THREE.Object3D>();
     docs.forEach((g, i) => {
-      if (g) noTransmission(g.scene);
+      if (g) cleanModel(g.scene);
       for (const c of g?.scene.children ?? []) {
         // attach.glb parts have their mounting point at the origin; the platforms' sit in the gun's frame.
         c.userData.boltOn = PLATFORMS[i] === 'attach';

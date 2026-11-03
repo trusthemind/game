@@ -3,7 +3,7 @@ import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { addSketchfabFurniture } from './furnitureSf';
-import { noTransmission } from './noTransmission';
+import { cleanModel } from './cleanModel';
 
 /**
  * Loads the CC0 model packs once per session (see tools/assets/build.mjs) and hands out clones.
@@ -75,7 +75,7 @@ export function loadBodies(lib: AssetLibrary, ids: Iterable<string | undefined>)
     if (!p) {
       p = loader.loadAsync(`${BASE}bodies/${id}.glb`).then(
         (g) => {
-          noTransmission(g.scene);
+          cleanModel(g.scene);
           lib.bodies.set(id, g);
         },
         () => void failedBodies.add(id),
@@ -101,7 +101,7 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
   const loader = new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder);
   const load = (name: string) =>
     loader.loadAsync(`${BASE}${name}.glb`).then((g) => {
-      noTransmission(g.scene);
+      cleanModel(g.scene);
       return g;
     });
   const byName = (g: GLTF) => {
