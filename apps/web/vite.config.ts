@@ -13,7 +13,9 @@ export default defineConfig({
     // Service worker: precaches the hashed bundle so the game boots instantly and works offline.
     // On macOS the game can be installed as a standalone app (Safari: File → Add to Dock, Chrome: Install).
     VitePWA({
-      registerType: 'autoUpdate',
+      // A new build waits until the player is out of a raid (main.tsx): taking over at once reloaded the tab
+      // mid-raid, and a raid that's closed takes your gear with it.
+      registerType: 'prompt',
       injectRegister: null,
       includeAssets: ['icon.svg'],
       manifest: {
@@ -28,9 +30,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,woff2,glb,mp3,json,webp,png}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-        // New SW takes over immediately so players get fresh builds without a second reload.
         clientsClaim: true,
-        skipWaiting: true,
         cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
