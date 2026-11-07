@@ -41,6 +41,8 @@ export interface MapPreset {
   lake?: { x: number; y: number; rx: number; ry: number };
   /** A hunters' lodge in the woods (Hunters' Hollow): cabins round a clearing, a woodshed, log piles. */
   lodge?: boolean;
+  /** A lighthouse at the end of the east pier (a port). */
+  lighthouse?: boolean;
   /**
    * The map's layout, the same every raid (as in Tarkov: you learn it). The raid's own seed only picks the spawn
    * point, the bots, the drivable cars and the loot. Without one, the raid seed lays the map out too.
@@ -155,6 +157,29 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
     botDensity: 1.15,
     extractNames: ['Container Gate', 'Smugglers Boat', 'Tram Depot', 'Sewer Outlet', 'Crane Yard', 'North Overpass'],
     port: true,
+    /*
+     * The town on the hill above the port: the old town and the sailors' quarter along the top, the naval post
+     * in the north-east, the fishermen's row and harbour street lower down, the shipyard and the cannery
+     * where the town meets the docks. Below, the container terminal, the quay with its cranes, two piers (a
+     * lighthouse at the end of the east one) and the ships at their berths.
+     */
+    plan: {
+      roadsX: [0.3, 0.62],
+      roadsY: [0.28],
+      districts: [
+        { kind: 'forest', x: 0.08, y: 0.1, name: 'Lighthouse Hill' },
+        { kind: 'town', x: 0.35, y: 0.1, name: 'Old Town' },
+        { kind: 'town', x: 0.62, y: 0.12, name: "Sailors' Quarter" },
+        { kind: 'military', x: 0.88, y: 0.14, name: 'Naval Post' },
+        { kind: 'town', x: 0.15, y: 0.36, name: "Fishermen's Row" },
+        { kind: 'town', x: 0.48, y: 0.34, name: 'Harbour Street' },
+        { kind: 'industrial', x: 0.82, y: 0.38, name: 'Shipyard' },
+        { kind: 'industrial', x: 0.3, y: 0.44, name: 'Cannery' },
+        { kind: 'docks', x: 0.25, y: 0.75, name: 'West Quay' },
+        { kind: 'docks', x: 0.72, y: 0.75, name: 'Container Terminal' },
+      ],
+    },
+    lighthouse: true,
   },
   zavadsk: {
     id: 'zavadsk',
@@ -517,6 +542,21 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   }
 
   const port = preset.port ? buildPort(map, stage('port'), terminal, shore, roadsX) : null;
+  if (port && preset.lighthouse) {
+    // At the end of the east pier: a white tower with a red band and the lamp room on top.
+    const lx = port.piers[1]! - 1;
+    const ly = shore + 21;
+    map.addBlocker([lx, ly, lx + 3, ly + 3]);
+    map.structures.push({ kind: 'lighthouse', x: lx, y: ly, w: 3, h: 3 });
+    map.places.push({ name: 'Lighthouse', x: lx + 1.5, y: ly + 1.5, r: 6, major: true });
+  }
+  // A boss's lair, where he has a building of his kind but no place made for him (the smugglers' warehouse
+  // nearest the water): named on the map, and he camps there (BossDef.home).
+  for (const def of BOSSES.filter((b) => b.map === map.mapId && b.home && b.building && !map.places.some((p) => p.name === b.home))) {
+    const mine = map.buildings.filter((b) => b.kind === def.building && map.districtOf(Math.floor(b.x + b.w / 2), Math.floor(b.y + b.h / 2)) === def.district);
+    const b = mine.sort((p, q) => q.y + q.h - (p.y + p.h) || p.x - q.x)[0];
+    if (b) map.places.push({ name: def.home!, x: b.x + b.w / 2, y: b.y + b.h / 2, r: Math.max(b.w, b.h) / 2 + 2, major: true });
+  }
   rng = stage('dressing');
   scatterCars(map, rng, roadsX, roadsY);
   scatterTrees(map, rng);
@@ -1277,6 +1317,7 @@ function buildPort(map: GameMap, rng: Rng, top: number, shore: number, roadsX: n
   map.places.push(
     { name: 'Container Terminal', x: size / 2, y: (top + shore) / 2, r: (shore - top) / 2 + 6, major: true },
     { name: 'Quay', x: size / 2, y: shore - 5, r: 10, major: false },
+    { name: 'West Pier', x: piers[0]!, y: shore + 13, r: 7, major: false },
   );
   // Ships at the berths: one along the quay between the piers, one beyond the second pier.
   const berth = (x0: number, x1: number) => {

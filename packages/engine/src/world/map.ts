@@ -16,7 +16,7 @@ import type { VehicleSpawn } from '../sim/vehicle';
  * - logs: a pile of sawn logs at a sawmill (a blocker), lying along x if w > h.
  */
 export interface Structure {
-  kind: 'stack' | 'crane' | 'ship' | 'monument' | 'canopy' | 'garages' | 'bridge' | 'logs' | 'tower' | 'silo' | 'hay';
+  kind: 'stack' | 'crane' | 'ship' | 'monument' | 'canopy' | 'garages' | 'bridge' | 'logs' | 'tower' | 'silo' | 'hay' | 'lighthouse';
   x: number;
   y: number;
   w: number;

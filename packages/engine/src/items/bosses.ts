@@ -95,6 +95,7 @@ export const BOSSES: BossDef[] = [
     map: 'portkirov',
     district: 'docks',
     building: 'warehouse',
+    home: "Smugglers' Den",
     guards: 2,
     chance: 0.8,
     sex: 'f',

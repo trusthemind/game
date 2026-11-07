@@ -21,6 +21,7 @@ export function cityPieces(map: GameMap, mat: Mat, geo: Geo, shadows: boolean): 
     if (s.kind === 'tower') out.push(watchtower(s, mat, geo, shadows));
     if (s.kind === 'silo') out.push(silo(s, mat, geo, shadows));
     if (s.kind === 'hay') out.push(hayBales(s, mat, geo, shadows));
+    if (s.kind === 'lighthouse') out.push(lighthouse(s, mat, geo, shadows));
   }
   return out;
 }
@@ -44,6 +45,31 @@ function silo(s: Structure, mat: Mat, geo: Geo, shadows: boolean): THREE.Object3
     m.updateMatrix();
     g.add(m);
   }
+  return g;
+}
+
+/** A harbour lighthouse: a tapering white tower with a red band, a gallery and a glowing lamp room. */
+function lighthouse(s: Structure, mat: Mat, geo: Geo, shadows: boolean): THREE.Object3D {
+  const g = new THREE.Group();
+  const white = mat(new THREE.MeshStandardMaterial({ color: 0xe4e0d6, roughness: 0.8 }), 'tall');
+  const red = mat(new THREE.MeshStandardMaterial({ color: 0xa8322a, roughness: 0.7 }), 'tall');
+  const iron = mat(new THREE.MeshStandardMaterial({ color: 0x2c2f30, roughness: 0.5, metalness: 0.6 }), 'tall');
+  const lamp = mat(new THREE.MeshStandardMaterial({ color: 0xfff2c0, emissive: 0xffe08a, emissiveIntensity: 1.4 }), 'tall');
+  const cx = s.x + s.w / 2;
+  const cz = s.y + s.h / 2;
+  const add = (m: THREE.Mesh, y: number) => {
+    m.position.set(cx, y, cz);
+    m.castShadow = shadows;
+    m.matrixAutoUpdate = false;
+    m.updateMatrix();
+    g.add(m);
+  };
+  add(new THREE.Mesh(geo(new THREE.CylinderGeometry(1.0, 1.35, 5, 16)), white), 2.5);
+  add(new THREE.Mesh(geo(new THREE.CylinderGeometry(0.85, 1.0, 2.2, 16)), red), 6.1);
+  add(new THREE.Mesh(geo(new THREE.CylinderGeometry(0.75, 0.85, 2.2, 16)), white), 8.3);
+  add(new THREE.Mesh(geo(new THREE.CylinderGeometry(1.15, 1.15, 0.15, 16)), iron), 9.5);
+  add(new THREE.Mesh(geo(new THREE.CylinderGeometry(0.55, 0.55, 1.1, 12)), lamp), 10.1);
+  add(new THREE.Mesh(geo(new THREE.ConeGeometry(0.75, 0.8, 12)), red), 11.05);
   return g;
 }
 
