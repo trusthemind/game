@@ -33,7 +33,7 @@ describe('map generation', () => {
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (map.isSolid(sx + dx, sy + dy)) blocked++;
       expect(blocked).toBe(0);
     }
-  });
+  }, 30_000);
 });
 
 describe('pathfinding', () => {

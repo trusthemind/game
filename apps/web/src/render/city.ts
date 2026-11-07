@@ -19,8 +19,51 @@ export function cityPieces(map: GameMap, mat: Mat, geo: Geo, shadows: boolean): 
     if (s.kind === 'bridge') out.push(railings(s, mat, geo, shadows));
     if (s.kind === 'logs') out.push(logs(s, mat, geo, shadows));
     if (s.kind === 'tower') out.push(watchtower(s, mat, geo, shadows));
+    if (s.kind === 'silo') out.push(silo(s, mat, geo, shadows));
+    if (s.kind === 'hay') out.push(hayBales(s, mat, geo, shadows));
   }
   return out;
+}
+
+/** A grain silo: a weathered concrete drum `levels` × 2.5 m tall with a conical tin cap and a ladder cage. */
+function silo(s: Structure, mat: Mat, geo: Geo, shadows: boolean): THREE.Object3D {
+  const g = new THREE.Group();
+  const conc = mat(new THREE.MeshStandardMaterial({ map: getTexture('concrete'), color: 0xb0aa9c, roughness: 0.9 }), 'tall');
+  const tin = mat(new THREE.MeshStandardMaterial({ color: 0x7c7f78, roughness: 0.55, metalness: 0.5 }), 'tall');
+  const r = Math.min(s.w, s.h) / 2 - 0.1;
+  const H = (s.levels ?? 3) * 2.5;
+  const drum = new THREE.Mesh(geo(new THREE.CylinderGeometry(r, r, H, 20)), conc);
+  drum.position.set(s.x + s.w / 2, H / 2, s.y + s.h / 2);
+  const cap = new THREE.Mesh(geo(new THREE.ConeGeometry(r + 0.15, 1.6, 20)), tin);
+  cap.position.set(s.x + s.w / 2, H + 0.8, s.y + s.h / 2);
+  const ladder = new THREE.Mesh(geo(new THREE.BoxGeometry(0.5, H, 0.08)), tin);
+  ladder.position.set(s.x + s.w / 2, H / 2, s.y + s.h / 2 + r + 0.05);
+  for (const m of [drum, cap, ladder]) {
+    m.castShadow = shadows;
+    m.matrixAutoUpdate = false;
+    m.updateMatrix();
+    g.add(m);
+  }
+  return g;
+}
+
+/** Round hay bales lying side by side along the footprint's long axis. */
+function hayBales(s: Structure, mat: Mat, geo: Geo, shadows: boolean): THREE.Object3D {
+  const g = new THREE.Group();
+  const straw = mat(new THREE.MeshStandardMaterial({ color: 0xc9a65a, roughness: 1 }));
+  const n = Math.max(s.w, s.h);
+  const alongX = s.w >= s.h;
+  const bale = geo(new THREE.CylinderGeometry(0.62, 0.62, 0.95, 14).rotateZ(Math.PI / 2));
+  for (let k = 0; k < n; k++) {
+    const m = new THREE.Mesh(bale, straw);
+    m.position.set(alongX ? s.x + k + 0.5 : s.x + 0.5, 0.62, alongX ? s.y + 0.5 : s.y + k + 0.5);
+    if (!alongX) m.rotation.y = Math.PI / 2;
+    m.castShadow = shadows;
+    m.matrixAutoUpdate = false;
+    m.updateMatrix();
+    g.add(m);
+  }
+  return g;
 }
 
 /**

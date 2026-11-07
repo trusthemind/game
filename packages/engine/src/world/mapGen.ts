@@ -33,11 +33,27 @@ export interface MapPreset {
   railway?: boolean;
   /** A sawmill in the forest: clearing, saw shed, log piles. */
   sawmill?: boolean;
+  /** A kolkhoz farmyard: barns, the machine shed, grain silos, hay. */
+  kolkhoz?: boolean;
+  /** A petrol station on an avenue through town (a city has its own). */
+  gasStation?: boolean;
   /**
    * The map's layout, the same every raid (as in Tarkov: you learn it). The raid's own seed only picks the spawn
    * point, the bots, the drivable cars and the loot. Without one, the raid seed lays the map out too.
    */
   layoutSeed?: number;
+  /** Where things are, by hand (instead of left to the seed): the districts and the avenues. */
+  plan?: MapPlan;
+}
+
+/**
+ * A map's design: its districts where they belong (centres as fractions of the map, with their names) and its
+ * avenues (fractions across). The rest is laid out from the seed within that frame.
+ */
+export interface MapPlan {
+  districts: { kind: District; x: number; y: number; name: string }[];
+  roadsX?: number[];
+  roadsY?: number[];
 }
 
 /** Named locations. Sizes are in tiles (≈1 m each); the largest is ~0.07 km² of hand-reachable ground. */
@@ -56,6 +72,35 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
     river: true,
     railway: true,
     sawmill: true,
+    /*
+     * Two avenues each way, room between them. North: the woods, the dachas of Sadova Street, birch woods
+     * and the garrison in the north-east. Across the middle the river down the west, the railway east-west,
+     * the old town and the market, the panel blocks of Microdistrict 7 and the tractor plant; the pumping
+     * station on the river. South: the kolkhoz, the sunflower farm and the dairy, the old clearing.
+     */
+    plan: {
+      roadsX: [0.4, 0.66],
+      roadsY: [0.3, 0.74],
+      districts: [
+        { kind: 'forest', x: 0.12, y: 0.12, name: 'Wolf Ravine' },
+        { kind: 'town', x: 0.32, y: 0.14, name: 'Sadova Street' },
+        { kind: 'forest', x: 0.55, y: 0.12, name: 'Birch Grove' },
+        { kind: 'military', x: 0.84, y: 0.15, name: 'Kordon Garrison' },
+        { kind: 'forest', x: 0.07, y: 0.45, name: 'Pine Ridge' },
+        { kind: 'town', x: 0.3, y: 0.48, name: 'Old Town' },
+        { kind: 'town', x: 0.52, y: 0.42, name: 'Market Quarter' },
+        { kind: 'town', x: 0.53, y: 0.62, name: 'Microdistrict 7' },
+        { kind: 'industrial', x: 0.84, y: 0.5, name: 'Tractor Plant' },
+        { kind: 'industrial', x: 0.22, y: 0.66, name: 'Pumping Station' },
+        { kind: 'farm', x: 0.3, y: 0.88, name: 'Kolkhoz Fields' },
+        { kind: 'farm', x: 0.62, y: 0.88, name: 'Sunflower Farm' },
+        { kind: 'farm', x: 0.1, y: 0.9, name: 'Dairy' },
+        { kind: 'forest', x: 0.88, y: 0.86, name: 'Old Clearing' },
+        { kind: 'forest', x: 0.94, y: 0.68, name: 'Black Woods' },
+      ],
+    },
+    kolkhoz: true,
+    gasStation: true,
   },
   pinehollow: {
     id: 'pinehollow',
@@ -156,7 +201,10 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   const size = opts.size ?? preset.size;
   const density = (opts.botDensity ?? 1) * preset.botDensity;
   const layoutSeed = opts.layoutSeed ?? preset.layoutSeed ?? seed;
-  const rng = new Rng(layoutSeed);
+  // Each stage draws from its own stream, so changing how one is laid out (the buildings, say) doesn't move
+  // what comes before it (the districts, the roads, the river).
+  const stage = (name: string) => new Rng(layoutSeed).fork(name);
+  let rng = stage('districts');
   // The map, and below its south edge a strip of rock for the bunker (reached only through its hatches).
   const map = new GameMap(size, size + BUNKER_BAND, layoutSeed);
   map.surfaceH = size;
@@ -176,7 +224,9 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
 
   // ── Districts ──
   const seeds: { kind: District; x: number; y: number }[] = [];
-  for (const [kind, n] of Object.entries(preset.districts) as [District, number][])
+  const plan = opts.layoutSeed === undefined ? preset.plan : undefined;
+  if (plan) for (const d of plan.districts) seeds.push({ kind: d.kind, x: d.x * size, y: d.y * size });
+  else for (const [kind, n] of Object.entries(preset.districts) as [District, number][])
     for (let i = 0; i < n; i++) {
       // Keep district seeds apart so every district gets real estate.
       let best = { x: size / 2, y: size / 2 };
@@ -192,7 +242,8 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
       seeds.push({ kind, ...best });
     }
   const usedNames = new Set<string>();
-  map.districts = seeds.map((s) => {
+  map.districts = seeds.map((s, i) => {
+    if (plan) return { ...s, name: plan.districts[i]!.name };
     const name = rng.pick(DISTRICT_NAMES[s.kind].filter((n) => !usedNames.has(n))) ?? DISTRICT_NAMES[s.kind][0]!;
     usedNames.add(name);
     return { ...s, name };
@@ -229,9 +280,11 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   }
 
   // ── Roads ──
-  const roadsX = roadLines(rng, size, preset.avenues);
+  rng = stage('roads');
+  const at = (f: number[] | undefined) => f?.map((v) => Math.round(v * size));
+  const roadsX = at(plan?.roadsX) ?? roadLines(rng, size, preset.avenues);
   // In a port no avenue runs along the terminal; the north–south ones end at its gates.
-  const roadsY = roadLines(rng, size, preset.avenues).filter((r) => !preset.port || r < terminal - 34);
+  const roadsY = (at(plan?.roadsY) ?? roadLines(rng, size, preset.avenues)).filter((r) => !preset.port || r < terminal - 34);
   const roadEnd = preset.port ? terminal : size - 2;
   const roadTile = (x: number, y: number) => {
     const d = map.districtOf(x, y);
@@ -257,14 +310,15 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
     for (let j = 0; j < ys.length; j += 2) blocks.push({ x: xs[i]! + 1, y: ys[j]! + 1, w: xs[i + 1]! - xs[i]! - 2, h: ys[j + 1]! - ys[j]! - 2 });
 
   // Outskirts: the river, then the railway (over the river on a bridge); roads they cross become bridges.
-  const river = preset.river ? carveRiver(map, rng.fork('river'), roadsX, roadsY) : null;
-  const railY = preset.railway ? layRailway(map, rng.fork('rail'), roadsY) : -1;
+  const river = preset.river ? carveRiver(map, stage('river'), roadsX, roadsY) : null;
+  const railY = preset.railway ? layRailway(map, stage('rail'), roadsY) : -1;
 
   // A city's middle block is its square, with the monument.
   const square = preset.city ? blocks.reduce((a, b) => (Math.hypot(b.x + b.w / 2 - size / 2, b.y + b.h / 2 - size / 2) < Math.hypot(a.x + a.w / 2 - size / 2, a.y + a.h / 2 - size / 2) ? b : a)) : null;
   if (square) citySquare(map, square, rng);
 
   // Urban blocks get secondary streets; then lots.
+  rng = stage('lots');
   const lots: { r: Rect; d: District }[] = [];
   for (const b of blocks) {
     if (b === square) continue;
@@ -287,17 +341,18 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
     return false;
   };
   let sawmillDone = !preset.sawmill;
-  const milLots = new Set<Rect>();
-  map.districts.forEach((dist, di) => {
-    if (dist.kind !== 'military') return;
-    const inDistrict = (r: Rect) =>
-      map.districtAt[map.idx(Math.floor(r.x + r.w / 2), Math.floor(r.y + r.h / 2))] === di;
-    // A base wants most of a block: the dry window (44 tiles, smaller if need be) that lies most in the district,
-    // the lots it covers given up to it.
-    // Where the district came out too small for one (the port's docks swallow it, say), the base goes out in
-    // the woods, the fields or the yards instead.
+  let gasDone = !preset.gasStation;
+  // A lot with an avenue (tarmac) running along one side of it.
+  const onAvenue = (lot: Rect) =>
+    [[lot.x + lot.w / 2, lot.y - 2], [lot.x + lot.w + 1, lot.y + lot.h / 2], [lot.x + lot.w / 2, lot.y + lot.h + 1], [lot.x - 2, lot.y + lot.h / 2]].some(
+      ([x, y]) => map.get(Math.floor(x!), Math.floor(y!)) === Tile.Road,
+    );
+  // A big place wants most of a block: the dry window (`sides` tiles square, smaller if need be) that lies
+  // most in its district, the lots it covers given up to it and its ground relabelled as the district's.
+  const reserved: Rect[] = [];
+  const reserveBlock = (di: number, sides: number[], minW: number, minH: number, elsewhere: District[] = []): Rect | undefined => {
     const mineTile = (i: number) => map.districtAt[i] === di;
-    const wildTile = (i: number) => ['forest', 'farm', 'industrial'].includes(map.districts[map.districtAt[i]!]!.kind);
+    const wildTile = (i: number) => elsewhere.includes(map.districts[map.districtAt[i]!]!.kind);
     const share = (r: Rect, ok: (i: number) => boolean) => {
       let n = 0;
       let all = 0;
@@ -305,21 +360,23 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
         for (let x = r.x; x < r.x + r.w; x += 2, all++) if (ok(map.idx(x, y))) n++;
       return n / all;
     };
+    const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
     let block: Rect | undefined;
-    for (const ok of [mineTile, wildTile]) {
+    for (const ok of elsewhere.length ? [mineTile, wildTile] : [mineTile]) {
       let best = 0.25;
       for (const b of blocks) {
         if (b === square) continue;
-        for (const side of [44, 40, 36, 32]) {
+        for (const side of sides) {
           const w = Math.min(b.w, side);
           const h = Math.min(b.h, side);
-          if (w < 30 || h < 26) continue;
+          if (w < minW || h < minH) continue;
           for (let y = b.y; y <= b.y + b.h - h; y += 4)
             for (let x = b.x; x <= b.x + b.w - w; x += 4) {
               // Clear of the map's edge, where the exits clear their own ground.
               if (Math.min(x, y, size - x - w, size - y - h) < 20) continue;
               const r = { x, y, w, h };
-              const score = (share(r, ok) * (w * h)) / (44 * 44);
+              if (reserved.some((o) => overlaps(o, r))) continue;
+              const score = (share(r, ok) * (w * h)) / (sides[0]! * sides[0]!);
               if (score > best && !wet(r)) {
                 best = score;
                 block = r;
@@ -329,23 +386,32 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
       }
       if (block) break;
     }
-    if (block) {
-      const overlaps = (r: Rect) =>
-        r.x < block.x + block.w && block.x < r.x + r.w && r.y < block.y + block.h && block.y < r.y + r.h;
-      for (let i = lots.length - 1; i >= 0; i--) if (overlaps(lots[i]!.r)) lots.splice(i, 1);
-      lots.push({ r: block, d: 'military' });
-      milLots.add(block);
-      // It's the army's ground, whatever the district map said at its edge.
-      for (let y = block.y; y < block.y + block.h; y++)
-        for (let x = block.x; x < block.x + block.w; x++) map.districtAt[map.idx(x, y)] = di;
-      return;
-    }
+    if (!block) return undefined;
+    const r = block;
+    for (let i = lots.length - 1; i >= 0; i--) if (overlaps(lots[i]!.r, r)) lots.splice(i, 1);
+    lots.push({ r, d: map.districts[di]!.kind });
+    reserved.push(r);
+    for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) map.districtAt[map.idx(x, y)] = di;
+    return r;
+  };
+
+  // Military: a base in each military district. Where the district came out too small for one (the port's
+  // docks swallow it, say), the base goes out in the woods, the fields or the yards instead.
+  const milLots = new Set<Rect>();
+  map.districts.forEach((dist, di) => {
+    if (dist.kind !== 'military') return;
+    const block = reserveBlock(di, [44, 40, 36, 32], 30, 26, ['forest', 'farm', 'industrial']);
+    if (block) return void milLots.add(block);
+    const inDistrict = (r: Rect) => map.districtAt[map.idx(Math.floor(r.x + r.w / 2), Math.floor(r.y + r.h / 2))] === di;
     const mine = lots.filter((l) => inDistrict(l.r));
     mine.sort((a, b) => Number(wet(a.r)) - Number(wet(b.r)) || b.r.w * b.r.h - a.r.w * a.r.h);
     if (mine[0]) milLots.add(mine[0].r);
   });
+  // The kolkhoz: a block of the first farm district (the one named for it, if there is one).
+  const farmDi = map.districts.findIndex((d) => d.name === 'Kolkhoz Fields');
+  const kolkhozLot = preset.kolkhoz ? reserveBlock(farmDi >= 0 ? farmDi : map.districts.findIndex((d) => d.kind === 'farm'), [40, 36, 32], 30, 26) : undefined;
 
-
+  rng = stage('buildings');
   let buildingId = 0;
   const addBuilding = (lot: Rect, kind: BuildingKind, floors?: number, exact = false, role?: BaseRole) => {
     if (lot.w < 7 || lot.h < 7) return;
@@ -360,6 +426,15 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
       if (d === 'forest') forest(map, lot, rng);
       else if (d === 'farm') fields(map, lot, rng);
       else decorateLot(map, lot, rng, 0.06);
+      continue;
+    }
+    if (lot === kolkhozLot) {
+      kolkhoz(map, lot, rng, addBuilding);
+      continue;
+    }
+    if (!gasDone && d === 'town' && lot.w >= 18 && lot.h >= 16 && onAvenue(lot)) {
+      gasDone = true;
+      petrolStation(map, clampLot(lot, 24), rng, addBuilding);
       continue;
     }
     if (!sawmillDone && d === 'forest' && lot.w >= 26 && lot.h >= 20) {
@@ -406,7 +481,8 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
     }
   }
 
-  const port = preset.port ? buildPort(map, rng.fork('port'), terminal, shore, roadsX) : null;
+  const port = preset.port ? buildPort(map, stage('port'), terminal, shore, roadsX) : null;
+  rng = stage('dressing');
   scatterCars(map, rng, roadsX, roadsY);
   scatterTrees(map, rng);
 
@@ -418,6 +494,7 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   }
 
   // ── Spawn & extractions ──
+  rng = stage('exits');
   const clear = (x: number, y: number, r: number) => {
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (map.isSolid(x + dx, y + dy)) return false;
     return true;
@@ -626,11 +703,11 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   map.extractions = map.extractions.filter((e) => reach[map.idx(Math.floor(e.x), Math.floor(e.y))]);
 
   // The bunker under the base: built before the furniture goes in, so it's furnished too.
-  buildBunker(map, rng.fork('bunker'), reach, (r, k) => addBuilding(r, k, 1, true));
+  buildBunker(map, stage('bunker'), reach, (r, k) => addBuilding(r, k, 1, true));
   furnish(map);
   // Locks, keys, the power switch and the exits that ask for something. Locked rooms drop out of what's
   // reachable (no bot spawns or patrols behind a locked door).
-  lockAndWire(map, rng.fork('locks'));
+  lockAndWire(map, stage('locks'));
   // Risk and reward: loot gets better the further it lies from every spawn (the middle of the map, where
   // everyone converges), a tier up past ~a third of the map's width away, two past half.
   for (const c of map.containers) {
@@ -937,6 +1014,38 @@ function militaryBase(
   }
   const yard = toWorld(back / 2, deep - 4);
   map.places.push({ name: 'Motor Pool', ...yard, r: 9, major: false }, { name: 'Main Gate', ...g, r: 5, major: false });
+}
+
+/**
+ * A kolkhoz farmyard: a beaten-earth yard with two cattle barns, the machine shed, a pair of grain silos and
+ * stacks of hay bales, a toolbox or two about. Its name goes on the map.
+ */
+function kolkhoz(map: GameMap, lot: Rect, rng: Rng, addBuilding: (r: Rect, k: BuildingKind) => void): void {
+  for (let y = lot.y; y < lot.y + lot.h; y++) for (let x = lot.x; x < lot.x + lot.w; x++) if (map.get(x, y) === Tile.Grass || map.get(x, y) === Tile.Tree) map.set(x, y, Tile.Dirt);
+  const x0 = lot.x + 2;
+  const y0 = lot.y + 2;
+  addBuilding({ x: x0, y: y0, w: Math.min(18, lot.w - 16), h: 10 }, 'barn');
+  addBuilding({ x: x0, y: y0 + 13, w: Math.min(18, lot.w - 16), h: 10 }, 'barn');
+  addBuilding({ x: lot.x + lot.w - 14, y: lot.y + lot.h - 13, w: 12, h: 11 }, 'warehouse');
+  // Grain silos: concrete drums on the yard's far side.
+  for (let k = 0; k < 2; k++) {
+    const sx = lot.x + lot.w - 12 + k * 5;
+    const sy = y0 + 1;
+    map.addBlocker([sx, sy, sx + 4, sy + 4]);
+    map.structures.push({ kind: 'silo', x: sx, y: sy, w: 4, h: 4, levels: rng.int(3, 4) });
+  }
+  // Hay: round bales in twos and threes across the yard.
+  for (let k = 0; k < 4; k++) {
+    const hx = lot.x + rng.int(Math.floor(lot.w * 0.45), lot.w - 6);
+    const hy = lot.y + rng.int(9, Math.max(10, lot.h - 16));
+    if (map.get(hx, hy) !== Tile.Dirt || map.get(hx + 2, hy + 1) !== Tile.Dirt) continue;
+    map.addBlocker([hx, hy, hx + 2, hy + 1]);
+    map.structures.push({ kind: 'hay', x: hx, y: hy, w: 2, h: 1 });
+  }
+  map.containers.push(makeContainer(nextContainerId(map), 'toolbox', lot.x + lot.w - 16, lot.y + lot.h - 4, 1));
+  if (rng.chance(0.6)) map.containers.push(makeContainer(nextContainerId(map), 'crate', x0 + 20, y0 + 11, 1));
+  map.pois.push({ x: lot.x + lot.w / 2, y: lot.y + lot.h / 2 });
+  map.places.push({ name: 'Kolkhoz', x: lot.x + lot.w / 2, y: lot.y + lot.h / 2, r: Math.max(lot.w, lot.h) / 2, major: true });
 }
 
 /** The city square: paving, a monument on its plinth in the middle, lime trees at the corners. */

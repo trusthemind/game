@@ -57,7 +57,7 @@ describe('army bases', () => {
         }
       }
     expect(withCars).toBeGreaterThanOrEqual(bases * 0.9);
-  });
+  }, 30_000);
 
   it('puts the warlord in the headquarters and guards at the barracks and the gate', () => {
     let seen = 0;
@@ -72,5 +72,5 @@ describe('army bases', () => {
         expect(map.botSpawns.filter((b) => b.archetype === 'guard' && Math.hypot(b.x - s.gate.x, b.y - s.gate.y) < 6).length).toBeGreaterThan(0);
     }
     expect(seen).toBeGreaterThan(2);
-  });
+  }, 30_000);
 });

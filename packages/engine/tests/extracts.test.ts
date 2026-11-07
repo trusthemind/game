@@ -31,7 +31,7 @@ describe('extraction points', () => {
           // Leaving direction points at the nearest edge.
           const ox = e.x + Math.cos(e.dir) * 10;
           const oy = e.y + Math.sin(e.dir) * 10;
-          const edge = (x: number, y: number) => Math.min(x, y, map.width - x, map.height - y);
+          const edge = (x: number, y: number) => Math.min(x, y, map.width - x, map.surfaceH - y);
           expect(edge(ox, oy)).toBeLessThan(edge(e.x, e.y));
         }
         const names = map.extractions.map((e) => e.name);
