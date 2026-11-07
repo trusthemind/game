@@ -130,6 +130,28 @@ describe('vehicle physics', () => {
     expect(v.heading).toBeGreaterThan(0.05);
   });
 
+  it("small arms don't reach a BTR's engine, wheels or tank", () => {
+    const d = VEHICLE_DEFS.btr80;
+    const v = createVehicle(1, { def: 'btr80', x: 20, y: 10, heading: 0, variant: 0, wreck: false, fuel: 1 });
+    expect(shootVehicle(v, 20 + d.length * 0.45, 10, 60, 0.1)).toBe('body');
+    expect(shootVehicle(v, 20 + d.wheelbase / 2, 10 + d.width * 0.45, 60, 0.1)).toBe('body');
+    expect(v.engine).toBe(1);
+    expect(v.tires.every((t) => t === 1)).toBe(true);
+    expect(v.hp).toBeGreaterThan(d.hp * 0.99);
+  });
+
+  it('every new vehicle drives off and stops on its brakes', () => {
+    for (const def of ['niva', 'vaz2107', 'uaz452', 'ural4320', 'btr80', 'izh'] as const) {
+      const map = open(80, 20);
+      const v = createVehicle(1, { def, x: 10, y: 10, heading: 0, variant: 0, wreck: false, fuel: 1 });
+      v.engineOn = true;
+      for (let i = 0; i < 60 * 2; i++) stepVehicle(v, map, gas, 1 / 60, [v]);
+      expect(v.speed, def).toBeGreaterThan(3);
+      for (let i = 0; i < 60 * 4; i++) stepVehicle(v, map, { throttle: -1, steer: 0, handbrake: false }, 1 / 60, [v]);
+      expect(v.speed, def).toBeLessThan(0.5);
+    }
+  });
+
   it('the handbrake swings the back out into a slide', () => {
     const map = open();
     const go = (handbrake: boolean) => {

@@ -51,6 +51,12 @@ resized to WebP, meshopt-compressed (tools/assets/vehicles.mjs); turned, scaled 
   vehicles.glb
     uaz469  — "Uaz-469" by Yo.Ri  https://sketchfab.com/3d-models/uaz-469-70c8691c6fb64b859fbfc16babfa2c5f
     zhiguli — "Zhiguli Soviet Cars" by spacelynxcanfly  https://sketchfab.com/3d-models/zhiguli-soviet-cars-7c3f4bee5d37401d853d2206dc7859fc
+    niva    — "Good Old Niva" by Livagof  https://sketchfab.com/3d-models/good-old-niva-93fc33be25e34b44b205c5b962d66e61
+    vaz2107 — "Old Car - VAZ 2107" by prephonat  https://sketchfab.com/3d-models/old-car-vaz-2107-91270dab9d1a47c7ba7ffaaf8c8b0beb
+    uaz452  — "Uaz 452" by egelsky  https://sketchfab.com/3d-models/uaz-452-4f45aa2e9180437b9687b3d567069ca9
+    ural4320— "Ural 4320" by davidbroutian  https://sketchfab.com/3d-models/ural-4320-f953c51a5dbc4a15949f4dcc0905c4e8
+    btr80   — "BTR 80" by davidbroutian  https://sketchfab.com/3d-models/btr-80-004c8509eb1e4aad8093eba9b4707e79
+    izh     — "IZh Planeta 4 | Soviet Classic Motorcycle" by taras.yaremenco  https://sketchfab.com/3d-models/izh-planeta-4-soviet-classic-motorcycle-c9a1ba7a825f412684c2308b82d9d2a9
   furniture_sf.glb
     gas_stove    — "Old Soviet Gas Stove" by shaqsh (backdrop removed)  https://sketchfab.com/3d-models/old-soviet-gas-stove-0958b0ab4e2344cc847e14355f196512
     fridge_old   — "An old refrigerator and a wooden crate" by Eugen S. (crate removed)  https://sketchfab.com/3d-models/an-old-refrigerator-and-a-wooden-crate-9664f9f194ae4256a64ab168f74f8b9b

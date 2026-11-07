@@ -925,7 +925,8 @@ export class Raid {
     // sometimes goes through the glass into whoever sits behind it.
     let carHit: Vehicle | null = null;
     for (const v of this.vehicles) {
-      if (a.vehicle?.id === v.id) continue;
+      // A motorcycle stops no bullets; its riders are hit like anyone in the open (below).
+      if (a.vehicle?.id === v.id || VEHICLE_DEFS[v.def].open) continue;
       const t = rayVehicle(v, ox, oy, dx, dy, wallT);
       if (t > 0.9 && t < wallT) {
         wallT = t;
@@ -943,7 +944,8 @@ export class Raid {
     for (const b of near) {
       if (b === a || !b.alive) continue;
       const inHit = exposed && b.vehicle?.id === carHit!.id;
-      if (b.vehicle && !inHit) continue;
+      const riding = b.vehicle ? this.vehicles.find((v) => v.id === b.vehicle!.id) : undefined;
+      if (b.vehicle && !inHit && !(riding && VEHICLE_DEFS[riding.def].open)) continue;
       const t = rayCircle(ox, oy, dx, dy, b.pos.x, b.pos.y, inHit ? 0.6 : b.radius);
       if (t >= 0 && (t < bestT || (inHit && !best))) {
         bestT = t;

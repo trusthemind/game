@@ -76,3 +76,9 @@
 "Mosin Nagant M91" by Doink (https://sketchfab.com/3d-models/mosin-nagant-m91-55c00242c4024307a761a89167e39a7c) — CC BY 4.0 — weapon: Mosin
 "low-poly PKM" by D_U (https://sketchfab.com/3d-models/low-poly-pkm-85ad17c62c1142ebb151c39900769f75) — CC BY 4.0 — weapon: PKM in parts
 "Steyr AUG A3" by mobzver3d (https://sketchfab.com/3d-models/steyr-aug-a3-62ca412c88a64c0287774496b7f351fc) — CC BY 4.0 — weapon: AUG in parts
+"Good Old Niva" by Livagof (https://sketchfab.com/3d-models/good-old-niva-93fc33be25e34b44b205c5b962d66e61) — CC BY 4.0 — vehicle: Niva
+"Old Car - VAZ 2107" by prephonat (https://sketchfab.com/3d-models/old-car-vaz-2107-91270dab9d1a47c7ba7ffaaf8c8b0beb) — CC BY 4.0 — vehicle: VAZ-2107
+"Uaz 452" by egelsky (https://sketchfab.com/3d-models/uaz-452-4f45aa2e9180437b9687b3d567069ca9) — CC BY 4.0 — vehicle: UAZ-452
+"Ural 4320" by davidbroutian (https://sketchfab.com/3d-models/ural-4320-f953c51a5dbc4a15949f4dcc0905c4e8) — CC BY 4.0 — vehicle: Ural-4320
+"BTR 80" by davidbroutian (https://sketchfab.com/3d-models/btr-80-004c8509eb1e4aad8093eba9b4707e79) — CC BY 4.0 — vehicle: BTR-80
+"IZh Planeta 4 | Soviet Classic Motorcycle" by taras.yaremenco (https://sketchfab.com/3d-models/izh-planeta-4-soviet-classic-motorcycle-c9a1ba7a825f412684c2308b82d9d2a9) — CC BY 4.0 — vehicle: IZh Planeta

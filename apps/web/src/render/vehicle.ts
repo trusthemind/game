@@ -23,6 +23,13 @@ interface ModelSpec {
 const MODELS: Record<VehicleDefId, ModelSpec> = {
   uaz469: { root: 'uaz469', variants: [null], yaw: 0, lengthMul: 1.03 },
   zhiguli: { root: 'zhiguli', variants: ['zhiguli_gray', 'zhiguli_blue', 'zhiguli_green', 'zhiguli_red'], yaw: 0, lengthMul: 1.02 },
+  niva: { root: 'niva', variants: [null], yaw: 0, lengthMul: 1 },
+  vaz2107: { root: 'vaz2107', variants: [null], yaw: 0, lengthMul: 1 },
+  uaz452: { root: 'uaz452', variants: [null], yaw: 0, lengthMul: 1 },
+  ural4320: { root: 'ural4320', variants: [null], yaw: 0, lengthMul: 1 },
+  // Its download lies nose to −X, the motorcycle's nose to −Z.
+  btr80: { root: 'btr80', variants: [null], yaw: Math.PI / 2, lengthMul: 1 },
+  izh: { root: 'izh', variants: [null], yaw: Math.PI, lengthMul: 1 },
 };
 
 interface Template {

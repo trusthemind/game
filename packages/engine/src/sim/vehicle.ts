@@ -8,7 +8,7 @@ import { Tile } from '../world/tiles';
  * here), stepped in the raid's fixed tick. The body is an oriented box that collides with the same wall,
  * tree, fence and furniture boxes people do, with other vehicles, and pushes people out of the way.
  */
-export type VehicleDefId = 'uaz469' | 'zhiguli';
+export type VehicleDefId = 'uaz469' | 'zhiguli' | 'niva' | 'vaz2107' | 'uaz452' | 'ural4320' | 'btr80' | 'izh';
 
 export interface VehicleDef {
   name: string;
@@ -43,7 +43,32 @@ export interface VehicleDef {
   mass: number;
   /** 0..1, how much rough ground (dirt, grass) costs it: 1 a road car, low for a 4x4. */
   offroad: number;
+  /** Small arms don't reach its engine, wheels or tank (the BTR). */
+  armored?: boolean;
+  /** No body round the riders (a motorcycle): it stops no bullets and whoever's on it is in the open. */
+  open?: boolean;
 }
+
+/** A drivable car's numbers that differ from the UAZ's (the rest are the UAZ's). */
+const car = (o: Partial<VehicleDef> & Pick<VehicleDef, 'name' | 'length' | 'width' | 'wheelbase' | 'mass'>): VehicleDef => ({
+  maxSpeed: 17,
+  maxReverse: 4.5,
+  accel: 5.2,
+  brake: 10,
+  roll: 1.2,
+  drag: 0.0035,
+  maxSteer: 0.6,
+  steerRate: 2.4,
+  steerFade: 11,
+  grip: 7,
+  hp: 600,
+  fuelCap: 40,
+  fuelPerM: 0.0035,
+  seats: [[0.05, -0.42], [0.05, 0.42], [-0.85, -0.42], [-0.85, 0.42]],
+  drivable: true,
+  offroad: 0.5,
+  ...o,
+});
 
 export const VEHICLE_DEFS: Record<VehicleDefId, VehicleDef> = {
   uaz469: {
@@ -92,6 +117,88 @@ export const VEHICLE_DEFS: Record<VehicleDefId, VehicleDef> = {
     mass: 1050,
     offroad: 1,
   },
+  niva: car({ name: 'Niva', length: 3.74, width: 1.68, wheelbase: 2.2, maxSpeed: 19, accel: 5.5, mass: 1210, offroad: 0.3, hp: 450, fuelCap: 42, seats: [[0.1, -0.4], [0.1, 0.4], [-0.75, -0.4], [-0.75, 0.4]] }),
+  // The Zhiguli that still runs (the roadside ones stay `zhiguli` wrecks).
+  vaz2107: car({ name: 'VAZ-2107', length: 4.13, width: 1.62, wheelbase: 2.42, maxSpeed: 21, accel: 5.8, mass: 1030, offroad: 1, hp: 400, fuelCap: 39, grip: 7.5 }),
+  uaz452: car({
+    name: 'UAZ-452',
+    length: 4.36,
+    width: 1.94,
+    wheelbase: 2.3,
+    maxSpeed: 16,
+    accel: 4.4,
+    mass: 1850,
+    offroad: 0.4,
+    hp: 650,
+    fuelCap: 56,
+    fuelPerM: 0.004,
+    seats: [[1.15, -0.45], [1.15, 0.45], [-0.2, -0.5], [-0.2, 0.5], [-1.1, -0.5], [-1.1, 0.5]],
+  }),
+  ural4320: car({
+    name: 'Ural-4320',
+    length: 7.37,
+    width: 2.5,
+    wheelbase: 4.2,
+    maxSpeed: 15,
+    maxReverse: 3.5,
+    accel: 3,
+    brake: 7,
+    roll: 1.6,
+    maxSteer: 0.55,
+    steerRate: 1.8,
+    steerFade: 9,
+    grip: 6,
+    mass: 8000,
+    offroad: 0.25,
+    hp: 1400,
+    fuelCap: 300,
+    fuelPerM: 0.012,
+    seats: [[2.35, -0.5], [2.35, 0.5], [0.2, -0.8], [0.2, 0.8], [-0.9, -0.8], [-0.9, 0.8], [-2, -0.8], [-2, 0.8]],
+  }),
+  btr80: car({
+    name: 'BTR-80',
+    length: 7.65,
+    width: 2.9,
+    wheelbase: 4.4,
+    maxSpeed: 14,
+    maxReverse: 3.5,
+    accel: 3.2,
+    brake: 7,
+    roll: 1.8,
+    maxSteer: 0.5,
+    steerRate: 1.8,
+    steerFade: 9,
+    grip: 6.5,
+    mass: 13600,
+    offroad: 0.15,
+    hp: 3000,
+    fuelCap: 290,
+    fuelPerM: 0.014,
+    armored: true,
+    seats: [[2.3, -0.5], [2.3, 0.5], [0.6, -0.7], [0.6, 0.7], [-0.4, -0.7], [-0.4, 0.7], [-1.4, -0.7], [-1.4, 0.7], [-2.3, -0.5], [-2.3, 0.5]],
+  }),
+  izh: car({
+    name: 'IZh Planeta',
+    length: 2.1,
+    width: 0.8,
+    wheelbase: 1.4,
+    maxSpeed: 24,
+    maxReverse: 2,
+    accel: 7,
+    brake: 9,
+    roll: 1,
+    maxSteer: 0.5,
+    steerRate: 3,
+    steerFade: 14,
+    grip: 6,
+    mass: 180,
+    offroad: 0.6,
+    hp: 150,
+    fuelCap: 18,
+    fuelPerM: 0.0018,
+    open: true,
+    seats: [[0.1, 0], [-0.45, 0]],
+  }),
 };
 
 export interface Vehicle {
@@ -184,7 +291,8 @@ export type VehicleHit = 'engine' | 'tire' | 'tank' | 'body';
  */
 export function shootVehicle(v: Vehicle, x: number, y: number, damage: number, roll: number): VehicleHit {
   const d = VEHICLE_DEFS[v.def];
-  v.hp = Math.max(0, v.hp - damage * 0.3);
+  v.hp = Math.max(0, v.hp - damage * (d.armored ? 0.03 : 0.3));
+  if (d.armored) return 'body';
   const fx = Math.cos(v.heading);
   const fy = Math.sin(v.heading);
   const lf = (x - v.pos.x) * fx + (y - v.pos.y) * fy;

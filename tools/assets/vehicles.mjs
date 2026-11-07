@@ -25,10 +25,17 @@ if (!SRC) throw new Error('Set ASSET_SRC to the folder with extracted packs');
 /** id in the game → Sketchfab download slug. */
 const PACKS = {
   vehicles: {
-    size: 1024,
+    // Seen from above and some way off: 512 px is plenty (1024 made the eight cars 5 MB).
+    size: 512,
     models: {
       uaz469: 'veh_uaz469_grox',
       zhiguli: 'veh_zhiguli_pack',
+      niva: 'veh_niva_livagof',
+      vaz2107: 'veh_vaz2107_prephonat',
+      uaz452: 'veh_uaz452_egelsky',
+      ural4320: 'veh_ural4320_broutian',
+      btr80: 'veh_btr80_broutian',
+      izh: 'veh_izh_taras',
     },
   },
   // Small props seen from above: 512 px is plenty.

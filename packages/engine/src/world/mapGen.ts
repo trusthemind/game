@@ -4,7 +4,7 @@ import { createGrid } from '../items/inventory';
 import { GameMap, extractKind, extractSolids, extractToWorld, ROAD_EXTRACTS, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype } from './map';
 import { Tile } from './tiles';
 import { furnish } from './furniture';
-import { createVehicle, vehicleBlocked, type Vehicle, type VehicleSpawn } from '../sim/vehicle';
+import { createVehicle, vehicleBlocked, type Vehicle, type VehicleDefId, type VehicleSpawn } from '../sim/vehicle';
 
 export type MapId = 'outskirts' | 'pinehollow' | 'portkirov' | 'zavadsk' | 'testsite';
 
@@ -1125,6 +1125,13 @@ function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array): vo
     return h + (inward ? 0 : Math.PI);
   };
   const sp = { x: map.playerSpawn.x + 0.5, y: map.playerSpawn.y + 0.5 };
+  // What's left running: mostly cars and the odd van or motorcycle, now and then an army truck, rarely a BTR.
+  const POOL: [VehicleDefId, number][] = [['uaz469', 3], ['niva', 3], ['vaz2107', 3], ['uaz452', 2], ['izh', 2], ['ural4320', 1], ['btr80', 0.4]];
+  const pickDef = (): VehicleDefId => {
+    let r = rng.range(0, POOL.reduce((n, [, w]) => n + w, 0));
+    for (const [id, w] of POOL) if ((r -= w) < 0) return id;
+    return 'uaz469';
+  };
   const tryPark = (ok: (x: number, y: number) => boolean, around?: { x: number; y: number; r: number }): boolean => {
     for (let t = 0; t < 1500; t++) {
       const x = around ? Math.round(around.x + rng.range(-around.r, around.r)) : rng.int(4, map.width - 5);
@@ -1134,7 +1141,7 @@ function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array): vo
       if ((tile !== Tile.Road && tile !== Tile.Dirt) || !network[map.idx(x, y)] || !reach[map.idx(x, y)] || !ok(x, y) || map.isIndoors(x, y)) continue;
       const h = roadHeading(x, y);
       if (h === null) continue;
-      const s: VehicleSpawn = { def: 'uaz469', x: x + 0.5, y: y + 0.5, heading: h + rng.range(-0.1, 0.1), variant: 0, wreck: false, fuel: rng.range(0.35, 0.8) };
+      const s: VehicleSpawn = { def: pickDef(), x: x + 0.5, y: y + 0.5, heading: h + rng.range(-0.1, 0.1), variant: 0, wreck: false, fuel: rng.range(0.35, 0.8) };
       const v = createVehicle(kept.length + 1, s);
       if (vehicleBlocked(v, map, kept) || map.extractions.some((e) => near(s.x, s.y, 12, e))) continue;
       // Room to pull away: a car length clear ahead, not nose to tail with a wreck.
@@ -1154,7 +1161,7 @@ function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array): vo
       const x = Math.round(c.x + rng.range(-26, 26));
       const y = Math.round(c.y + rng.range(-26, 26));
       if (!map.inBounds(x, y) || !reach[map.idx(x, y)] || map.isIndoors(x, y) || near(x, y, 6, c)) continue;
-      const s: VehicleSpawn = { def: 'uaz469', x: x + 0.5, y: y + 0.5, heading: rng.range(-Math.PI, Math.PI), variant: 0, wreck: false, fuel: rng.range(0.35, 0.8) };
+      const s: VehicleSpawn = { def: pickDef(), x: x + 0.5, y: y + 0.5, heading: rng.range(-Math.PI, Math.PI), variant: 0, wreck: false, fuel: rng.range(0.35, 0.8) };
       const v = createVehicle(kept.length + 1, s);
       if (vehicleBlocked(v, map, kept) || map.extractions.some((e) => near(s.x, s.y, 12, e))) continue;
       kept.push(v);

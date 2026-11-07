@@ -438,5 +438,35 @@
   "uid": "62ca412c88a64c0287774496b7f351fc",
   "slug": "gun_aug_mobz",
   "use": "weapon: AUG in parts"
+ },
+ {
+  "uid": "93fc33be25e34b44b205c5b962d66e61",
+  "slug": "veh_niva_livagof",
+  "use": "vehicle: Niva"
+ },
+ {
+  "uid": "91270dab9d1a47c7ba7ffaaf8c8b0beb",
+  "slug": "veh_vaz2107_prephonat",
+  "use": "vehicle: VAZ-2107"
+ },
+ {
+  "uid": "4f45aa2e9180437b9687b3d567069ca9",
+  "slug": "veh_uaz452_egelsky",
+  "use": "vehicle: UAZ-452"
+ },
+ {
+  "uid": "f953c51a5dbc4a15949f4dcc0905c4e8",
+  "slug": "veh_ural4320_broutian",
+  "use": "vehicle: Ural-4320"
+ },
+ {
+  "uid": "004c8509eb1e4aad8093eba9b4707e79",
+  "slug": "veh_btr80_broutian",
+  "use": "vehicle: BTR-80"
+ },
+ {
+  "uid": "c9a1ba7a825f412684c2308b82d9d2a9",
+  "slug": "veh_izh_taras",
+  "use": "vehicle: IZh Planeta"
  }
 ]
