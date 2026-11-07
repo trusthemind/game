@@ -16,6 +16,8 @@ export interface BossDef {
   district: District;
   /** Building kind to camp in, if any (otherwise roams the district). */
   building?: 'military' | 'warehouse' | 'cabin';
+  /** The named place his buildings are in (map.places), when he has a lair of his own. */
+  home?: string;
   guards: number;
   chance: number;
   sex: 'm' | 'f';
@@ -69,6 +71,7 @@ export const BOSSES: BossDef[] = [
     map: 'pinehollow',
     district: 'forest',
     building: 'cabin',
+    home: "Hunters' Lodge",
     guards: 0,
     chance: 0.7,
     sex: 'm',

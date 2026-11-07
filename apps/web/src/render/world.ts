@@ -22,7 +22,7 @@ const FLOOR_OF: Partial<Record<Tile, TexKind>> = {
   [Tile.Border]: 'grass',
   [Tile.Wall]: 'concrete',
   [Tile.Window]: 'concrete',
-  [Tile.Rail]: 'dirt',
+  [Tile.Rail]: 'gravel',
   [Tile.Container]: 'concrete',
   [Tile.LockedDoor]: 'concrete',
 };
@@ -84,6 +84,9 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
   const geo = <G extends THREE.BufferGeometry>(g: G) => (geometries.push(g), g);
 
   // ── Floors: one merged mesh per surface type, world-space UVs so textures flow across tiles.
+  const inBase = (x: number, y: number) => map.sites.some((st) => x >= st.x && y >= st.y && x < st.x + st.w && y < st.y + st.h);
+  const square = map.places.find((p) => p.name === 'Central Square');
+  const onSquare = (x: number, y: number) => !!square && Math.abs(x + 0.5 - square.x) <= square.r && Math.abs(y + 0.5 - square.y) <= square.r;
   const floorBuckets = new Map<TexKind, number[]>();
   for (let y = 0; y < map.height; y++)
     for (let x = 0; x < map.width; x++) {
@@ -91,16 +94,23 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
       if (map.get(x, y) === Tile.Water) continue;
       // The rock round the bunker: nothing to draw (the outer ground and the fog of war cover it).
       if (y >= map.surfaceH && map.get(x, y) === Tile.Border) continue;
-      let kind = FLOOR_OF[map.get(x, y)] ?? 'grass';
-      if (map.isIndoors(x, y) && (kind === 'concrete' || map.get(x, y) === Tile.Window)) {
+      const t = map.get(x, y);
+      let kind = FLOOR_OF[t] ?? 'grass';
+      if (map.isIndoors(x, y) && (kind === 'concrete' || t === Tile.Window)) {
         const b = map.buildings[map.buildingAt[map.idx(x, y)]! - 1];
         kind = b && (b.kind === 'house' || b.kind === 'shop') ? 'wood' : 'concrete';
+      } else if ((t === Tile.Grass || t === Tile.Tree) && map.districtOf(x, y) === 'forest') kind = 'moss';
+      else if (t === Tile.Concrete && !map.isIndoors(x, y)) {
+        // The army base's yard is laid in slabs; a square in cobbles.
+        if (inBase(x, y)) kind = 'pad';
+        else if (onSquare(x, y)) kind = 'cobbles';
       }
       let arr = floorBuckets.get(kind);
       if (!arr) floorBuckets.set(kind, (arr = []));
       arr.push(x, y);
     }
-  const uvScale: Partial<Record<TexKind, number>> = { grass: 0.25, asphalt: 0.2, wood: 0.5, concrete: 0.33, dirt: 0.3 };
+  // Repeats per metre: the photos cover about 2 m (the base's slabs and the cobbles are bigger and smaller).
+  const uvScale: Partial<Record<TexKind, number>> = { grass: 0.4, moss: 0.35, forest: 0.45, asphalt: 0.3, wood: 0.6, concrete: 0.4, dirt: 0.35, pad: 0.22, gravel: 0.5, cobbles: 0.45 };
   for (const [kind, cells] of floorBuckets) {
     const n = cells.length / 2;
     const pos = new Float32Array(n * 12);

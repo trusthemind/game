@@ -2,10 +2,34 @@ import * as THREE from 'three';
 import { Rng } from '@ashfall/engine';
 
 /**
- * Procedural textures painted into canvases at startup — no asset downloads, nothing to cache-bust,
- * and every texture is generated once and memoised.
+ * Textures painted into canvases at startup, generated once and memoised. The ground ones are then swapped for
+ * photo textures (ambientCG, CC0: public/textures, tools/assets/textures.mjs) as soon as those load: the same
+ * texture object, so every material already using it picks the photo up.
  */
-export type TexKind = 'grass' | 'asphalt' | 'wood' | 'concrete' | 'dirt' | 'plaster' | 'bark' | 'metal' | 'roof' | 'tar' | 'facade' | 'water';
+export type TexKind =
+  | 'grass'
+  | 'asphalt'
+  | 'wood'
+  | 'concrete'
+  | 'dirt'
+  | 'plaster'
+  | 'bark'
+  | 'metal'
+  | 'roof'
+  | 'tar'
+  | 'facade'
+  | 'water'
+  // Ground with photos only (painted stand-ins until they load): leaf litter, mossy ground, the army base's
+  // concrete slabs, the rail bed's gravel, a square's cobbles.
+  | 'forest'
+  | 'moss'
+  | 'pad'
+  | 'gravel'
+  | 'cobbles';
+
+/** Kinds with a photo in public/textures. */
+const PHOTO = new Set<TexKind>(['grass', 'forest', 'moss', 'dirt', 'asphalt', 'concrete', 'pad', 'gravel', 'cobbles', 'wood']);
+const PHOTO_BASE = `${import.meta.env.BASE_URL}textures/`;
 
 const cache = new Map<string, THREE.Texture>();
 const SIZE = 256;
@@ -18,7 +42,12 @@ export function getTexture(kind: TexKind, anisotropy = 4): THREE.Texture {
   canvas.width = canvas.height = SIZE;
   const g = canvas.getContext('2d')!;
   PAINTERS[kind](g, new Rng(kind));
-  const tex = new THREE.CanvasTexture(canvas);
+  const tex: THREE.Texture = new THREE.CanvasTexture(canvas);
+  if (PHOTO.has(kind))
+    new THREE.ImageLoader().load(`${PHOTO_BASE}${kind}.webp`, (img) => {
+      tex.image = img;
+      tex.needsUpdate = true;
+    });
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = anisotropy;
@@ -65,6 +94,11 @@ function blotches(g: CanvasRenderingContext2D, rng: Rng, n: number, colors: stri
 }
 
 const PAINTERS: Record<TexKind, (g: CanvasRenderingContext2D, rng: Rng) => void> = {
+  forest: (g, rng) => PAINTERS.dirt(g, rng),
+  moss: (g, rng) => PAINTERS.grass(g, rng),
+  pad: (g, rng) => PAINTERS.concrete(g, rng),
+  gravel: (g, rng) => PAINTERS.asphalt(g, rng),
+  cobbles: (g, rng) => PAINTERS.concrete(g, rng),
   grass(g, rng) {
     g.fillStyle = '#3c4a2c';
     g.fillRect(0, 0, SIZE, SIZE);

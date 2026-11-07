@@ -10,6 +10,9 @@ Modular Character Outfits - Fantasy [Standard] — Quaternius (CC0 1.0) — http
 Furniture Pack — Quaternius (CC0 1.0) — https://quaternius.com — furniture.glb (beds, sofas, shelves, wardrobes, tables, chairs, lamps)
 Ultimate Gun Pack accessories — Quaternius (CC0 1.0) — mods.glb (suppressors, scopes, grip, stock, flashlight)
 
+Ground textures in ../textures/ — ambientCG (CC0 1.0) — https://ambientcg.com: Grass004, Ground078, Ground037, Ground106,
+  Asphalt031, Concrete031, Concrete042A, Gravel043, PavingStones138, WoodFloor043 (tools/assets/textures.mjs)
+
 Item icons — game-icons.net (CC BY 3.0) by Lorc, Delapouite, Skoll, sbed and contributors — https://game-icons.net
 
 Character bodies in bodies/ — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Decimated, quantised and

@@ -37,6 +37,10 @@ export interface MapPreset {
   kolkhoz?: boolean;
   /** A petrol station on an avenue through town (a city has its own). */
   gasStation?: boolean;
+  /** A lake (centre and radii as fractions of the map) with a wooden jetty. */
+  lake?: { x: number; y: number; rx: number; ry: number };
+  /** A hunters' lodge in the woods (Hunters' Hollow): cabins round a clearing, a woodshed, log piles. */
+  lodge?: boolean;
   /**
    * The map's layout, the same every raid (as in Tarkov: you learn it). The raid's own seed only picks the spawn
    * point, the bots, the drivable cars and the loot. Without one, the raid seed lays the map out too.
@@ -114,6 +118,30 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
     botDensity: 0.8,
     extractNames: ['Logging Camp', 'Ranger Tower', 'Old Mill', 'Rusty Bridge', 'Hunters’ Trail', 'Ferry Pier', 'Forest Outpost'],
     sawmill: true,
+    /*
+     * Woods round a lake. The village of Lesnoye in the north-west, the radar post in the north-east, the
+     * lake and its swampy shore in the middle-east, the hunters' lodge (Bohdan's) deep in the south-east
+     * woods, the farms along the south.
+     */
+    plan: {
+      roadsX: [0.42],
+      roadsY: [0.38],
+      districts: [
+        { kind: 'forest', x: 0.12, y: 0.14, name: 'Black Woods' },
+        { kind: 'town', x: 0.25, y: 0.3, name: 'Lesnoye' },
+        { kind: 'forest', x: 0.55, y: 0.16, name: 'Pine Ridge' },
+        { kind: 'military', x: 0.84, y: 0.18, name: 'Radar Post' },
+        { kind: 'forest', x: 0.12, y: 0.55, name: 'Wolf Ravine' },
+        { kind: 'forest', x: 0.64, y: 0.5, name: 'Swamp Edge' },
+        { kind: 'forest', x: 0.9, y: 0.45, name: 'Old Clearing' },
+        { kind: 'farm', x: 0.3, y: 0.68, name: 'Dairy' },
+        { kind: 'farm', x: 0.2, y: 0.88, name: 'Sunflower Farm' },
+        { kind: 'farm', x: 0.52, y: 0.86, name: 'Grain Elevator' },
+        { kind: 'forest', x: 0.84, y: 0.8, name: "Hunters' Hollow" },
+      ],
+    },
+    lake: { x: 0.64, y: 0.52, rx: 0.1, ry: 0.07 },
+    lodge: true,
   },
   portkirov: {
     id: 'portkirov',
@@ -312,6 +340,7 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   // Outskirts: the river, then the railway (over the river on a bridge); roads they cross become bridges.
   const river = preset.river ? carveRiver(map, stage('river'), roadsX, roadsY) : null;
   const railY = preset.railway ? layRailway(map, stage('rail'), roadsY) : -1;
+  if (preset.lake) carveLake(map, stage('lake'), preset.lake, network);
 
   // A city's middle block is its square, with the monument.
   const square = preset.city ? blocks.reduce((a, b) => (Math.hypot(b.x + b.w / 2 - size / 2, b.y + b.h / 2 - size / 2) < Math.hypot(a.x + a.w / 2 - size / 2, a.y + a.h / 2 - size / 2) ? b : a)) : null;
@@ -409,6 +438,8 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   });
   // The kolkhoz: a block of the first farm district (the one named for it, if there is one).
   const farmDi = map.districts.findIndex((d) => d.name === 'Kolkhoz Fields');
+  const lodgeDi = map.districts.findIndex((d) => d.name === "Hunters' Hollow");
+  const lodgeLot = preset.lodge && lodgeDi >= 0 ? reserveBlock(lodgeDi, [32, 28, 24], 22, 20) : undefined;
   const kolkhozLot = preset.kolkhoz ? reserveBlock(farmDi >= 0 ? farmDi : map.districts.findIndex((d) => d.kind === 'farm'), [40, 36, 32], 30, 26) : undefined;
 
   rng = stage('buildings');
@@ -426,6 +457,10 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
       if (d === 'forest') forest(map, lot, rng);
       else if (d === 'farm') fields(map, lot, rng);
       else decorateLot(map, lot, rng, 0.06);
+      continue;
+    }
+    if (lot === lodgeLot) {
+      huntersLodge(map, lot, rng, (r, k) => addBuilding(r, k, 1, true));
       continue;
     }
     if (lot === kolkhozLot) {
@@ -1014,6 +1049,62 @@ function militaryBase(
   }
   const yard = toWorld(back / 2, deep - 4);
   map.places.push({ name: 'Motor Pool', ...yard, r: 9, major: false }, { name: 'Main Gate', ...g, r: 5, major: false });
+}
+
+/**
+ * A lake: a ragged ellipse of water (roads cross it on causeways) with reeds of dirt round the shore and a
+ * wooden jetty out from its west bank. Named on the map.
+ */
+function carveLake(map: GameMap, rng: Rng, l: { x: number; y: number; rx: number; ry: number }, network: Uint8Array): void {
+  const size = map.width;
+  const cx = l.x * size;
+  const cy = l.y * size;
+  const rx = l.rx * size;
+  const ry = l.ry * size;
+  const ph = [rng.range(0, 6.3), rng.range(0, 6.3), rng.range(0, 6.3)];
+  const edge = (a: number) => 1 + 0.12 * Math.sin(a * 3 + ph[0]!) + 0.08 * Math.sin(a * 5 + ph[1]!) + 0.05 * Math.sin(a * 9 + ph[2]!);
+  for (let y = Math.floor(cy - ry * 1.4); y <= cy + ry * 1.4; y++)
+    for (let x = Math.floor(cx - rx * 1.4); x <= cx + rx * 1.4; x++) {
+      if (!map.inBounds(x, y) || network[map.idx(x, y)]) continue;
+      const dx = (x + 0.5 - cx) / rx;
+      const dy = (y + 0.5 - cy) / ry;
+      const d = Math.hypot(dx, dy) / edge(Math.atan2(dy, dx));
+      if (d < 1) map.set(x, y, Tile.Water);
+      else if (d < 1.12 && map.get(x, y) === Tile.Grass) map.set(x, y, Tile.Dirt);
+    }
+  // The jetty: two planks wide, from a step back on the west bank out into the water.
+  const jy = Math.round(cy);
+  let wx = Math.floor(cx - rx * 1.4);
+  while (wx < cx && map.get(wx, jy) !== Tile.Water) wx++;
+  for (let x = wx - 2; x < wx + 9; x++) for (const y of [jy, jy + 1]) if (map.inBounds(x, y) && !network[map.idx(x, y)]) map.set(x, y, Tile.Wood);
+  map.places.push({ name: 'Lake', x: cx, y: cy, r: Math.max(rx, ry), major: true }, { name: 'Jetty', x: wx + 3, y: jy + 1, r: 4, major: false });
+}
+
+/**
+ * The hunters' lodge: three log cabins round a trampled clearing, a woodshed, log piles and a cache or two.
+ * Bohdan's lair.
+ */
+function huntersLodge(map: GameMap, lot: Rect, rng: Rng, addBuilding: (r: Rect, k: BuildingKind) => void): void {
+  for (let y = lot.y; y < lot.y + lot.h; y++)
+    for (let x = lot.x; x < lot.x + lot.w; x++) {
+      const t = map.get(x, y);
+      if (t === Tile.Tree) map.set(x, y, Tile.Grass);
+      if ((t === Tile.Grass || t === Tile.Tree) && rng.chance(0.25)) map.set(x, y, Tile.Dirt);
+    }
+  const cx = lot.x + Math.floor(lot.w / 2);
+  const cy = lot.y + Math.floor(lot.h / 2);
+  addBuilding({ x: lot.x + 1, y: lot.y + 1, w: 10, h: 8 }, 'cabin');
+  addBuilding({ x: lot.x + lot.w - 10, y: lot.y + 1, w: 9, h: 8 }, 'cabin');
+  addBuilding({ x: cx - 4, y: lot.y + lot.h - 9, w: 9, h: 8 }, 'cabin');
+  addBuilding({ x: lot.x + 1, y: lot.y + lot.h - 8, w: 7, h: 7 }, 'barn');
+  for (const [lx, ly] of [[cx - 3, cy - 1], [lot.x + lot.w - 8, cy + 2]] as const) {
+    if (map.get(lx, ly) === Tile.Wall || map.get(lx + 4, ly + 1) === Tile.Wall) continue;
+    map.addBlocker([lx, ly, lx + 4, ly + 2]);
+    map.structures.push({ kind: 'logs', x: lx, y: ly, w: 4, h: 2, levels: rng.int(1, 3) });
+  }
+  map.containers.push(makeContainer(nextContainerId(map), 'ammocrate', cx + 3, cy, 2), makeContainer(nextContainerId(map), 'stash', lot.x + lot.w - 3, lot.y + lot.h - 3, 2));
+  map.pois.push({ x: cx, y: cy });
+  map.places.push({ name: "Hunters' Lodge", x: cx, y: cy, r: Math.max(lot.w, lot.h) / 2 + 2, major: true });
 }
 
 /**
@@ -2052,7 +2143,10 @@ function placeBots(map: GameMap, rng: Rng, reach: Uint8Array, density: number): 
     const inDistrict = (x: number, y: number) => map.districtOf(Math.floor(x), Math.floor(y)) === def.district;
     // A warlord holds court in the base's headquarters.
     const hq = def.building === 'military' ? map.sites.flatMap((s) => map.buildings.filter((b) => b.id === s.buildings.hq && inDistrict(b.x + b.w / 2, b.y + b.h / 2))) : [];
-    const homes = hq.length ? hq : map.buildings.filter((b) => b.kind === def.building && inDistrict(b.x + b.w / 2, b.y + b.h / 2));
+    // A boss with a lair of his own (a named place) camps in one of its buildings.
+    const lair = def.home ? map.places.find((p) => p.name === def.home) : undefined;
+    const inLair = lair ? map.buildings.filter((b) => b.kind === def.building && Math.hypot(b.x + b.w / 2 - lair.x, b.y + b.h / 2 - lair.y) < lair.r) : [];
+    const homes = hq.length ? hq : inLair.length ? inLair : map.buildings.filter((b) => b.kind === def.building && inDistrict(b.x + b.w / 2, b.y + b.h / 2));
     const any = map.buildings.filter((b) => b.kind === def.building);
     const pois = map.pois.filter((p) => inDistrict(p.x, p.y));
     const home = homes.length ? centre(bossRng.pick(homes)) : any.length ? centre(bossRng.pick(any)) : pois.length ? bossRng.pick(pois) : null;
