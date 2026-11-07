@@ -157,14 +157,25 @@ function flatGeometry(x0: number, x1: number, z0: number, z1: number): THREE.Buf
   return merged;
 }
 
-/** Per-frame: hide the roof of the building you're in; tint the rest by how much of their outline you've seen. */
+/** The camera looks down from the south (+y) at 19 up for 11.5 back: how far a height reaches across the line of sight. */
+const SIGHT_SLOPE = 19 / 11.5;
+
+/**
+ * Per-frame: hide the roof of the building you're in, see through the ones between you and the camera (a block
+ * of flats south of you hid you and the house you were in); tint the rest by how much of their outline you've
+ * seen.
+ */
 export function updateRoofs(set: RoofSet, map: GameMap, px: number, py: number, fov: Uint8Array, explored: Uint8Array, dt: number): void {
   const inside = map.buildingAt[map.idx(Math.floor(px), Math.floor(py))]! - 1;
   const k = Math.min(1, dt * 10);
   for (const r of set.roofs) {
     const b = r.building;
     const near = px > b.x - 0.6 && px < b.x + b.w + 0.6 && py > b.y - 0.6 && py < b.y + b.h + 0.6;
-    const target = b.id === inside || near ? 0 : 1;
+    // In the way: south of you, across the line to the camera, and close enough for its height to cover you.
+    const top = (b.floors ?? 1) > 1 ? 2.6 + ((b.floors ?? 1) - 1) * STOREY : 4;
+    const reach = (top - 1.4) / SIGHT_SLOPE + 1;
+    const between = b.y + b.h > py + 0.3 && b.y < py + reach && b.x < px + 2.5 && b.x + b.w > px - 2.5;
+    const target = b.id === inside || near ? 0 : between ? 0.22 : 1;
     r.mat.opacity += (target - r.mat.opacity) * k;
     r.mesh.visible = r.mat.opacity > 0.02;
     r.mat.depthWrite = r.mat.opacity > 0.95;
