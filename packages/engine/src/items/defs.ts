@@ -685,6 +685,9 @@ const defs: ItemDef[] = [
   { id: 'bolts', name: 'Pack of bolts', short: 'BOLTS', category: 'junk', w: 1, h: 1, weight: 0.3, value: 4500, rarity: 1 },
   { id: 'wires', name: 'Bundle of wires', short: 'WIRES', category: 'junk', w: 1, h: 1, weight: 0.2, value: 6200, rarity: 1 },
   { id: 'battery', name: 'Car battery', short: 'BATT', category: 'junk', w: 2, h: 2, weight: 12, value: 26000, rarity: 2 },
+  // For vehicles: a can's `uses` are the litres left in it (none set: full); a repair kit's are its repairs.
+  { id: 'jerrycan', name: 'Jerrycan (20 L)', short: 'FUEL', category: 'junk', w: 2, h: 2, weight: 16, value: 9000, rarity: 1 },
+  { id: 'vehkit', name: 'Car repair kit', short: 'REPAIR', category: 'junk', w: 2, h: 1, weight: 3, value: 18000, rarity: 2 },
   { id: 'gpu', name: 'Graphics card', short: 'GPU', category: 'valuable', w: 2, h: 1, weight: 0.9, value: 240000, rarity: 5 },
   { id: 'cpu', name: 'Military CPU', short: 'CPU', category: 'valuable', w: 1, h: 1, weight: 0.1, value: 42000, rarity: 3 },
   { id: 'ledx', name: 'Skin transilluminator', short: 'LEDX', category: 'valuable', w: 1, h: 1, weight: 0.2, value: 380000, rarity: 5 },

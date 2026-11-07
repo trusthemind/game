@@ -470,6 +470,15 @@ export class GameSession {
           if (!t.broken) opts.push({ label: 'Smash the glass', run: () => go(t.x, t.y, 1.4, () => raid.breakGlass(t.id, p)) });
         }
         if (t.kind === 'extract') opts.push({ label: `Walk to ${t.label}`, run: () => go(t.x, t.y, 1, null) });
+        if (t.kind === 'vehicle' && !t.inside) {
+          const v = raid.vehicles.find((x) => x.id === t.id);
+          opts.push({ label: 'Get in', run: () => go(t.x, t.y, 2, () => this.interactWith(t)) });
+          if (v && !v.wreck) {
+            // At a petrol station the pumps fill it; elsewhere a jerrycan from your kit.
+            opts.push({ label: raid.atPump(v) ? 'Fill up at the pump' : 'Refuel from a jerrycan', run: () => go(t.x, t.y, 2.5, () => raid.refuel(p, t.id)) });
+            opts.push({ label: 'Repair (repair kit)', run: () => go(t.x, t.y, 2.5, () => raid.repairVehicle(p, t.id)) });
+          }
+        }
       }
       if (raid.map.isWalkable(Math.floor(w.x), Math.floor(w.y))) opts.push({ label: 'Walk here', run: () => go(w.x, w.y, 0.4, null) });
     }

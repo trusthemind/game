@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GameMap, Raid, Tile, VEHICLE_DEFS, createVehicle, emptyIntent, generateMap, shootVehicle, starterKit, stepVehicle, vehicleBlocked, type ActorIntent } from '../src/index';
+import { GameMap, Raid, Tile, VEHICLE_DEFS, addItem, createItem, createVehicle, emptyIntent, generateMap, shootVehicle, starterKit, stepVehicle, vehicleBlocked, type ActorIntent } from '../src/index';
 
 const open = (w = 40, h = 20) => {
   const m = new GameMap(w, h, 1);
@@ -187,6 +187,37 @@ describe('vehicles in a raid', () => {
     const car = raid.vehicles.find((v) => !v.wreck)!;
     return { raid, car };
   };
+
+  it('a jerrycan tops the tank up, the pumps fill it, a repair kit patches it', () => {
+    const { raid, car } = setup(3);
+    const p = raid.player;
+    p.pos.x = car.pos.x;
+    p.pos.y = car.pos.y + 2;
+    const cap = VEHICLE_DEFS[car.def].fuelCap;
+    car.fuel = 2;
+    // No can: nothing.
+    expect(raid.refuel(p, car.id)).toBe(false);
+    p.eq.slots.backpack = createItem('b_pilgrim');
+    expect(addItem(p.eq.slots.backpack.grid!, createItem('jerrycan'))).toBe(true);
+    expect(raid.refuel(p, car.id)).toBe(true);
+    expect(car.fuel).toBeCloseTo(Math.min(cap, 22), 1);
+    // At a petrol station: brim full.
+    car.fuel = 1;
+    raid.map.structures.push({ kind: 'canopy', x: car.pos.x - 3, y: car.pos.y - 3, w: 6, h: 6 } as never);
+    expect(raid.refuel(p, car.id)).toBe(true);
+    expect(car.fuel).toBe(cap);
+    // Shot up: engine down, a tyre out, a leak. A kit sets it right.
+    car.engine = 0;
+    car.engineOn = false;
+    car.tires[2] = 0;
+    car.leak = 0.2;
+    expect(raid.repairVehicle(p, car.id)).toBe(false);
+    expect(addItem(p.eq.slots.backpack.grid!, createItem('vehkit'))).toBe(true);
+    expect(raid.repairVehicle(p, car.id)).toBe(true);
+    expect(car.engine).toBeCloseTo(0.5);
+    expect(car.tires.every((t) => t === 1)).toBe(true);
+    expect(car.leak).toBe(0);
+  });
 
   it('every map parks a drivable car near the spawn and keeps wrecks clear of walls', () => {
     for (const id of ['outskirts', 'pinehollow', 'portkirov', 'testsite'] as const) {

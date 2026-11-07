@@ -52,7 +52,7 @@ export const CONTAINERS: Record<ContainerKind, ContainerSpec> = {
   safe: { label: 'Safe', grid: [3, 3], rolls: [1, 3], searchTime: 1.4,
     table: [['roubles', 10], ['rolex', 4], ['bitcoin', 2], ['intel', 2], ['flash', 3], ['gpu', 0.6], ['ledx', 0.4], ['lion', 0.4]] },
   jacket: { label: 'Jacket', grid: [2, 2], rolls: [0, 2], searchTime: 0.45, table: [...SMALL_VAL, ['a_9x18', 3], ['bandage', 2], ['crackers', 2]] },
-  carTrunk: { label: 'Car trunk', grid: [5, 3], rolls: [0, 3], searchTime: 0.7, table: [...JUNK, ['battery', 4], ['water', 2], ['a_12buck', 2], ['salewa', 0.7]] },
+  carTrunk: { label: 'Car trunk', grid: [5, 3], rolls: [0, 3], searchTime: 0.7, table: [...JUNK, ['battery', 4], ['water', 2], ['a_12buck', 2], ['salewa', 0.7], ['jerrycan', 4], ['vehkit', 1.5]] },
   ground: { label: 'Ground', grid: [6, 6], rolls: [0, 0], searchTime: 0, table: [['bolts', 1]] },
   stash: { label: 'Hidden stash', grid: [4, 4], rolls: [2, 4], searchTime: 0.9,
     table: [...MEDS, ...SMALL_VAL, ['a_545ps', 3], ['a_762ps', 3], ['akm', 0.5], ['b_daypack', 1], ['mre', 2]] },

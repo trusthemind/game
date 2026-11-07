@@ -13,6 +13,7 @@ import {
   removeItem,
   takeAmmo,
   type Equipment,
+  type GridContainer,
   type ItemInstance,
 } from '../items/inventory';
 import { generateLoadout } from '../items/loadouts';
@@ -1417,6 +1418,12 @@ export class Raid {
         const idx = this.map.idx(tx, ty);
         if (d < r) out.push({ d, it: { kind: 'window', id: idx, label: 'Window', x: tx + 0.5, y: ty + 0.5, broken: this.brokenGlass.has(idx) } });
       }
+    // A car you can drive, clicked anywhere on its body (the menu offers getting in, fuel and repairs).
+    for (const v of this.vehicles) {
+      if (v.wreck || !VEHICLE_DEFS[v.def].drivable || !pushOutOfVehicle(v, x, y, 0.2)) continue;
+      const door = doorPos(v, 0);
+      out.push({ d: 0, it: { kind: 'vehicle', id: v.id, label: VEHICLE_DEFS[v.def].name, x: door.x, y: door.y, inside: false } });
+    }
     for (const e of this.map.extractions) {
       const d = Math.hypot(e.x - x, e.y - y);
       if (d < e.radius + 0.5) out.push({ d: d + 1, it: { kind: 'extract', id: e.id, label: e.name, x: e.x, y: e.y } });
@@ -1614,6 +1621,7 @@ export class Raid {
     if (a !== this.player) return true;
     if (seat === 0) {
       if (v.hp <= 0) this.emit({ t: 'msg', text: 'The engine is dead', tone: 'bad' });
+      else if (v.engine <= 0) this.emit({ t: 'msg', text: 'The engine is shot — a repair kit will get it going', tone: 'bad' });
       else if (v.fuel <= 0) this.emit({ t: 'msg', text: 'The tank is empty', tone: 'bad' });
       else v.engineOn = true;
     }
@@ -1623,6 +1631,64 @@ export class Raid {
       if (s >= 0) this.board(c, v, s);
     }
     return true;
+  }
+
+  private carried(a: Actor, def: string): { grid: GridContainer; item: ItemInstance } | null {
+    for (const grid of carryGrids(a.eq)) {
+      const p = grid.items.find((x) => x.item.def === def);
+      if (p) return { grid, item: p.item };
+    }
+    return null;
+  }
+
+  /** A petrol station's pumps: within reach of a forecourt canopy. */
+  atPump(v: Vehicle): boolean {
+    return this.map.structures.some((st) => st.kind === 'canopy' && Math.hypot(v.pos.x - (st.x + st.w / 2), v.pos.y - (st.y + st.h / 2)) < 8);
+  }
+
+  /** Fill up: to the brim at a petrol station's pumps, otherwise from a jerrycan you carry (as much as fits). */
+  refuel(a: Actor, id: number): boolean {
+    const v = this.vehicles.find((x) => x.id === id);
+    if (!v || v.wreck) return false;
+    const d = VEHICLE_DEFS[v.def];
+    if (dist(v.pos, a.pos) > d.length / 2 + 2.5) return false;
+    const room = d.fuelCap - v.fuel;
+    const say = (text: string, tone: 'good' | 'bad') => a === this.player && this.emit({ t: 'msg', text, tone });
+    if (room < 0.5) return say('The tank is full', 'bad'), false;
+    if (this.atPump(v)) {
+      v.fuel = d.fuelCap;
+      return say(`Filled up at the pump (+${Math.round(room)} L)`, 'good'), true;
+    }
+    const can = this.carried(a, 'jerrycan');
+    if (!can) return say('No fuel: find a jerrycan or a petrol station', 'bad'), false;
+    const have = can.item.uses ?? 20;
+    const put = Math.min(have, room);
+    v.fuel += put;
+    can.item.uses = have - put;
+    if (can.item.uses <= 0.01) removeItem(can.grid, can.item.uid);
+    if (a === this.player) this.invVersion++;
+    return say(`Poured in ${Math.round(put)} L`, 'good'), true;
+  }
+
+  /** A repair kit: the engine back to running order, the tyres and the tank patched, some of the body. */
+  repairVehicle(a: Actor, id: number): boolean {
+    const v = this.vehicles.find((x) => x.id === id);
+    if (!v || v.wreck) return false;
+    const d = VEHICLE_DEFS[v.def];
+    if (dist(v.pos, a.pos) > d.length / 2 + 2.5) return false;
+    const say = (text: string, tone: 'good' | 'bad') => a === this.player && this.emit({ t: 'msg', text, tone });
+    const worn = v.engine < 1 || v.tires.some((t) => t < 1) || v.leak > 0 || v.hp < d.hp;
+    if (!worn) return say('Nothing to repair', 'bad'), false;
+    const kit = this.carried(a, 'vehkit');
+    if (!kit) return say('You need a car repair kit', 'bad'), false;
+    v.engine = Math.min(1, v.engine + 0.5);
+    v.tires = v.tires.map(() => 1);
+    v.leak = 0;
+    v.hp = Math.min(d.hp, Math.max(v.hp, 1) + d.hp * 0.25);
+    kit.item.uses = (kit.item.uses ?? 3) - 1;
+    if (kit.item.uses <= 0) removeItem(kit.grid, kit.item.uid);
+    if (a === this.player) this.invVersion++;
+    return say('Repaired', 'good'), true;
   }
 
   /** Get out on the first free side. Not while the car is still rolling fast. */
