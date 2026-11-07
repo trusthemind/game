@@ -20,7 +20,6 @@ import {
   takeAmmo,
   CONTAINERS,
   createProfile,
-  itemValue,
   repair,
   repairCost,
   sellPrice,

@@ -67,6 +67,10 @@ export class BotBrain {
   private idleT = 0;
   private patrolGoal: Vec2 | null = null;
   private coverPos: Vec2 | null = null;
+  /** When and from where it was last hit: it doesn't sit down to patch itself up in someone's sights. */
+  private hurtAt = -Infinity;
+  private hurtFrom: Vec2 | null = null;
+  private retreats = 0;
   private lootTarget: { kind: 'container' | 'corpse'; id: number; x: number; y: number } | null = null;
   private lootT = 0;
   private visited = new Set<string>();
@@ -107,6 +111,16 @@ export class BotBrain {
     if (this.role === 'companion' && attacker.faction === 'player') return;
     if (this.role === 'npc' && !hostile(a.faction, attacker.faction) && attacker.faction !== 'player') return;
     this.alerted = true;
+    this.hurtAt = raid.time;
+    this.hurtFrom = { ...attacker.pos };
+    // Hit while bandaging: drop it and get out of the line of fire first (the spot it chose isn't cover).
+    if (a.useT > 0 && this.role !== 'companion') {
+      raid.interruptUse(a);
+      this.coverPos = null;
+      this.setState('cover');
+      if (!this.targetVisible) this.lastKnown = { ...attacker.pos };
+      return;
+    }
     if (this.targetId === null || !this.targetVisible) {
       this.targetId = attacker.id;
       this.lastKnown = { ...attacker.pos };
@@ -238,8 +252,10 @@ export class BotBrain {
     const w = raid.weaponItem(a);
     const empty = w ? (w.ammo ?? 0) === 0 : false;
 
+    // Under fire: hit in the last few seconds, or the enemy seen only just now.
+    const underFire = raid.time - this.hurtAt < 5 || (target !== null && sinceSeen < 5);
     if (this.state === 'heal' && a.useT > 0) return;
-    if (this.state === 'cover' && this.stateT < 4 && (a.reloadT > 0 || a.useT > 0 || (needHeal && this.targetVisible))) return;
+    if (this.state === 'cover' && this.stateT < 4 && (a.reloadT > 0 || a.useT > 0 || (needHeal && underFire))) return;
 
     if (this.targetVisible && target) {
       if (hpFrac < 0.3 && !med && this.courage < 0.7 && this.role !== 'guard') return this.setState('flee');
@@ -247,6 +263,8 @@ export class BotBrain {
       if (this.role === 'companion' && dist(a.pos, raid.player.pos) > 14) return this.setState('follow');
       return this.setState('engage');
     }
+    // Hurt by someone it can't see (or lost sight of a moment ago): into cover first, treat there.
+    if (needHeal && underFire && this.role !== 'companion') return this.setStateIf(['cover'], 'cover');
     if (needHeal) return this.setState('heal');
     if (target && this.lastKnown && sinceSeen < 14) return this.setState(this.role === 'guard' && sinceSeen > 6 ? 'patrol' : 'search');
     if (this.investigatePos && this.role !== 'companion') return this.setStateIf(['investigate', 'search'], 'investigate');
@@ -522,10 +540,19 @@ export class BotBrain {
   }
 
   private actCover(raid: Raid, a: Actor): void {
-    const threat = this.lastKnown ?? raid.player.pos;
-    if (!this.coverPos) this.coverPos = this.findCover(raid, a, threat) ?? { ...a.pos };
-    const arrived = this.moveTo(raid, a, this.coverPos, true);
+    const threat = (raid.time - this.hurtAt < 5 && !this.targetVisible ? this.hurtFrom : null) ?? this.lastKnown ?? raid.player.pos;
+    if (!this.coverPos) {
+      this.coverPos = this.findCover(raid, a, threat) ?? this.findCover(raid, a, threat, 12) ?? this.awayFrom(raid, a, threat);
+      this.retreats = 0;
+    }
+    let arrived = this.moveTo(raid, a, this.coverPos, true);
     this.lookAt(a, threat.x, threat.y);
+    // Got there and still in the shooter's sights (a poor spot, or none to be had): keep backing off a bit more.
+    if (arrived && this.retreats < 2 && raid.map.rayClear(threat.x, threat.y, a.pos.x, a.pos.y, COVER)) {
+      this.coverPos = this.awayFrom(raid, a, threat);
+      this.retreats++;
+      arrived = false;
+    }
     if (arrived) {
       a.intent.crouch = true;
       const w = raid.weaponItem(a);
@@ -536,6 +563,20 @@ export class BotBrain {
       }
     }
     if (this.stateT > 7 && a.reloadT <= 0 && a.useT <= 0) this.setState('engage');
+  }
+
+  /** Nowhere to hide nearby: a spot well away from the threat (healing there beats healing in its sights). */
+  private awayFrom(raid: Raid, a: Actor, threat: Vec2): Vec2 {
+    // Straight away first, then fanning out either side, then shorter: the first walkable spot further off.
+    const base = angleTo(threat, a.pos);
+    const d0 = Math.hypot(a.pos.x - threat.x, a.pos.y - threat.y);
+    for (const reach of [10, 7, 4])
+      for (const turn of [0, 0.5, -0.5, 1, -1, 1.5, -1.5]) {
+        const x = Math.floor(a.pos.x + Math.cos(base + turn) * reach);
+        const y = Math.floor(a.pos.y + Math.sin(base + turn) * reach);
+        if (raid.map.isWalkable(x, y) && Math.hypot(x + 0.5 - threat.x, y + 0.5 - threat.y) > d0 + 2) return { x: x + 0.5, y: y + 0.5 };
+      }
+    return { ...a.pos };
   }
 
   private actHeal(raid: Raid, a: Actor): void {
@@ -647,19 +688,23 @@ export class BotBrain {
   }
 
   /** A nearby tile with blocked line of fire from the threat, preferring short moves. */
-  findCover(raid: Raid, a: Actor, threat: Vec2): Vec2 | null {
+  findCover(raid: Raid, a: Actor, threat: Vec2, radius = 7): Vec2 | null {
     let best: Vec2 | null = null;
     let bestScore = Infinity;
     const cx = Math.floor(a.pos.x);
     const cy = Math.floor(a.pos.y);
-    for (let dy = -6; dy <= 6; dy++)
-      for (let dx = -6; dx <= 6; dx++) {
+    for (let dy = -radius; dy <= radius; dy++)
+      for (let dx = -radius; dx <= radius; dx++) {
         const x = cx + dx;
         const y = cy + dy;
         if (!raid.map.isWalkable(x, y)) continue;
         const px = x + 0.5;
         const py = y + 0.5;
-        if (raid.map.rayClear(threat.x, threat.y, px, py, COVER)) continue;
+        // Hidden across the whole tile, not just at its middle: a bot stops anywhere within ~0.6 of it.
+        const exposed = [[0, 0], [0.4, 0], [-0.4, 0], [0, 0.4], [0, -0.4]].some(([ox, oy]) =>
+          raid.map.rayClear(threat.x, threat.y, px + ox!, py + oy!, COVER),
+        );
+        if (exposed) continue;
         const score = Math.hypot(dx, dy) - Math.min(8, Math.hypot(px - threat.x, py - threat.y)) * 0.3;
         if (score < bestScore) {
           bestScore = score;

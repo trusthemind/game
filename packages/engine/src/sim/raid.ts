@@ -1173,6 +1173,11 @@ export class Raid {
     a.reloadT = 0;
   }
 
+  /** A bot shot while treating itself drops it to get to cover (nothing spent). */
+  interruptUse(a: Actor): void {
+    if (a.useT > 0) this.cancelUse(a);
+  }
+
   /** Stop a use half-way: nothing is spent, nothing applied. */
   private cancelUse(a: Actor): void {
     a.useT = 0;
