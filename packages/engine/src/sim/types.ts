@@ -140,6 +140,10 @@ export type RaidEvent =
   | { t: 'died' }
   | { t: 'vault'; actor: number }
   | { t: 'glass'; x: number; y: number; idx: number }
+  /** A locked door opened (its tiles are floor now). */
+  | { t: 'door'; id: number; x: number; y: number }
+  /** The power came back on. */
+  | { t: 'power'; x: number; y: number }
   | { t: 'vehicle'; id: number; actor: number; what: 'enter' | 'exit' | 'crash' | 'runover'; x: number; y: number; power: number };
 
 export function hostile(a: Faction, b: Faction): boolean {

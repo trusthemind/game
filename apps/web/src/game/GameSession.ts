@@ -21,6 +21,7 @@ import {
   npcEncounterEligible,
   Raid,
   Rng,
+  type ExtractRule,
   type Interactable,
   type MapId,
   type Profile,
@@ -193,6 +194,12 @@ export class GameSession {
           break;
         case 'glass':
           audio.glass(e.x, e.y);
+          break;
+        case 'door':
+          audio.door(e.x, e.y);
+          break;
+        case 'power':
+          audio.impact(e.x, e.y, 'metal');
           break;
         case 'vehicle':
           // Doors for getting in and out, sheet metal for crashes (no engine loop yet).
@@ -423,6 +430,12 @@ export class GameSession {
       useRaidUi.setState({ overlay: 'dialogue', dialogueActor: target.id });
     } else if (target.kind === 'window') {
       this.raid.vault(this.raid.player, target.id);
+    } else if (target.kind === 'door') {
+      this.raid.unlockDoor(this.raid.player, target.id);
+    } else if (target.kind === 'switch') {
+      this.raid.flipSwitch(this.raid.player, target.id);
+    } else if (target.kind === 'extract' && target.fee) {
+      this.raid.payExtract(this.raid.player, target.id);
     } else if (target.kind === 'vehicle') {
       if (target.inside) this.raid.exitVehicle(this.raid.player);
       else this.raid.enterVehicle(this.raid.player, target.id);
@@ -469,7 +482,12 @@ export class GameSession {
           opts.push({ label: 'Climb through', run: () => go(t.x, t.y, 1.25, () => raid.vault(p, t.id)) });
           if (!t.broken) opts.push({ label: 'Smash the glass', run: () => go(t.x, t.y, 1.4, () => raid.breakGlass(t.id, p)) });
         }
-        if (t.kind === 'extract') opts.push({ label: `Walk to ${t.label}`, run: () => go(t.x, t.y, 1, null) });
+        if (t.kind === 'extract') {
+          opts.push({ label: `Walk to ${t.label}`, run: () => go(t.x, t.y, 1, null) });
+          if (t.fee) opts.push({ label: `Pay the driver (${t.fee} CR)`, run: () => go(t.x, t.y, 2.5, () => raid.payExtract(p, t.id)) });
+        }
+        if (t.kind === 'door') opts.push({ label: t.hasKey ? 'Unlock' : 'Locked (no key)', run: () => go(t.x, t.y, 1.6, () => raid.unlockDoor(p, t.id)) });
+        if (t.kind === 'switch' && !t.on) opts.push({ label: 'Throw the switch', run: () => go(t.x, t.y, 1.4, () => raid.flipSwitch(p, t.id)) });
         if (t.kind === 'vehicle' && !t.inside) {
           const v = raid.vehicles.find((x) => x.id === t.id);
           opts.push({ label: 'Get in', run: () => go(t.x, t.y, 2, () => this.interactWith(t)) });
@@ -577,11 +595,18 @@ export class GameSession {
       reloading: p.reloadT > 0 && wd ? 1 - p.reloadT / wd.reloadTime : 0,
       using: p.useT > 0 && p.useUid ? 1 : 0,
       timeLeft: Math.max(0, raid.timeLimit - raid.time),
+      place: raid.map.placeAt(p.pos.x, p.pos.y),
       extract: raid.extractProgress,
       extractName: ex?.name ?? '',
       tasks: this.trackedTasks,
       extractions: [
-        ...raid.map.extractions.map((e) => ({ name: e.name, dist: Math.hypot(e.x - p.pos.x, e.y - p.pos.y), angle: Math.atan2(e.y - p.pos.y, e.x - p.pos.x), kind: 'exit' as const })),
+        ...raid.map.extractions.map((e) => ({
+          name: e.name,
+          dist: Math.hypot(e.x - p.pos.x, e.y - p.pos.y),
+          angle: Math.atan2(e.y - p.pos.y, e.x - p.pos.x),
+          kind: 'exit' as const,
+          note: exitNote(e.rule, raid.extractBlocked(e, p)),
+        })),
         ...raid.corpses
           .filter((c) => c.actorId < 0)
           .map((c) => ({ name: 'Your body', dist: Math.hypot(c.pos.x - p.pos.x, c.pos.y - p.pos.y), angle: Math.atan2(c.pos.y - p.pos.y, c.pos.x - p.pos.x), kind: 'grave' as const })),
@@ -614,4 +639,11 @@ export class GameSession {
     this.input.dispose();
     this.renderer.dispose();
   }
+}
+
+/** A short tag for an exit's condition in the HUD list: what it still needs, or ✓ once it's met. */
+function exitNote(rule: ExtractRule | undefined, blocked: string | null): string | undefined {
+  if (!rule) return undefined;
+  const what = rule.kind === 'power' ? 'power' : rule.kind === 'fee' ? `${rule.amount} CR` : 'no backpack';
+  return blocked ? what : `${what} ✓`;
 }

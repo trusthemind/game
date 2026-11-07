@@ -1,7 +1,7 @@
 import { BOSSES } from '../items/bosses';
 import { Rng } from '../core/rng';
 import { createGrid } from '../items/inventory';
-import { GameMap, extractKind, extractSolids, extractToWorld, ROAD_EXTRACTS, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype, type Site } from './map';
+import { GameMap, extractKind, extractSolids, extractToWorld, ROAD_EXTRACTS, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype, type Site, type LootContainer } from './map';
 import { Tile } from './tiles';
 import { furnish } from './furniture';
 import { createVehicle, vehicleBlocked, type Vehicle, type VehicleDefId, type VehicleSpawn } from '../sim/vehicle';
@@ -613,6 +613,19 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   map.extractions = map.extractions.filter((e) => reach[map.idx(Math.floor(e.x), Math.floor(e.y))]);
 
   furnish(map);
+  // Locks, keys, the power switch and the exits that ask for something. Locked rooms drop out of what's
+  // reachable (no bot spawns or patrols behind a locked door).
+  lockAndWire(map, rng.fork('locks'));
+  // Risk and reward: loot gets better the further it lies from every spawn (the middle of the map, where
+  // everyone converges), a tier up past ~a third of the map's width away, two past half.
+  for (const c of map.containers) {
+    if (c.tier >= 3) continue;
+    const far = Math.min(...map.spawnPoints.map((s) => Math.hypot(s.x - c.x, s.y - c.y)));
+    c.tier = Math.min(3, c.tier + (far > size * 0.5 ? 2 : far > size * 0.33 ? 1 : 0));
+  }
+  for (const b of map.buildings)
+    if (b.kind === 'clinic') map.places.push({ name: 'Clinic', x: b.x + b.w / 2, y: b.y + b.h / 2, r: Math.max(b.w, b.h) / 2 + 2, major: false });
+  reach = floodFill(map, map.playerSpawn);
   map.spawnPoints = map.spawnPoints.map((s) => (map.isWalkable(s.x, s.y) ? s : nearestWalkable(map, s))).filter((s) => reach[map.idx(s.x, s.y)]);
 
   // ── This raid: where you start, the cars left running, the bots ──
@@ -742,6 +755,7 @@ function layRailway(map: GameMap, rng: Rng, roadsY: number[]): number {
   const px = town.length ? town[Math.floor(town.length / 2)]! - 14 : Math.round(size * 0.55);
   for (let x = px; x < px + 28; x++) for (let d = 2; d < 5; d++) if (map.get(x, y + d) === Tile.Grass) map.set(x, y + d, Tile.Concrete);
   map.pois.push({ x: px + 14, y: y + 3 });
+  map.places.push({ name: 'Railway Station', x: px + 14, y: y + 3, r: 16, major: true });
   void rng;
   return y;
 }
@@ -759,6 +773,7 @@ function sawmill(map: GameMap, lot: Rect, rng: Rng, addBuilding: (r: Rect, k: Bu
     map.structures.push({ kind: 'logs', x, y, w: 5, h: 2, levels: rng.int(2, 4) });
   }
   map.pois.push({ x: lot.x + lot.w / 2, y: lot.y + lot.h / 2 });
+  map.places.push({ name: 'Sawmill', x: lot.x + lot.w / 2, y: lot.y + lot.h / 2, r: Math.max(lot.w, lot.h) / 2 + 2, major: true });
   if (rng.chance(0.7)) map.containers.push(makeContainer(nextContainerId(map), 'toolbox', lot.x + 8, lot.y + 13, 1));
 }
 
@@ -893,6 +908,13 @@ function militaryBase(
   const g = toWorld(back / 2, deep + 1.5);
   site.gate = g;
   map.sites.push(site);
+  map.places.push({ name: 'Army Base', x: r.x + r.w / 2, y: r.y + r.h / 2, r: Math.max(r.w, r.h) / 2 + 3, major: true });
+  for (const [role, name] of [['barracks', 'Barracks'], ['hq', 'Headquarters'], ['armoury', 'Armoury']] as const) {
+    const b = map.buildings.find((o) => o.id === site.buildings[role]);
+    if (b) map.places.push({ name, x: b.x + b.w / 2, y: b.y + b.h / 2, r: Math.max(b.w, b.h) / 2 + 1, major: false });
+  }
+  const yard = toWorld(back / 2, deep - 4);
+  map.places.push({ name: 'Motor Pool', ...yard, r: 9, major: false }, { name: 'Main Gate', ...g, r: 5, major: false });
 }
 
 /** The city square: paving, a monument on its plinth in the middle, lime trees at the corners. */
@@ -905,6 +927,7 @@ function citySquare(map: GameMap, b: Rect, rng: Rng): void {
   for (const [x, y] of [[b.x + 2, b.y + 2], [b.x + b.w - 3, b.y + 2], [b.x + 2, b.y + b.h - 3], [b.x + b.w - 3, b.y + b.h - 3]] as const)
     for (let k = 0; k < 3; k++) map.set(x + (k % 2) * (x < cx ? 3 : -3), y + k * (y < cy ? 3 : -3), Tile.Tree);
   map.pois.push({ x: cx + 3, y: cy }, { x: b.x + 4, y: b.y + 4 }, { x: b.x + b.w - 4, y: b.y + b.h - 4 });
+  map.places.push({ name: 'Central Square', x: cx, y: cy, r: Math.max(b.w, b.h) / 2, major: true });
   void rng;
 }
 
@@ -949,6 +972,7 @@ function petrolStation(map: GameMap, lot: Rect, rng: Rng, addBuilding: (r: Rect,
   }
   addBuilding({ x: lot.x + Math.floor((lot.w - 10) / 2), y: lot.y + lot.h - 9, w: 10, h: 9 }, 'shop');
   map.pois.push({ x: cx + cw / 2, y: cy + 3.5 });
+  map.places.push({ name: 'Gas Station', x: lot.x + lot.w / 2, y: lot.y + lot.h / 2, r: Math.max(lot.w, lot.h) / 2, major: true });
   void rng;
 }
 
@@ -972,6 +996,7 @@ function carPark(map: GameMap, lot: Rect, rng: Rng): void {
       }
     }
   map.pois.push({ x: lot.x + lot.w / 2, y: lot.y + lot.h / 2 });
+  map.places.push({ name: 'Car Park', x: lot.x + lot.w / 2, y: lot.y + lot.h / 2, r: Math.max(lot.w, lot.h) / 2, major: false });
 }
 
 /** Lock-up garages: rows of 3×6 m boxes facing a lane, some left open with a crate inside the door. */
@@ -992,6 +1017,7 @@ function garages(map: GameMap, lot: Rect, rng: Rng): void {
       }
   }
   map.pois.push({ x: lot.x + lot.w / 2, y: lot.y + lot.h / 2 });
+  map.places.push({ name: 'Garages', x: lot.x + lot.w / 2, y: lot.y + lot.h / 2, r: Math.max(lot.w, lot.h) / 2, major: true });
 }
 
 /**
@@ -1026,6 +1052,10 @@ function buildPort(map: GameMap, rng: Rng, top: number, shore: number, roadsX: n
     map.structures.push({ kind: 'crane', x: cx, y: cy, w: 10, h: 9 });
     map.pois.push({ x: cx + 5, y: cy + 4 });
   }
+  map.places.push(
+    { name: 'Container Terminal', x: size / 2, y: (top + shore) / 2, r: (shore - top) / 2 + 6, major: true },
+    { name: 'Quay', x: size / 2, y: shore - 5, r: 10, major: false },
+  );
   // Ships at the berths: one along the quay between the piers, one beyond the second pier.
   const berth = (x0: number, x1: number) => {
     const len = Math.min(110, x1 - x0);
@@ -1082,6 +1112,107 @@ function forest(map: GameMap, lot: Rect, rng: Rng): void {
 }
 
 /** Bresenham corridor from `a` towards `b`, clearing trees/fences (never building walls). */
+/**
+ * Tarkov's interactive layer on a laid-out map:
+ * - each base's armoury locked (steel doors, windows bricked up) and stocked with weapon racks and ammo
+ *   crates; its key in the headquarters safe half the time (Kostia always carries one);
+ * - the power switch on the headquarters wall;
+ * - some exits with a condition: power (once the switch is thrown), a driver to pay, no backpack through a
+ *   tunnel or down a trail. At least two always stay open to anyone.
+ */
+function lockAndWire(map: GameMap, rng: Rng): void {
+  // The furniture is in by now: a spot by a wall that isn't under a cupboard.
+  const wallSpot = (room: Rect) => {
+    for (let t = 0; t < 6; t++) {
+      const p = wallHuggingSpot(map, room, rng);
+      if (p && map.isWalkable(p.x, p.y)) return p;
+    }
+    return null;
+  };
+  for (const site of map.sites) {
+    const armoury = map.buildings.find((b) => b.id === site.buildings.armoury);
+    if (armoury) {
+      const inside = (x: number, y: number) => x >= armoury.x && y >= armoury.y && x < armoury.x + armoury.w && y < armoury.y + armoury.h;
+      // Doorways in its outer wall: floor on the perimeter, one door per run of them.
+      const edge: { x: number; y: number }[] = [];
+      for (let x = armoury.x; x < armoury.x + armoury.w; x++) edge.push({ x, y: armoury.y }, { x, y: armoury.y + armoury.h - 1 });
+      for (let y = armoury.y + 1; y < armoury.y + armoury.h - 1; y++) edge.push({ x: armoury.x, y }, { x: armoury.x + armoury.w - 1, y });
+      const floor = map.get(armoury.x + 1, armoury.y + 1);
+      const gaps = edge.filter((p) => !map.isSolid(p.x, p.y) || map.get(p.x, p.y) === Tile.Window);
+      const seen = new Set<string>();
+      for (const g of gaps) {
+        if (map.get(g.x, g.y) === Tile.Window) {
+          map.set(g.x, g.y, Tile.Wall);
+          continue;
+        }
+        if (seen.has(`${g.x},${g.y}`)) continue;
+        const run = [g];
+        seen.add(`${g.x},${g.y}`);
+        for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]] as const) {
+          const n = gaps.find((o) => o.x === g.x + dx && o.y === g.y + dy && map.get(o.x, o.y) !== Tile.Window);
+          if (n && !seen.has(`${n.x},${n.y}`)) {
+            run.push(n);
+            seen.add(`${n.x},${n.y}`);
+          }
+        }
+        const alongX = g.y === armoury.y || g.y === armoury.y + armoury.h - 1;
+        for (const p of run) map.set(p.x, p.y, Tile.LockedDoor);
+        map.doors.push({
+          id: map.doors.length,
+          tiles: run.map((p) => map.idx(p.x, p.y)),
+          x: run.reduce((s, p) => s + p.x + 0.5, 0) / run.length,
+          y: run.reduce((s, p) => s + p.y + 0.5, 0) / run.length,
+          alongX,
+          key: 'key_armoury',
+          label: 'Armoury',
+          floor,
+        });
+      }
+      // Racks and crates instead of whatever was in there.
+      map.containers = map.containers.filter((c) => !inside(c.x, c.y));
+      const stock: ContainerKind[] = ['weaponbox', 'weaponbox', 'weaponbox', 'ammocrate', 'ammocrate', 'modbox'];
+      for (const kind of stock)
+        for (let t = 0; t < 4; t++) {
+          const room = rng.pick(armoury.rooms);
+          const spot = wallSpot(room);
+          if (!spot) continue;
+          map.containers.push(makeContainer(nextContainerId(map), kind, spot.x, spot.y, 3));
+          break;
+        }
+    }
+    const hq = map.buildings.find((b) => b.id === site.buildings.hq);
+    if (hq && hq.rooms.length) {
+      const big = hq.rooms.reduce((a, b) => (a.w * a.h >= b.w * b.h ? a : b));
+      // The power switch on a wall of its biggest room, facing into the room.
+      const at = wallSpot(big);
+      if (at) {
+        const facing = map.isSolid(at.x, at.y - 1) ? Math.PI / 2 : map.isSolid(at.x, at.y + 1) ? -Math.PI / 2 : map.isSolid(at.x - 1, at.y) ? 0 : Math.PI;
+        map.switches.push({ id: map.switches.length, x: at.x + 0.5, y: at.y + 0.5, facing, label: 'Power switch' });
+      }
+      // The commander's safe: the armoury key in it half the time.
+      const spot = wallSpot(rng.pick(hq.rooms));
+      if (spot && !(at && spot.x === at.x && spot.y === at.y)) {
+        const safe = makeContainer(nextContainerId(map), 'safe', spot.x, spot.y, 3);
+        if (rng.chance(0.5)) safe.extra = ['key_armoury'];
+        map.containers.push(safe);
+      }
+    }
+  }
+  // Exits with conditions. Keep two open to anyone.
+  const free = () => map.extractions.filter((e) => !e.rule);
+  const take = (kinds: string[]) => (free().length > 2 ? free().find((e) => kinds.includes(e.kind)) : undefined);
+  const crawl = take(['tunnel', 'path', 'outlet']);
+  if (crawl) crawl.rule = { kind: 'noBackpack' };
+  const paid = take(['checkpoint', 'gate', 'overpass', 'station', 'depot', 'outpost']);
+  if (paid) paid.rule = { kind: 'fee', amount: 5000 };
+  const sw = map.switches[0];
+  if (sw && free().length > 2) {
+    // The one the power runs to: nearest the switch.
+    const near = free().sort((a, b) => Math.hypot(a.x - sw.x, a.y - sw.y) - Math.hypot(b.x - sw.x, b.y - sw.y))[0]!;
+    near.rule = { kind: 'power' };
+  }
+}
+
 /** The reachable tile nearest `t` (within 80 tiles), by straight-line distance. */
 function nearestReached(map: GameMap, reach: Uint8Array, t: { x: number; y: number }): { x: number; y: number } | null {
   for (let r = 1; r <= 80; r++) {
@@ -1303,7 +1434,7 @@ function wallHuggingSpot(map: GameMap, room: Rect, rng: Rng): { x: number; y: nu
   return null;
 }
 
-function makeContainer(id: number, kind: ContainerKind, x: number, y: number, tier: number) {
+function makeContainer(id: number, kind: ContainerKind, x: number, y: number, tier: number): LootContainer {
   return { id, kind, x, y, grid: createGrid(1, 1), revealedUids: [], searchT: 0, searched: false, generated: false, tier };
 }
 

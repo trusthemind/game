@@ -5,9 +5,14 @@
 }
 .hud-tl { position: absolute; top: 16px; left: 16px; min-width: 230px; }
 .timer { font-size: 26px; font-weight: 600; color: var(--accent-2); letter-spacing: .04em; }
+.hud-place { margin-top: 3px; color: #e8dcb8; letter-spacing: 0.02em; }
 .exits { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .exit { display: grid; grid-template-columns: 16px 1fr auto; gap: 8px; align-items: center; color: #b9f5cf; font-size: 12.5px; }
 .exit .arrow { display: inline-block; color: #4dff9a; }
+/* An exit with a condition: the tag sits between the name and the distance (the grid grows a column). */
+.exit:has(.exit-note) { grid-template-columns: 16px 1fr auto auto; }
+.exit-note { font-size: 10.5px; padding: 0 5px; border-radius: 3px; color: #ffb27a; border: 1px solid #ffb27a66; white-space: nowrap; }
+.exit-note.met { color: #4dff9a; border-color: #4dff9a55; }
 .hud-tr { position: absolute; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .minimap { border: 1px solid rgba(255,255,255,.1); border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
 .companion { width: 196px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }

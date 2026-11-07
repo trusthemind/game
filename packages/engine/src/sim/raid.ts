@@ -6,6 +6,7 @@ import {
   addItem,
   carryGrids,
   createGrid,
+  createItem,
   equipmentValue,
   allItems,
   equipmentWeight,
@@ -21,7 +22,7 @@ import { CONTAINERS, generateLoot } from '../items/loot';
 import { effectiveWeapon } from '../items/mods';
 import { bossById } from '../items/bosses';
 import { computeFov } from '../world/fov';
-import type { GameMap, LootContainer, BotArchetype, ContainerKind } from '../world/map';
+import type { GameMap, LootContainer, BotArchetype, ContainerKind, Door, Extraction } from '../world/map';
 import { generateMap, MAP_PRESETS, type MapId } from '../world/mapGen';
 import { Pathfinder } from '../world/pathfinding';
 import { OPAQUE, Tile } from '../world/tiles';
@@ -160,12 +161,16 @@ export type Interactable =
   | { kind: 'container'; id: number; label: string; x: number; y: number; searched: boolean }
   | { kind: 'corpse'; id: number; label: string; x: number; y: number }
   | { kind: 'npc'; id: number; npcId: string; label: string; x: number; y: number }
-  | { kind: 'extract'; id: number; label: string; x: number; y: number }
+  | { kind: 'extract'; id: number; label: string; x: number; y: number; fee?: number }
+  | { kind: 'door'; id: number; label: string; x: number; y: number; hasKey: boolean }
+  | { kind: 'switch'; id: number; label: string; x: number; y: number; on: boolean }
   | { kind: 'window'; id: number; label: string; x: number; y: number; broken: boolean }
   | { kind: 'vehicle'; id: number; label: string; x: number; y: number; inside: boolean };
 
 const FIXED_DT = 1 / 60;
 export const INTERACT_RANGE = 1.7;
+/** Uses before a key's bit wears down and snaps. */
+export const KEY_USES = 6;
 export const VAULT_TIME = 0.95;
 const EXTRACT_TIME = 6;
 const IDLE_DRIVE: DriveControl = { throttle: 0, steer: 0, handbrake: false };
@@ -224,6 +229,12 @@ export class Raid {
   private nextEventId = 1;
   /** Window tiles whose glass has been smashed. */
   readonly brokenGlass = new Set<number>();
+  /** The base's power switch has been thrown (exits that need power are open). */
+  powerOn = false;
+  /** Exits whose driver has been paid. */
+  readonly paidExtracts = new Set<number>();
+  /** The exit the player was last told they can't use yet (so it's said once per visit). */
+  private toldBlocked: number | null = null;
   /** Drivable cars and roadside wrecks. */
   readonly vehicles: Vehicle[] = [];
   private accumulator = 0;
@@ -1392,7 +1403,115 @@ export class Raid {
         best = { kind: 'vehicle', id: v.id, label, x: door.x, y: door.y, inside: false };
       }
     }
+    for (const d of this.map.doors) {
+      if (!this.doorLocked(d)) continue;
+      const dd = Math.hypot(d.x - p.x, d.y - p.y);
+      if (dd < bestD + 0.4) {
+        bestD = dd;
+        best = this.doorInteractable(d, this.player);
+      }
+    }
+    // Once thrown, there's nothing more to do with it.
+    for (const s of this.powerOn ? [] : this.map.switches) {
+      const dd = Math.hypot(s.x - p.x, s.y - p.y);
+      if (dd < bestD) {
+        bestD = dd;
+        best = { kind: 'switch', id: s.id, label: 'Turn the power on', x: s.x, y: s.y, on: false };
+      }
+    }
+    // Standing at a paid exit with the driver unpaid: pay him.
+    for (const e of this.map.extractions) {
+      if (e.rule?.kind !== 'fee' || this.paidExtracts.has(e.id)) continue;
+      if (Math.hypot(e.x - p.x, e.y - p.y) < e.radius + 1) return { kind: 'extract', id: e.id, label: `Pay the driver ${e.rule.amount} CR`, x: e.x, y: e.y, fee: e.rule.amount };
+    }
     return best ?? this.windowNear(this.player);
+  }
+
+  // ── Locked doors, the power switch, exits with conditions ─────────────────────
+
+  doorLocked(d: Door): boolean {
+    return this.map.tiles[d.tiles[0]!] === Tile.LockedDoor;
+  }
+
+  private doorInteractable(d: Door, a: Actor): Interactable {
+    const hasKey = !!this.carried(a, d.key);
+    return { kind: 'door', id: d.id, label: hasKey ? `Unlock: ${d.label}` : `Locked: ${d.label} (${getDef(d.key).name})`, x: d.x, y: d.y, hasKey };
+  }
+
+  /** Open a locked door with its key (a key wears out after a few uses). */
+  unlockDoor(a: Actor, id: number): boolean {
+    const d = this.map.doors.find((x) => x.id === id);
+    if (!d || !this.doorLocked(d)) return false;
+    if (Math.hypot(d.x - a.pos.x, d.y - a.pos.y) > INTERACT_RANGE + 0.6) return false;
+    const say = (text: string, tone: 'good' | 'bad') => a === this.player && this.emit({ t: 'msg', text, tone });
+    const key = this.carried(a, d.key);
+    if (!key) return say(`Locked. You need the ${getDef(d.key).name}`, 'bad'), false;
+    for (const i of d.tiles) this.map.tiles[i] = d.floor;
+    // Paths worked out while it was shut (or found none) are stale now.
+    this.pathfinder.cache.clear();
+    key.item.uses = (key.item.uses ?? KEY_USES) - 1;
+    if (key.item.uses <= 0) {
+      removeItem(key.grid, key.item.uid);
+      say(`${d.label} unlocked. The key snapped off in the lock`, 'good');
+    } else say(`${d.label} unlocked`, 'good');
+    if (a === this.player) this.invVersion++;
+    this.emit({ t: 'door', id: d.id, x: d.x, y: d.y });
+    this.makeNoise(d.x, d.y, 6, a.id, 'impact');
+    return true;
+  }
+
+  /** Throw the power switch: the generator kicks in (loud) and the exits that need power open. */
+  flipSwitch(a: Actor, id: number): boolean {
+    const s = this.map.switches.find((x) => x.id === id);
+    if (!s || this.powerOn) return false;
+    if (Math.hypot(s.x - a.pos.x, s.y - a.pos.y) > INTERACT_RANGE + 0.4) return false;
+    this.powerOn = true;
+    this.emit({ t: 'power', x: s.x, y: s.y });
+    this.makeNoise(s.x, s.y, 30, a.id, 'impact');
+    if (a === this.player) {
+      const opened = this.map.extractions.filter((e) => e.rule?.kind === 'power').map((e) => e.name);
+      this.emit({ t: 'msg', text: opened.length ? `Power is on: ${opened.join(', ')} is open` : 'Power is on', tone: 'good' });
+    }
+    return true;
+  }
+
+  /** Credits carried, in all your grids. */
+  creditsCarried(a: Actor): number {
+    let n = 0;
+    for (const g of carryGrids(a.eq)) for (const p of g.items) if (p.item.def === 'roubles') n += p.item.stack;
+    return n;
+  }
+
+  /** Pay a paid exit's driver from the credits you carry. */
+  payExtract(a: Actor, id: number): boolean {
+    const e = this.map.extractions.find((x) => x.id === id);
+    if (!e || e.rule?.kind !== 'fee' || this.paidExtracts.has(id)) return false;
+    if (Math.hypot(e.x - a.pos.x, e.y - a.pos.y) > e.radius + 1.5) return false;
+    const fee = e.rule.amount;
+    const say = (text: string, tone: 'good' | 'bad') => a === this.player && this.emit({ t: 'msg', text, tone });
+    if (this.creditsCarried(a) < fee) return say(`The driver wants ${fee} CR. You have ${this.creditsCarried(a)}`, 'bad'), false;
+    let owed = fee;
+    for (const g of carryGrids(a.eq))
+      for (const p of [...g.items]) {
+        if (owed <= 0 || p.item.def !== 'roubles') continue;
+        const take = Math.min(owed, p.item.stack);
+        p.item.stack -= take;
+        owed -= take;
+        if (p.item.stack <= 0) removeItem(g, p.item.uid);
+      }
+    this.paidExtracts.add(id);
+    if (a === this.player) this.invVersion++;
+    return say(`Paid ${fee} CR. The driver waits at ${e.name}`, 'good'), true;
+  }
+
+  /** Why `a` can't leave by this exit yet (null: they can). */
+  extractBlocked(e: Extraction, a: Actor = this.player): string | null {
+    const r = e.rule;
+    if (!r) return null;
+    if (r.kind === 'power' && !this.powerOn) return 'No power: find the switch at the army base';
+    if (r.kind === 'fee' && !this.paidExtracts.has(e.id)) return `Pay the driver ${r.amount} CR`;
+    if (r.kind === 'noBackpack' && a.eq.slots.backpack) return 'No backpacks: too tight to get through';
+    return null;
   }
 
   /** Everything you could interact with around a world point (for the right-click menu), nearest first. */
@@ -1424,9 +1543,18 @@ export class Raid {
       const door = doorPos(v, 0);
       out.push({ d: 0, it: { kind: 'vehicle', id: v.id, label: VEHICLE_DEFS[v.def].name, x: door.x, y: door.y, inside: false } });
     }
+    for (const dr of this.map.doors) {
+      const d = Math.hypot(dr.x - x, dr.y - y);
+      if (d < r + 0.5 && this.doorLocked(dr)) out.push({ d, it: this.doorInteractable(dr, this.player) });
+    }
+    for (const s of this.map.switches) {
+      const d = Math.hypot(s.x - x, s.y - y);
+      if (d < r) out.push({ d, it: { kind: 'switch', id: s.id, label: this.powerOn ? 'Power is on' : 'Power switch', x: s.x, y: s.y, on: this.powerOn } });
+    }
     for (const e of this.map.extractions) {
       const d = Math.hypot(e.x - x, e.y - y);
-      if (d < e.radius + 0.5) out.push({ d: d + 1, it: { kind: 'extract', id: e.id, label: e.name, x: e.x, y: e.y } });
+      const fee = e.rule?.kind === 'fee' && !this.paidExtracts.has(e.id) ? e.rule.amount : undefined;
+      if (d < e.radius + 0.5) out.push({ d: d + 1, it: { kind: 'extract', id: e.id, label: e.name, x: e.x, y: e.y, ...(fee ? { fee } : {}) } });
     }
     return out.sort((a, b) => a.d - b.d).map((o) => o.it);
   }
@@ -1506,6 +1634,14 @@ export class Raid {
   ensureGenerated(c: LootContainer): void {
     if (c.generated) return;
     c.grid = generateLoot(c.kind, this.rng.fork(`c${c.id}`), c.tier);
+    for (const id of c.extra ?? []) {
+      const it = createItem(id, { fir: true });
+      if (!addItem(c.grid, it)) {
+        // Make room: a key always goes in.
+        c.grid = { ...c.grid, h: c.grid.h + 1 };
+        addItem(c.grid, it);
+      }
+    }
     c.generated = true;
     if (c.grid.items.length === 0) c.searched = true;
   }
@@ -1838,11 +1974,15 @@ export class Raid {
     if (!p.alive) return;
     // Extracting by car isn't a thing yet: you get out at the exit.
     const ex = p.vehicle ? undefined : this.map.extractions.find((e) => Math.hypot(e.x - p.pos.x, e.y - p.pos.y) < e.radius);
-    if (!ex) {
+    const blocked = ex ? this.extractBlocked(ex, p) : null;
+    if (!ex || blocked) {
+      if (ex && blocked && this.toldBlocked !== ex.id) this.emit({ t: 'msg', text: `${ex.name}: ${blocked}`, tone: 'bad' });
+      this.toldBlocked = ex && blocked ? ex.id : null;
       this.extractT = 0;
       this.extractingAt = null;
       return;
     }
+    this.toldBlocked = null;
     if (this.extractingAt !== ex.id) {
       this.extractingAt = ex.id;
       this.extractT = 0;

@@ -78,6 +78,8 @@ export interface LootContainer {
   /** Not generated yet — loot rolls lazily on first open to keep raid start fast. */
   generated: boolean;
   tier: number;
+  /** Item defs that are always in it on top of what it rolls (a key in the headquarters safe). */
+  extra?: string[];
 }
 
 /** What an extraction point physically is: decides where it can stand and how it's drawn. */
@@ -228,6 +230,19 @@ export interface BotSpawn {
   boss?: string;
 }
 
+/**
+ * A named place (callout), as players would call it: the Sawmill, the Army Base and its Barracks, the Gas
+ * Station. `major` places are labelled large on the map; the rest are the spots inside them.
+ */
+export interface Place {
+  name: string;
+  x: number;
+  y: number;
+  /** Rough radius it covers. */
+  r: number;
+  major: boolean;
+}
+
 export interface Site {
   kind: 'base';
   x: number;
@@ -265,6 +280,8 @@ export class GameMap {
   sites: Site[] = [];
   /** Locked doors (the armoury's). */
   doors: Door[] = [];
+  /** Named places (callouts) for the map screen and the HUD. */
+  places: Place[] = [];
   /** Power switches. */
   switches: PowerSwitch[] = [];
   /** Big set pieces drawn from these records (their footprint is already in the tiles): cranes, ships, stacks. */
@@ -282,6 +299,21 @@ export class GameMap {
     this.buildingAt = new Uint16Array(width * height);
     this.districtAt = new Uint8Array(width * height);
     this.furnitureAt = new Uint16Array(width * height);
+  }
+
+  /** What players would call where (x, y) is: "Army Base · Barracks", "Sawmill", or the district's name. */
+  placeAt(x: number, y: number): string {
+    let major: Place | null = null;
+    let spot: Place | null = null;
+    for (const p of this.places) {
+      const d = Math.hypot(p.x - x, p.y - y);
+      if (d > p.r) continue;
+      if (p.major && (!major || p.r < major.r)) major = p;
+      if (!p.major && (!spot || d < Math.hypot(spot.x - x, spot.y - y))) spot = p;
+    }
+    const district = this.inBounds(Math.floor(x), Math.floor(y)) ? this.districts[this.districtAt[this.idx(Math.floor(x), Math.floor(y))]!]?.name : undefined;
+    const top = major?.name ?? district ?? '';
+    return spot ? `${top} · ${spot.name}` : top;
   }
 
   districtOf(x: number, y: number): District | null {

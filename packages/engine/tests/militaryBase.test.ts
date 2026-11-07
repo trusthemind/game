@@ -25,9 +25,18 @@ describe('army bases', () => {
             expect(b, `${mapId}#${seed} ${role}`).toBeTruthy();
             expect(b!.kind).toBe('military');
             expect(b!.x > s.x && b!.y > s.y && b!.x + b!.w < s.x + s.w && b!.y + b!.h < s.y + s.h).toBe(true);
+            // The armoury is locked: reachable once its doors are open.
+            const doors = role === 'armoury' ? map.doors.filter((d) => d.label === 'Armoury') : [];
+            if (role === 'armoury') {
+              expect(doors.length, `${mapId}#${seed} armoury doors`).toBeGreaterThan(0);
+              for (const d of doors) for (const i of d.tiles) expect(map.tiles[i]).toBe(Tile.LockedDoor);
+            }
+            for (const d of doors) for (const i of d.tiles) map.tiles[i] = d.floor;
+            const open = doors.length ? floodFill(map, map.playerSpawn) : reach;
             let inside = 0;
-            for (const r of b!.rooms) for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) inside += reach[map.idx(x, y)]!;
+            for (const r of b!.rooms) for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) inside += open[map.idx(x, y)]!;
             expect(inside, `${mapId}#${seed} ${role} reachable`).toBeGreaterThan(0);
+            for (const d of doors) for (const i of d.tiles) map.tiles[i] = Tile.LockedDoor;
           }
           expect(map.structures.filter((t) => t.kind === 'tower' && t.x > s.x && t.x < s.x + s.w && t.y > s.y && t.y < s.y + s.h).length).toBe(4);
         }

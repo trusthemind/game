@@ -23,10 +23,13 @@ export interface HudState {
   reloading: number;
   using: number;
   timeLeft: number;
+  /** Where you are, as players call it ("Army Base · Barracks"). */
+  place: string;
   extract: number;
   extractName: string;
   tasks: string[];
-  extractions: { name: string; dist: number; angle: number; kind: 'exit' | 'grave' | 'event' }[];
+  /** `note`: what the exit still asks of you (power, a fee, no backpack); none when you can just leave. */
+  extractions: { name: string; dist: number; angle: number; kind: 'exit' | 'grave' | 'event'; note?: string }[];
   interact: Interactable | null;
   crouch: boolean;
   flashlight: boolean;

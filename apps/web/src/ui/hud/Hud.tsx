@@ -21,6 +21,7 @@ export function Hud({ session }: { session: GameSession }) {
           {TOD[hud.timeOfDay]}
           {hud.rain ? ' · Rain' : ''} · Kills {hud.kills}
         </div>
+        {hud.place && <div className="hud-place small">⌖ {hud.place}</div>}
         {hud.tasks.length > 0 && (
           <div className="hud-tasks">
             {hud.tasks.map((t) => (
@@ -35,6 +36,7 @@ export function Hud({ session }: { session: GameSession }) {
             <div key={e.name} className={`exit ${e.kind}`}>
               <span className="arrow" style={{ transform: `rotate(${e.angle}rad)` }}>➜</span>
               <span>{e.name}</span>
+              {e.note && <span className={`exit-note ${e.note.endsWith('✓') ? 'met' : ''}`}>{e.note}</span>}
               <span className="mono dim">{Math.round(e.dist)}m</span>
             </div>
           ))}

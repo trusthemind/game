@@ -397,6 +397,13 @@ export class GameRenderer {
           this.world.breakGlass(e.idx);
           this.effects.burst(e.x, e.y, 18, 'spark');
           break;
+        case 'door':
+          this.world.openDoor(e.id);
+          break;
+        case 'power':
+          this.world.powerOn();
+          this.effects.burst(e.x, e.y, 10, 'spark');
+          break;
         case 'impact':
           this.effects.burst(e.x, e.y, 6, 'spark');
           this.effects.burst(e.x, e.y, 4, 'dust');

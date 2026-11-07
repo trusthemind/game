@@ -81,11 +81,37 @@ export function Minimap({ raid, size = 196, full = false }: { raid: Raid; size?:
         ctx.lineTo(c.pos.x - 1.5, c.pos.y + 1.5);
         ctx.stroke();
       }
+      // The big map names things: districts faintly, places and their spots, every exit.
+      const label = (text: string, x: number, y: number, px: number, fill: string, weight = 600) => {
+        ctx.font = `${weight} ${(px * dpr) / scale}px sans-serif`;
+        // Near the edge, hang the text inwards so it isn't cut off.
+        const edge = 24;
+        ctx.textAlign = x < edge ? 'left' : x > map.width - edge ? 'right' : 'center';
+        x = Math.min(map.width - 3, Math.max(3, x));
+        ctx.lineWidth = (3 * dpr) / scale;
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.strokeText(text, x, y);
+        ctx.fillStyle = fill;
+        ctx.fillText(text, x, y);
+      };
+      if (full) {
+        for (const d of map.districts) label(d.name.toUpperCase(), d.x, d.y, 10, 'rgba(232, 220, 184, 0.45)', 500);
+        // The spots inside a big place (the base's barracks and gate) would crowd its name: those show in the HUD.
+        const majors = map.places.filter((pl) => pl.major);
+        for (const pl of map.places) {
+          if (!pl.major && majors.some((m) => Math.hypot(m.x - pl.x, m.y - pl.y) < m.r)) continue;
+          label(pl.name, pl.x, pl.y, pl.major ? 12 : 9.5, pl.major ? '#f3e6c0' : 'rgba(243, 230, 192, 0.8)', pl.major ? 700 : 500);
+        }
+      }
       for (const e of map.extractions) {
         ctx.fillStyle = '#4dff9a';
         ctx.beginPath();
         ctx.arc(e.x, e.y, full ? 1.6 : 1.2, 0, Math.PI * 2);
         ctx.fill();
+        if (full) {
+          const open = !raid.extractBlocked(e);
+          label(e.rule && !open ? `${e.name} (${e.rule.kind === 'power' ? 'power' : e.rule.kind === 'fee' ? `${e.rule.amount} CR` : 'no backpack'})` : e.name, e.x, e.y - 2.6, 10, open ? '#7dffb0' : '#ffb27a');
+        }
       }
       for (const a of raid.actors) {
         if (!a.alive || a === raid.player || a.bossId) continue;

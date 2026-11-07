@@ -24,6 +24,7 @@ const FLOOR_OF: Partial<Record<Tile, TexKind>> = {
   [Tile.Window]: 'concrete',
   [Tile.Rail]: 'dirt',
   [Tile.Container]: 'concrete',
+  [Tile.LockedDoor]: 'concrete',
 };
 
 const CONTAINER_SHAPE: Record<ContainerKind, { w: number; h: number; d: number; color: number }> = {
@@ -59,6 +60,10 @@ export interface WorldMeshes {
   extractionBeams: THREE.Mesh[];
   /** Hide the pane of a smashed window (map tile index). */
   breakGlass(idx: number): void;
+  /** Swing a locked door open (its leaves fold back against the wall). */
+  openDoor(id: number): void;
+  /** The power switch's lamp goes green. */
+  powerOn(): void;
   materials: THREE.Material[];
   dispose(): void;
 }
@@ -472,6 +477,73 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
     extractionBeams.push(beam);
   }
 
+  // ── Locked steel doors (the armoury's): a painted leaf per tile in a frame, swung open once unlocked.
+  const doorLeaves = new Map<number, THREE.Object3D[]>();
+  if (map.doors.length) {
+    const steel = mat(new THREE.MeshStandardMaterial({ color: 0x4f5a48, roughness: 0.55, metalness: 0.6 }), 'wall');
+    const frame = mat(new THREE.MeshStandardMaterial({ color: 0x2c2f2c, roughness: 0.6, metalness: 0.5 }), 'wall');
+    const leafGeo = geo(new THREE.BoxGeometry(0.96, WALL_H - 0.08, 0.1));
+    const plateGeo = geo(new THREE.BoxGeometry(0.22, 0.32, 0.14));
+    const jambGeo = geo(new THREE.BoxGeometry(0.08, WALL_H, 0.24));
+    for (const d of map.doors) {
+      const leaves: THREE.Object3D[] = [];
+      const cells = d.tiles.map((i) => ({ x: i % map.width, y: Math.floor(i / map.width) }));
+      cells.forEach((c, k) => {
+        // Hinged at the run's outer ends: a double door opens from the middle.
+        const first = k === 0;
+        const hinge = new THREE.Group();
+        const along = d.alongX ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
+        const side = cells.length > 1 ? (first ? -1 : 1) : -1;
+        hinge.position.set(c.x + 0.5 + along.x * side * 0.48, 0, c.y + 0.5 + along.z * side * 0.48);
+        hinge.rotation.y = d.alongX ? 0 : Math.PI / 2;
+        const leaf = new THREE.Mesh(leafGeo, steel);
+        leaf.position.set(-side * 0.48, (WALL_H - 0.08) / 2, 0);
+        const plate = new THREE.Mesh(plateGeo, frame);
+        plate.position.set(-side * 0.8, 1.0, 0);
+        leaf.castShadow = shadows;
+        hinge.add(leaf, plate);
+        hinge.userData.side = side;
+        group.add(hinge);
+        leaves.push(hinge);
+      });
+      // Jambs at both ends of the opening.
+      const a = cells[0]!;
+      const b = cells[cells.length - 1]!;
+      for (const [c, s] of [[a, -1], [b, 1]] as const) {
+        const j = new THREE.Mesh(jambGeo, frame);
+        j.position.set(c.x + 0.5 + (d.alongX ? s * 0.5 : 0), WALL_H / 2, c.y + 0.5 + (d.alongX ? 0 : s * 0.5));
+        j.rotation.y = d.alongX ? 0 : Math.PI / 2;
+        group.add(j);
+      }
+      doorLeaves.set(d.id, leaves);
+    }
+  }
+
+  // ── The power switch: a grey box on the wall with a lever and a lamp, red until it's thrown.
+  const lamps: THREE.MeshStandardMaterial[] = [];
+  const levers: THREE.Object3D[] = [];
+  for (const s of map.switches) {
+    const box = mat(new THREE.MeshStandardMaterial({ color: 0x8a8f86, roughness: 0.5, metalness: 0.5 }));
+    const lamp = new THREE.MeshStandardMaterial({ color: 0x551111, emissive: 0xff2a1a, emissiveIntensity: 1.6 });
+    mat(lamp);
+    lamps.push(lamp);
+    const g = new THREE.Group();
+    // Back against the wall behind the tile it stands on.
+    g.position.set(s.x - Math.cos(s.facing) * 0.42, 0, s.y - Math.sin(s.facing) * 0.42);
+    g.rotation.y = -s.facing + Math.PI / 2;
+    const body = new THREE.Mesh(geo(new THREE.BoxGeometry(0.5, 0.7, 0.16)), box);
+    body.position.y = 1.35;
+    body.castShadow = shadows;
+    const lever = new THREE.Mesh(geo(new THREE.BoxGeometry(0.06, 0.32, 0.06)), mat(new THREE.MeshStandardMaterial({ color: 0x9a2a1e, roughness: 0.5 })));
+    lever.position.set(0.12, 1.42, 0.14);
+    lever.rotation.x = 0.5;
+    const bulb = new THREE.Mesh(geo(new THREE.SphereGeometry(0.05, 10, 8)), lamp);
+    bulb.position.set(-0.12, 1.62, 0.1);
+    g.add(body, lever, bulb);
+    levers.push(lever);
+    group.add(g);
+  }
+
   return {
     group,
     containers,
@@ -479,6 +551,16 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
     containerModels,
     extractionBeams,
     materials,
+    openDoor(id) {
+      for (const h of doorLeaves.get(id) ?? []) h.rotation.y += (h.userData.side as number) * -1.75;
+    },
+    powerOn() {
+      for (const l of lamps) {
+        l.color.setHex(0x115522);
+        l.emissive.setHex(0x2aff4a);
+      }
+      for (const l of levers) l.rotation.x = -0.5;
+    },
     breakGlass(idx) {
       const i = glassIndex.get(idx);
       if (!glassMesh || i === undefined) return;
