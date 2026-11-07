@@ -25,7 +25,7 @@ import { generateMap, MAP_PRESETS, type MapId } from '../world/mapGen';
 import { Pathfinder } from '../world/pathfinding';
 import { OPAQUE, Tile } from '../world/tiles';
 import { solidBoxes, type Box } from '../world/collision';
-import { createVehicle, doorPos, exitSpots, pushOutOfVehicle, rayVehicle, seatPos, stepVehicle, vehicleBlocked, VEHICLE_DEFS, type Vehicle } from './vehicle';
+import { createVehicle, doorPos, exitSpots, pushOutOfVehicle, rayVehicle, seatPos, shootVehicle, stepVehicle, vehicleBlocked, VEHICLE_DEFS, type DriveControl, type Vehicle } from './vehicle';
 import { BotBrain, type BrainRole } from '../ai/brain';
 import { COMPANION_PERK, companionStats, medicCooldown, medicHeal, medUseMul, muleKg, searchMul, spotRange, stepNoiseMul, type PerkId } from '../companions';
 import { armorFor, gaussian, resolveBulletHit, resolveMeleeHit, ZONE_WEIGHTS } from './combat';
@@ -167,6 +167,7 @@ const FIXED_DT = 1 / 60;
 export const INTERACT_RANGE = 1.7;
 export const VAULT_TIME = 0.95;
 const EXTRACT_TIME = 6;
+const IDLE_DRIVE: DriveControl = { throttle: 0, steer: 0, handbrake: false };
 
 const ARCH_STATS: Record<BotArchetype, { hp: number; speed: number; faction: Faction; names: string[] }> = {
   scav: { hp: 100, speed: 2.7, faction: 'scav', names: ['Scav', 'Looter', 'Drifter', 'Marauder'] },
@@ -949,7 +950,13 @@ export class Raid {
         best = b;
       }
     }
-    if (carHit && !best) carHit.hp = Math.max(0, carHit.hp - damage * 0.3);
+    if (carHit && !best) {
+      const part = shootVehicle(carHit, ox + dx * wallT, oy + dy * wallT, damage, this.rng.next());
+      // Whoever's driving hears what just went.
+      const driver = carHit.seats[0] !== null ? this.actorById(carHit.seats[0]) : null;
+      if (driver === this.player && part !== 'body')
+        this.emit({ t: 'msg', text: part === 'tire' ? 'A tyre is shot out' : part === 'tank' ? 'The fuel tank is holed' : carHit.engine <= 0 ? 'The engine is shot' : 'Hit in the engine', tone: 'bad' });
+    }
     const ex = ox + dx * bestT;
     const ey = oy + dy * bestT;
     this.emit({ t: 'shot', actor: a.id, fx: ox, fy: oy, tx: ex, ty: ey, weapon, hit: !!best, suppressed, pellet: !first });
@@ -1661,7 +1668,11 @@ export class Raid {
 
   private updateVehicles(dt: number): void {
     for (const v of this.vehicles) {
-      if (v.wreck) continue;
+      // A wreck only rolls on when something rammed it.
+      if (v.wreck) {
+        stepVehicle(v, this.map, IDLE_DRIVE, dt, this.vehicles);
+        continue;
+      }
       // The dead don't keep their seats.
       v.seats.forEach((id, s) => {
         if (id === null) return;
@@ -1678,6 +1689,8 @@ export class Raid {
       if (v.impact > 4) {
         const before = v.hp;
         v.hp = Math.max(0, v.hp - (v.impact - 4) * 30);
+        // A real smash also knocks the engine about.
+        if (v.impact > 8) v.engine = Math.max(0, v.engine - (v.impact - 8) * 0.05);
         this.emit({ t: 'vehicle', id: v.id, actor: driver?.id ?? -1, what: 'crash', x: v.pos.x, y: v.pos.y, power: v.impact });
         this.makeNoise(v.pos.x, v.pos.y, 10 + v.impact * 2, driver?.id ?? -1, 'impact');
         if (v.hp <= 0 && before > 0) {

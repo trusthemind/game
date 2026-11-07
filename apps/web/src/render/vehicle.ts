@@ -154,6 +154,8 @@ export class VehicleViews {
   private views = new Map<number, VehicleView>();
   private mats = new Map<THREE.Material, THREE.Material>();
   private geometries: THREE.InstancedMesh[] = [];
+  /** Wreck instances, to follow a wreck something heavier shoved along. */
+  private wrecks: { inst: THREE.InstancedMesh; list: Vehicle[]; local: THREE.Matrix4; at: Float32Array }[] = [];
 
   constructor(raid: Raid, lib: AssetLibrary, u: WorldUniforms, shadows: boolean) {
     const templates = new Map<string, Template | null>();
@@ -203,6 +205,7 @@ export class VehicleViews {
         inst.castShadow = shadows;
         inst.receiveShadow = shadows;
         inst.computeBoundingSphere();
+        this.wrecks.push({ inst, list, local: mesh.matrixWorld.clone(), at: Float32Array.from(list.flatMap((v) => [v.pos.x, v.pos.y])) });
         this.geometries.push(inst);
         this.group.add(inst);
       });
@@ -220,6 +223,21 @@ export class VehicleViews {
 
   update(raid: Raid, dt: number): void {
     for (const v of raid.vehicles) this.views.get(v.id)?.update(v, dt);
+    for (const w of this.wrecks) {
+      let moved = false;
+      w.list.forEach((v, i) => {
+        if (v.pos.x === w.at[i * 2] && v.pos.y === w.at[i * 2 + 1]) return;
+        w.at[i * 2] = v.pos.x;
+        w.at[i * 2 + 1] = v.pos.y;
+        _q.setFromAxisAngle(_up, Math.atan2(Math.cos(v.heading), Math.sin(v.heading)));
+        w.inst.setMatrixAt(i, _m4.compose(_p.set(v.pos.x, 0, v.pos.y), _q, _one).multiply(w.local));
+        moved = true;
+      });
+      if (moved) {
+        w.inst.instanceMatrix.needsUpdate = true;
+        w.inst.computeBoundingSphere();
+      }
+    }
   }
 
   dispose(): void {
@@ -227,3 +245,9 @@ export class VehicleViews {
     for (const inst of this.geometries) (Array.isArray(inst.material) ? inst.material : [inst.material]).forEach((m) => m.dispose());
   }
 }
+
+const _m4 = new THREE.Matrix4();
+const _q = new THREE.Quaternion();
+const _p = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+const _one = new THREE.Vector3(1, 1, 1);

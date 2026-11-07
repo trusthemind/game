@@ -1,6 +1,7 @@
 import { clamp, type Vec2 } from '../core/math';
 import { solidBoxes, type Box } from '../world/collision';
 import type { GameMap } from '../world/map';
+import { Tile } from '../world/tiles';
 
 /**
  * Vehicles: a box on four wheels driven by a kinematic bicycle model. Deterministic (no randomness in
@@ -38,6 +39,10 @@ export interface VehicleDef {
   /** Seats as [forward, right] offsets from the body centre. Seat 0 drives. */
   seats: [number, number][];
   drivable: boolean;
+  /** Kilograms: in a collision the lighter one gives way. */
+  mass: number;
+  /** 0..1, how much rough ground (dirt, grass) costs it: 1 a road car, low for a 4x4. */
+  offroad: number;
 }
 
 export const VEHICLE_DEFS: Record<VehicleDefId, VehicleDef> = {
@@ -61,6 +66,8 @@ export const VEHICLE_DEFS: Record<VehicleDefId, VehicleDef> = {
     fuelPerM: 0.0035,
     seats: [[0.05, -0.42], [0.05, 0.42], [-0.85, -0.42], [-0.85, 0.42]],
     drivable: true,
+    mass: 1650,
+    offroad: 0.35,
   },
   zhiguli: {
     name: 'Zhiguli',
@@ -82,6 +89,8 @@ export const VEHICLE_DEFS: Record<VehicleDefId, VehicleDef> = {
     fuelPerM: 0,
     seats: [],
     drivable: false,
+    mass: 1050,
+    offroad: 1,
   },
 };
 
@@ -109,6 +118,12 @@ export interface Vehicle {
   /** Hardest impact (m/s) in the last step: the raid turns it into damage and noise. */
   impact: number;
   noiseT: number;
+  /** 0..1: bullets through the bonnet and hard crashes wear it down; at 0 it won't run. */
+  engine: number;
+  /** Front left, front right, rear left, rear right: 1 sound, 0 shot out. */
+  tires: number[];
+  /** Litres a second out of a holed tank. */
+  leak: number;
 }
 
 export interface VehicleSpawn {
@@ -149,7 +164,46 @@ export function createVehicle(id: number, s: VehicleSpawn): Vehicle {
     seats: def.seats.map(() => null),
     impact: 0,
     noiseT: 0,
+    engine: 1,
+    tires: [1, 1, 1, 1],
+    leak: 0,
   };
+}
+
+/** Grip on what's under the wheels: tarmac and floors 1, a dirt track less, grass less again. */
+function surfaceGrip(map: GameMap, x: number, y: number): number {
+  const t = map.get(Math.floor(x), Math.floor(y));
+  return t === Tile.Dirt || t === Tile.Rail ? 0.8 : t === Tile.Grass ? 0.62 : 1;
+}
+
+export type VehicleHit = 'engine' | 'tire' | 'tank' | 'body';
+
+/**
+ * A round into the body at (x, y): the bonnet takes it out of the engine, a wheel arch can flatten that tyre,
+ * the back can hole the tank. `roll` is 0..1 (the raid's dice). The body always takes some.
+ */
+export function shootVehicle(v: Vehicle, x: number, y: number, damage: number, roll: number): VehicleHit {
+  const d = VEHICLE_DEFS[v.def];
+  v.hp = Math.max(0, v.hp - damage * 0.3);
+  const fx = Math.cos(v.heading);
+  const fy = Math.sin(v.heading);
+  const lf = (x - v.pos.x) * fx + (y - v.pos.y) * fy;
+  const lr = -(x - v.pos.x) * fy + (y - v.pos.y) * fx;
+  const axle = Math.abs(Math.abs(lf) - d.wheelbase / 2) < 0.45;
+  if (axle && Math.abs(lr) > d.width * 0.3 && roll < 0.6) {
+    v.tires[(lf > 0 ? 0 : 2) + (lr > 0 ? 1 : 0)] = 0;
+    return 'tire';
+  }
+  if (lf > d.length * 0.22) {
+    v.engine = Math.max(0, v.engine - damage / 140);
+    if (v.engine <= 0) v.engineOn = false;
+    return 'engine';
+  }
+  if (lf < -d.length * 0.22 && roll < 0.5 && v.fuel > 0) {
+    v.leak = Math.min(0.4, v.leak + 0.06);
+    return 'tank';
+  }
+  return 'body';
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
@@ -271,7 +325,7 @@ function resolve(v: Vehicle, map: GameMap, others: readonly Vehicle[]): number {
       }
     for (const w of others)
       if (w !== v && overlap(obbOf(v, scratchA), obbOf(w, scratchB))) {
-        hit();
+        impact = Math.max(impact, bump(v, w));
         any = true;
       }
     if (!any) break;
@@ -279,15 +333,58 @@ function resolve(v: Vehicle, map: GameMap, others: readonly Vehicle[]): number {
   return impact;
 }
 
+/** A wreck on dead wheels is as hard to shove as a much heavier car. */
+const massOf = (v: Vehicle) => VEHICLE_DEFS[v.def].mass * (v.wreck ? 2.5 : 1);
+
+/**
+ * Two bodies overlapping (`mtv` pushes v out of w): they part in inverse proportion to their mass and trade
+ * momentum along the contact, so a truck shoves a hatchback aside and the hatchback bounces off. Returns v's
+ * jolt (m/s); w's goes into its own `impact`.
+ */
+function bump(v: Vehicle, w: Vehicle): number {
+  const mv = massOf(v);
+  const mw = massOf(w);
+  const sv = mw / (mv + mw);
+  v.pos.x += mtv.nx * mtv.depth * sv;
+  v.pos.y += mtv.ny * mtv.depth * sv;
+  w.pos.x -= mtv.nx * mtv.depth * (1 - sv);
+  w.pos.y -= mtv.ny * mtv.depth * (1 - sv);
+  const rel = (v.vel.x - w.vel.x) * mtv.nx + (v.vel.y - w.vel.y) * mtv.ny;
+  if (rel >= 0) return 0;
+  const j = (-(1 + 0.2) * rel) / (1 / mv + 1 / mw);
+  v.vel.x += (j / mv) * mtv.nx;
+  v.vel.y += (j / mv) * mtv.ny;
+  w.vel.x -= (j / mw) * mtv.nx;
+  w.vel.y -= (j / mw) * mtv.ny;
+  w.impact = Math.max(w.impact, j / mw);
+  return j / mv;
+}
+
 const towards = (cur: number, target: number, step: number) => (cur < target ? Math.min(target, cur + step) : Math.max(target, cur - step));
 
 /** Advance one vehicle by `dt`. Sets `v.impact` to the hardest hit this step. */
 export function stepVehicle(v: Vehicle, map: GameMap, ctl: DriveControl, dt: number, others: readonly Vehicle[]): void {
   v.impact = 0;
-  if (v.wreck) return;
   const d = VEHICLE_DEFS[v.def];
-  const powered = v.engineOn && v.fuel > 0 && v.hp > 0;
+  if (v.wreck) {
+    // A wreck only moves when something heavier shoves it, and scrubs to a stop on its dead wheels.
+    if (Math.hypot(v.vel.x, v.vel.y) < 0.05) return;
+    const sp = Math.hypot(v.vel.x, v.vel.y);
+    const k = Math.max(0, sp - 9 * dt) / sp;
+    v.vel.x *= k;
+    v.vel.y *= k;
+    v.pos.x += v.vel.x * dt;
+    v.pos.y += v.vel.y * dt;
+    resolve(v, map, others);
+    return;
+  }
+  if (v.leak > 0) v.fuel = Math.max(0, v.fuel - v.leak * dt);
+  const powered = v.engineOn && v.fuel > 0 && v.hp > 0 && v.engine > 0;
   const throttle = powered ? clamp(ctl.throttle, -1, 1) : 0;
+  // Off the tarmac: less grip, less pull, a lower top speed (a 4x4 minds far less).
+  const ground = surfaceGrip(map, v.pos.x, v.pos.y);
+  const rough = 1 - (1 - ground) * d.offroad;
+  const flats = v.tires.filter((t) => t <= 0).length;
 
   // Steering: the wheel follows the input at a finite rate, and locks less the faster you go.
   const lock = d.maxSteer / (1 + Math.abs(v.speed) / d.steerFade);
@@ -298,23 +395,31 @@ export function stepVehicle(v: Vehicle, map: GameMap, ctl: DriveControl, dt: num
   let vf = v.vel.x * fx + v.vel.y * fy;
   let vr = -v.vel.x * fy + v.vel.y * fx;
 
-  const top = d.maxSpeed * (v.hp < d.hp * 0.3 ? 0.6 : 1);
+  // A tired engine pulls less and tops out lower; flat tyres drag.
+  const top = d.maxSpeed * (v.hp < d.hp * 0.3 ? 0.6 : 1) * (0.5 + 0.5 * v.engine) * (0.55 + 0.45 * rough) * Math.pow(0.8, flats);
+  const pull = d.accel * (0.35 + 0.65 * v.engine) * (0.6 + 0.4 * rough);
   if (throttle > 0) {
-    if (vf < -0.2) vf = towards(vf, 0, d.brake * dt);
-    else vf += d.accel * throttle * Math.max(0, 1 - Math.max(0, vf) / top) * dt;
+    if (vf < -0.2) vf = towards(vf, 0, d.brake * ground * dt);
+    else vf += pull * throttle * Math.max(0, 1 - Math.max(0, vf) / top) * dt;
   } else if (throttle < 0) {
-    if (vf > 0.2) vf = towards(vf, 0, d.brake * -throttle * dt);
-    else vf = Math.max(-d.maxReverse, vf + d.accel * 0.7 * throttle * dt);
-  } else vf = towards(vf, 0, d.roll * dt);
+    if (vf > 0.2) vf = towards(vf, 0, d.brake * ground * -throttle * dt);
+    else vf = Math.max(-d.maxReverse, vf + pull * 0.7 * throttle * dt);
+  } else vf = towards(vf, 0, d.roll * (1 + (1 - ground) * 2 + flats * 0.6) * dt);
   vf -= vf * Math.abs(vf) * d.drag * dt;
-  let grip = d.grip;
+  let grip = d.grip * ground * Math.pow(0.85, flats);
+  let yaw = 0;
   if (ctl.handbrake) {
-    vf = towards(vf, 0, d.brake * 0.55 * dt);
-    grip *= 0.22;
+    // Locked rear wheels: the back steps out into a slide the way you're steering.
+    vf = towards(vf, 0, d.brake * 0.45 * ground * dt);
+    grip *= 0.18;
+    yaw = clamp(ctl.steer, -1, 1) * Math.min(1, Math.abs(vf) / 6) * 1.6 * Math.sign(vf || 1);
   }
   vr *= Math.exp(-grip * dt);
+  // A flat on one side pulls the car towards it.
+  const lean = (v.tires[1]! <= 0 ? 1 : 0) + (v.tires[3]! <= 0 ? 1 : 0) - (v.tires[0]! <= 0 ? 1 : 0) - (v.tires[2]! <= 0 ? 1 : 0);
+  yaw += (lean * 0.07 * vf) / d.wheelbase;
 
-  v.angVel = (vf * Math.tan(v.steer)) / d.wheelbase;
+  v.angVel = (vf * Math.tan(v.steer)) / d.wheelbase + yaw;
   v.heading += v.angVel * dt;
   if (v.heading > Math.PI) v.heading -= Math.PI * 2;
   else if (v.heading < -Math.PI) v.heading += Math.PI * 2;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GameMap, Raid, Tile, VEHICLE_DEFS, createVehicle, emptyIntent, generateMap, starterKit, stepVehicle, vehicleBlocked, type ActorIntent } from '../src/index';
+import { GameMap, Raid, Tile, VEHICLE_DEFS, createVehicle, emptyIntent, generateMap, shootVehicle, starterKit, stepVehicle, vehicleBlocked, type ActorIntent } from '../src/index';
 
 const open = (w = 40, h = 20) => {
   const m = new GameMap(w, h, 1);
@@ -49,15 +49,97 @@ describe('vehicle physics', () => {
     expect(hardest).toBeGreaterThan(4);
   });
 
-  it('collides with a wreck', () => {
+  it('rams a wreck: shoves it a little (dead wheels make it heavy) and stops behind it', () => {
     const map = open();
     const wreck = createVehicle(2, { def: 'zhiguli', x: 24, y: 10, heading: Math.PI / 2, variant: 0, wreck: true, fuel: 0 });
     const v = createVehicle(1, { def: 'uaz469', x: 8, y: 10, heading: 0, variant: 0, wreck: false, fuel: 1 });
     v.engineOn = true;
-    for (let i = 0; i < 60 * 5; i++) stepVehicle(v, map, gas, 1 / 60, [v, wreck]);
+    for (let i = 0; i < 60 * 5; i++) {
+      stepVehicle(v, map, gas, 1 / 60, [v, wreck]);
+      stepVehicle(wreck, map, { throttle: 0, steer: 0, handbrake: false }, 1 / 60, [v, wreck]);
+    }
     expect(vehicleBlocked(v, map, [wreck])).toBe(false);
-    expect(v.pos.x).toBeLessThan(24);
-    expect(wreck.pos.x).toBe(24);
+    expect(v.pos.x).toBeLessThan(wreck.pos.x);
+    expect(wreck.pos.x).toBeGreaterThan(24.2);
+    expect(wreck.pos.x).toBeLessThan(28);
+  });
+
+  it('the heavier car wins a head-on: it rolls on, the lighter one is knocked back', () => {
+    const map = open();
+    const uaz = createVehicle(1, { def: 'uaz469', x: 10, y: 10, heading: 0, variant: 0, wreck: false, fuel: 1 });
+    const lada = createVehicle(2, { def: 'zhiguli', x: 30, y: 10, heading: Math.PI, variant: 0, wreck: false, fuel: 0 });
+    uaz.vel.x = 8;
+    lada.vel.x = -8;
+    const coast = { throttle: 0, steer: 0, handbrake: false };
+    let after: { uaz: number; lada: number } | null = null;
+    for (let i = 0; i < 60 * 3 && !after; i++) {
+      stepVehicle(uaz, map, coast, 1 / 60, [uaz, lada]);
+      stepVehicle(lada, map, coast, 1 / 60, [uaz, lada]);
+      if (uaz.impact > 0 || lada.impact > 0) after = { uaz: uaz.vel.x, lada: lada.vel.x };
+    }
+    expect(after).not.toBeNull();
+    expect(after!.uaz).toBeGreaterThan(0);
+    expect(after!.lada).toBeGreaterThan(0);
+    expect(vehicleBlocked(uaz, map, [lada])).toBe(false);
+  });
+
+  it('is slower on grass than on tarmac, and a 4x4 minds it less than its top speed would say', () => {
+    const run = (tile: Tile) => {
+      const map = open();
+      for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) if (map.get(x, y) !== Tile.Border) map.set(x, y, tile);
+      const v = createVehicle(1, { def: 'uaz469', x: 6, y: 10, heading: 0, variant: 0, wreck: false, fuel: 1 });
+      v.engineOn = true;
+      for (let i = 0; i < 60 * 3; i++) stepVehicle(v, map, gas, 1 / 60, [v]);
+      return v.speed;
+    };
+    const road = run(Tile.Road);
+    const grass = run(Tile.Grass);
+    expect(grass).toBeLessThan(road * 0.97);
+    expect(grass).toBeGreaterThan(road * 0.7);
+  });
+
+  it('takes bullets where they land: the bonnet, a wheel, the tank', () => {
+    const fresh = () => createVehicle(1, { def: 'uaz469', x: 20, y: 10, heading: 0, variant: 0, wreck: false, fuel: 1 });
+    const d = VEHICLE_DEFS.uaz469;
+    const v = fresh();
+    expect(shootVehicle(v, 20 + d.length * 0.45, 10, 42, 0.9)).toBe('engine');
+    expect(v.engine).toBeLessThan(1);
+    const w = fresh();
+    expect(shootVehicle(w, 20 + d.wheelbase / 2, 10 + d.width * 0.45, 42, 0.1)).toBe('tire');
+    expect(w.tires.filter((t) => t <= 0).length).toBe(1);
+    const t = fresh();
+    expect(shootVehicle(t, 20 - d.length * 0.45, 10, 42, 0.1)).toBe('tank');
+    const fuel = t.fuel;
+    stepVehicle(t, open(), { throttle: 0, steer: 0, handbrake: false }, 1, [t]);
+    expect(t.fuel).toBeLessThan(fuel);
+    // Three rounds through the bonnet stop the engine.
+    const e = fresh();
+    e.engineOn = true;
+    for (let i = 0; i < 4; i++) shootVehicle(e, 20 + d.length * 0.45, 10, 42, 0.9);
+    expect(e.engine).toBe(0);
+    expect(e.engineOn).toBe(false);
+  });
+
+  it('a shot-out front tyre pulls the car towards that side', () => {
+    const map = open();
+    const v = createVehicle(1, { def: 'uaz469', x: 6, y: 10, heading: 0, variant: 0, wreck: false, fuel: 1 });
+    v.engineOn = true;
+    v.tires[1] = 0;
+    for (let i = 0; i < 60 * 3; i++) stepVehicle(v, map, gas, 1 / 60, [v]);
+    // Right side flat: the nose swings right (towards +heading on screen).
+    expect(v.heading).toBeGreaterThan(0.05);
+  });
+
+  it('the handbrake swings the back out into a slide', () => {
+    const map = open();
+    const go = (handbrake: boolean) => {
+      const v = createVehicle(1, { def: 'uaz469', x: 6, y: 10, heading: 0, variant: 0, wreck: false, fuel: 1 });
+      v.engineOn = true;
+      v.vel.x = 12;
+      for (let i = 0; i < 30; i++) stepVehicle(v, map, { throttle: 0, steer: 1, handbrake }, 1 / 60, [v]);
+      return v.heading;
+    };
+    expect(go(true)).toBeGreaterThan(go(false));
   });
 });
 
