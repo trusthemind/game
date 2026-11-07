@@ -17,6 +17,7 @@ const PATHS: Record<Category, string> = {
   valuable: 'M12 3l7 6-7 12L5 9zM5 9h14',
   junk: 'M12 8a4 4 0 100 8 4 4 0 000-8zm0-6l2 3h3l1 3 3 2-2 3 2 3-3 2-1 3h-3l-2 3-2-3H7l-1-3-3-2 2-3-2-3 3-2 1-3h3z',
   money: 'M3 7h18v10H3zm9 2a3 3 0 100 6 3 3 0 000-6z',
+  key: 'M8 6a5 5 0 100 10 5 5 0 000-10zm0 3a2 2 0 110 4 2 2 0 010-4zm4.5 1H22v3h-2v3h-3v-3h-4.5z',
 };
 
 export function CategoryIcon({ category, size = 22, color = 'currentColor' }: { category: Category; size?: number; color?: string }) {

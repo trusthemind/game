@@ -15,7 +15,8 @@ export type Category =
   | 'drink'
   | 'valuable'
   | 'junk'
-  | 'money';
+  | 'money'
+  | 'key';
 
 export type Caliber = '9x18' | '9x19' | '12g' | '5.45' | '5.56' | '7.62x39' | '7.62x54';
 
@@ -681,6 +682,8 @@ const defs: ItemDef[] = [
   { id: 'mre', name: 'MRE ration', short: 'MRE', category: 'food', w: 1, h: 2, weight: 0.6, value: 14000, rarity: 2, food: { energy: 70, hydration: 10, useTime: 5 } },
 
   // ── Valuables & junk ─────────────────────────────────────
+  // Keys: a few uses each before the bit wears or snaps off in the lock.
+  { id: 'key_armoury', name: 'Army base armoury key', short: 'ARMOURY', category: 'key', w: 1, h: 1, weight: 0.05, value: 85000, rarity: 4 },
   { id: 'roubles', name: 'Credits', short: 'CR', category: 'money', w: 1, h: 1, weight: 0, value: 1, rarity: 1, stackMax: 500000 },
   { id: 'bolts', name: 'Pack of bolts', short: 'BOLTS', category: 'junk', w: 1, h: 1, weight: 0.3, value: 4500, rarity: 1 },
   { id: 'wires', name: 'Bundle of wires', short: 'WIRES', category: 'junk', w: 1, h: 1, weight: 0.2, value: 6200, rarity: 1 },

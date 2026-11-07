@@ -18,7 +18,7 @@ describe('extraction points', () => {
     let onRoad = 0;
     for (const mapId of ['outskirts', 'pinehollow', 'portkirov'] as MapId[])
       for (const seed of [1, 2, 3]) {
-        const map = generateMap(seed, { mapId, botDensity: 0 });
+        const map = generateMap(seed, { layoutSeed: seed, mapId, botDensity: 0 });
         expect(map.extractions.length).toBeGreaterThan(0);
         for (const e of map.extractions) {
           expect(e.kind).toBe(extractKind(e.name));
@@ -56,7 +56,7 @@ describe('extraction points', () => {
   it('are solid where the set dressing stands and still reachable', () => {
     for (const mapId of ['outskirts', 'pinehollow', 'portkirov'] as MapId[])
       for (const seed of [1, 2]) {
-        const map = generateMap(seed, { mapId, botDensity: 0 });
+        const map = generateMap(seed, { layoutSeed: seed, mapId, botDensity: 0 });
         const reach = floodFill(map, map.playerSpawn);
         for (const e of map.extractions) {
           expect(reach[map.idx(Math.floor(e.x), Math.floor(e.y))]).toBe(1);
@@ -83,7 +83,7 @@ describe('every raid has a way out', () => {
   it('spawns stand free and reach at least four exits on every map', () => {
     for (const id of ['outskirts', 'pinehollow', 'portkirov', 'zavadsk'] as MapId[])
       for (const seed of [3, 18, 77, 4242]) {
-        const m = generateMap(seed, { mapId: id });
+        const m = generateMap(seed, { layoutSeed: seed, mapId: id });
         const reach = floodFill(m, m.playerSpawn);
         const open = m.extractions.filter((e) => reach[m.idx(Math.floor(e.x), Math.floor(e.y))]);
         expect(open.length, `${id} seed ${seed}`).toBeGreaterThanOrEqual(4);

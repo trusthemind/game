@@ -169,7 +169,7 @@ describe('vehicles on the map', () => {
   it('every map has six or more running vehicles (eight on the biggest), spread out, of more than one kind', () => {
     for (const id of ['outskirts', 'pinehollow', 'portkirov', 'zavadsk'] as const)
       for (const seed of [3, 18]) {
-        const m = generateMap(seed, { mapId: id });
+        const m = generateMap(seed, { layoutSeed: seed, mapId: id });
         const run = m.vehicleSpawns.filter((v) => !v.wreck);
         expect(run.length, `${id} ${seed}`).toBeGreaterThanOrEqual(m.width >= 300 ? 8 : 6);
         expect(new Set(run.map((v) => v.def)).size, `${id} ${seed}`).toBeGreaterThan(1);
@@ -184,9 +184,9 @@ describe('vehicles in a raid', () => {
   };
   const setup = (seed: number) => {
     const raid = new Raid({ seed, playerEq: starterKit(), mapId: 'outskirts', botDensity: 0, events: false, timeOfDay: 'day' });
-    // The car parked nearest the spawn (not a motorbike, nor a truck boxed in at the army base's motor pool).
+    // The car parked nearest the spawn (not a motorbike, a van or a truck: the seat checks assume a car).
     const sp = raid.player.pos;
-    const car = raid.vehicles.filter((v) => !v.wreck && !VEHICLE_DEFS[v.def].open).sort((a, b) => Math.hypot(a.pos.x - sp.x, a.pos.y - sp.y) - Math.hypot(b.pos.x - sp.x, b.pos.y - sp.y))[0]!;
+    const car = raid.vehicles.filter((v) => !v.wreck && !VEHICLE_DEFS[v.def].open && VEHICLE_DEFS[v.def].length < 4.6).sort((a, b) => Math.hypot(a.pos.x - sp.x, a.pos.y - sp.y) - Math.hypot(b.pos.x - sp.x, b.pos.y - sp.y))[0]!;
     return { raid, car };
   };
 
@@ -295,7 +295,7 @@ describe('cars on the maps', () => {
   it('the drivable one by the spawn stands on a proper road and can drive a long way along it', () => {
     for (const mapId of ['outskirts', 'pinehollow', 'portkirov', 'zavadsk'] as const)
       for (const seed of [1, 2]) {
-        const map = generateMap(seed, { mapId, botDensity: 0 });
+        const map = generateMap(seed, { layoutSeed: seed, mapId, botDensity: 0 });
         const wrecks = map.vehicleSpawns.filter((s) => s.wreck).map((s, i) => createVehicle(1000 + i, s));
         const sp = { x: map.playerSpawn.x + 0.5, y: map.playerSpawn.y + 0.5 };
         const car = map.vehicleSpawns.find((s) => !s.wreck && Math.hypot(s.x - sp.x, s.y - sp.y) < 50);

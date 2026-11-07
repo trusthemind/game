@@ -7,7 +7,7 @@ describe('army bases', () => {
   it('every map has one: fenced, with a gate you can walk in through', () => {
     for (const mapId of MAPS)
       for (const seed of [1, 2, 3, 4]) {
-        const map = generateMap(seed, { mapId, botDensity: 0 });
+        const map = generateMap(seed, { layoutSeed: seed, mapId, botDensity: 0 });
         expect(map.sites.length, `${mapId}#${seed}`).toBeGreaterThan(0);
         const reach = floodFill(map, map.playerSpawn);
         for (const s of map.sites) {
@@ -39,7 +39,7 @@ describe('army bases', () => {
     let withCars = 0;
     for (const mapId of MAPS)
       for (const seed of [1, 2, 3, 4]) {
-        const map = generateMap(seed, { mapId, botDensity: 0 });
+        const map = generateMap(seed, { layoutSeed: seed, mapId, botDensity: 0 });
         for (const s of map.sites) {
           bases++;
           const cars = map.vehicleSpawns.filter((v) => !v.wreck && v.x > s.x && v.x < s.x + s.w && v.y > s.y && v.y < s.y + s.h);
@@ -53,7 +53,7 @@ describe('army bases', () => {
   it('puts the warlord in the headquarters and guards at the barracks and the gate', () => {
     let seen = 0;
     for (const seed of [1, 2, 3, 4, 5, 6]) {
-      const map = generateMap(seed, { mapId: 'outskirts', botDensity: 1 });
+      const map = generateMap(seed, { layoutSeed: seed, mapId: 'outskirts', botDensity: 1 });
       const boss = map.botSpawns.find((b) => b.boss === 'kostia');
       if (!boss) continue;
       seen++;

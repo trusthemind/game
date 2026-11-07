@@ -33,12 +33,18 @@ export interface MapPreset {
   railway?: boolean;
   /** A sawmill in the forest: clearing, saw shed, log piles. */
   sawmill?: boolean;
+  /**
+   * The map's layout, the same every raid (as in Tarkov: you learn it). The raid's own seed only picks the spawn
+   * point, the bots, the drivable cars and the loot. Without one, the raid seed lays the map out too.
+   */
+  layoutSeed?: number;
 }
 
 /** Named locations. Sizes are in tiles (≈1 m each); the largest is ~0.07 km² of hand-reachable ground. */
 export const MAP_PRESETS: Record<MapId, MapPreset> = {
   outskirts: {
     id: 'outskirts',
+    layoutSeed: 71,
     name: 'Zavadsk Outskirts',
     tagline: 'Suburbs on a river, the railway through them, a fenced army depot and a sawmill in the forest.',
     size: 384,
@@ -53,6 +59,7 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
   },
   pinehollow: {
     id: 'pinehollow',
+    layoutSeed: 41,
     name: 'Pine Hollow',
     tagline: 'Deep woods, a dying village, hunters’ lodges and a radar outpost.',
     size: 240,
@@ -65,6 +72,7 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
   },
   portkirov: {
     id: 'portkirov',
+    layoutSeed: 103,
     name: 'Port Kirov',
     tagline: 'A container port on the sea: cranes over the quay, ships at the berths, warehouses and blocks behind.',
     size: 224,
@@ -77,6 +85,7 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
   },
   zavadsk: {
     id: 'zavadsk',
+    layoutSeed: 76,
     name: 'Zavadsk City',
     tagline: 'The city: panel blocks round courtyards, the square with the monument, the tram line, garages and petrol stations.',
     size: 256,
@@ -107,6 +116,8 @@ export interface MapGenOptions {
   size?: number;
   /** Bot density multiplier (tests use 0 for an empty map). */
   botDensity?: number;
+  /** Lay the map out from this seed instead of the preset's fixed one (tests sweep layouts with it). */
+  layoutSeed?: number;
 }
 
 const ROOM_CONTAINERS: Record<BuildingKind, readonly (readonly [ContainerKind, number])[]> = {
@@ -143,8 +154,9 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   const preset = MAP_PRESETS[opts.mapId ?? 'testsite'];
   const size = opts.size ?? preset.size;
   const density = (opts.botDensity ?? 1) * preset.botDensity;
-  const rng = new Rng(seed);
-  const map = new GameMap(size, size, seed);
+  const layoutSeed = opts.layoutSeed ?? preset.layoutSeed ?? seed;
+  const rng = new Rng(layoutSeed);
+  const map = new GameMap(size, size, layoutSeed);
   map.mapId = preset.id;
   map.name = preset.name;
   map.tiles.fill(Tile.Grass);
@@ -181,7 +193,7 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
     usedNames.add(name);
     return { ...s, name };
   });
-  const warp = new Rng(seed ^ 0x9e3779b9);
+  const warp = new Rng(layoutSeed ^ 0x9e3779b9);
   const wx = Array.from({ length: 8 }, () => [warp.range(0, Math.PI * 2), warp.range(0.02, 0.05), warp.range(4, 9)] as const);
   for (let y = 0; y < size; y++)
     for (let x = 0; x < size; x++) {
@@ -434,12 +446,26 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   }
   const sp = rng.pick(spawnCands);
   map.playerSpawn = { x: sp.x, y: sp.y };
-  // Guarantee breathing room around the spawn.
-  for (let dy = -2; dy <= 2; dy++)
-    for (let dx = -2; dx <= 2; dx++) {
-      const t = map.get(sp.x + dx, sp.y + dy);
-      if (t === Tile.Tree || t === Tile.Fence) map.set(sp.x + dx, sp.y + dy, Tile.Grass);
+  // The map's spawn points: that one, then one more on each side (two on a big map, none on the little test
+  // site), on a road where there is one, well apart.
+  map.spawnPoints = [{ x: sp.x, y: sp.y }];
+  for (const side of [0, 1, 2, 3]) {
+    let cands = edgeTiles(side, 6).filter((p) => p.road && clear(p.x, p.y, 1) && offRail(p));
+    if (cands.length < 4) cands = cands.concat(edgeTiles(side, 7).filter((p) => clear(p.x, p.y, 2) && offRail(p)));
+    for (let n = 0; n < (size >= 300 ? 2 : size >= 160 ? 1 : 0); n++) {
+      const ok = cands.filter((p) => map.spawnPoints.every((s) => Math.hypot(s.x - p.x, s.y - p.y) > size * 0.3));
+      if (!ok.length) break;
+      const p = rng.pick(ok);
+      map.spawnPoints.push({ x: p.x, y: p.y });
     }
+  }
+  // Guarantee breathing room around each.
+  for (const s of map.spawnPoints)
+    for (let dy = -2; dy <= 2; dy++)
+      for (let dx = -2; dx <= 2; dx++) {
+        const t = map.get(s.x + dx, s.y + dy);
+        if (t === Tile.Tree || t === Tile.Fence) map.set(s.x + dx, s.y + dy, Tile.Grass);
+      }
 
   // Extractions: the name decides what the place is, and so where it can be — a checkpoint, gate or overpass
   // stands where a road actually runs out of the map (so the barrier crosses it), a trail, pier or watchtower
@@ -499,7 +525,10 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   const exSides = [(spawnSide + 2) % 4, (spawnSide + 1) % 4, (spawnSide + 3) % 4, (spawnSide + 2) % 4, spawnSide];
   for (const side of exSides.slice(0, size >= 200 ? 5 : 3)) {
     const open = edgeTiles(side, INSET).filter(
-      (p) => Math.hypot(p.x - sp.x, p.y - sp.y) > size * 0.35 && map.extractions.every((e) => Math.hypot(e.x - p.x, e.y - p.y) > 40),
+      // Not on top of a spawn point (a raid can start at any of them).
+      (p) =>
+        map.spawnPoints.every((s) => Math.hypot(p.x - s.x, p.y - s.y) > Math.max(20, size * 0.15)) &&
+        map.extractions.every((e) => Math.hypot(e.x - p.x, e.y - p.y) > 40),
     );
     let c = open.filter((p) => !nearBuilding(p.x, p.y, side, 10, 8));
     if (!c.length) c = open.filter((p) => !nearBuilding(p.x, p.y, side, 6, 4));
@@ -567,6 +596,7 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   if (!map.isWalkable(map.playerSpawn.x, map.playerSpawn.y)) map.playerSpawn = nearestWalkable(map, map.playerSpawn);
   let reach = floodFill(map, map.playerSpawn);
   const important = [
+    ...map.spawnPoints,
     ...map.extractions.map((e) => ({ x: Math.floor(e.x), y: Math.floor(e.y) })),
     ...map.buildings.map((b) => ({ x: Math.floor(b.x + b.w / 2), y: b.y - 1 })),
   ];
@@ -583,7 +613,12 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   map.extractions = map.extractions.filter((e) => reach[map.idx(Math.floor(e.x), Math.floor(e.y))]);
 
   furnish(map);
-  placeVehicles(map, reach, network);
+  map.spawnPoints = map.spawnPoints.map((s) => (map.isWalkable(s.x, s.y) ? s : nearestWalkable(map, s))).filter((s) => reach[map.idx(s.x, s.y)]);
+
+  // ── This raid: where you start, the cars left running, the bots ──
+  const raidRng = new Rng((seed ^ 0x52a1d) >>> 0);
+  if (map.spawnPoints.length) map.playerSpawn = { ...raidRng.pick(map.spawnPoints) };
+  placeVehicles(map, reach, network, seed);
 
   // POIs for patrols: room centres + road crossings + district centres.
   for (const b of map.buildings) for (const r of b.rooms) map.pois.push({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
@@ -591,7 +626,7 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   for (const d of map.districts) map.pois.push({ x: d.x, y: d.y });
   map.pois = map.pois.filter((p) => map.isWalkable(Math.floor(p.x), Math.floor(p.y)) && reach[map.idx(Math.floor(p.x), Math.floor(p.y))]);
 
-  placeBots(map, rng, reach, density);
+  placeBots(map, raidRng, reach, density);
   return map;
 }
 
@@ -1298,8 +1333,8 @@ function scatterTrees(map: GameMap, rng: Rng): void {
  * then a drivable UAZ stands on a road within a short walk of the spawn, and a couple more further out.
  * Own RNG stream, so it never shifts anything else on the map.
  */
-function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array): void {
-  const rng = new Rng((map.seed ^ 0x7e41c1e5) >>> 0);
+function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array, raidSeed: number): void {
+  const rng = new Rng((raidSeed ^ 0x7e41c1e5) >>> 0);
   const kept: Vehicle[] = [];
   const spawns: VehicleSpawn[] = [];
   const near = (x: number, y: number, r: number, p: { x: number; y: number }) => Math.hypot(x - p.x, y - p.y) < r;

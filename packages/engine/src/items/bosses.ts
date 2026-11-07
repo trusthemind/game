@@ -58,7 +58,7 @@ export const BOSSES: BossDef[] = [
       eq.slots.helmet = createItem('altyn');
       eq.slots.rig = createItem('r_bank');
       eq.slots.backpack = createItem('b_attack');
-      fill(eq, [['kostia_ring', 1], ['grizzly', 1], ['stim', 1], ['surv12', 1], ['bitcoin', 1], ['a_54r7n1', 40], ['a_556m995', 60], ['intel', 1]]);
+      fill(eq, [['key_armoury', 1], ['kostia_ring', 1], ['grizzly', 1], ['stim', 1], ['surv12', 1], ['bitcoin', 1], ['a_54r7n1', 40], ['a_556m995', 60], ['intel', 1]]);
       if (rng.chance(0.25)) fill(eq, [[rng.chance(0.2) ? 'sc_gamma' : 'sc_beta', 1]]);
       return eq;
     },

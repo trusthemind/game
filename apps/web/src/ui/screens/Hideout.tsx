@@ -631,7 +631,10 @@ function DeployModal({ onClose }: { onClose(): void }) {
               </div>
             </div>
             <div>
-              <div className="dim small">Zone seed</div>
+              {/* The map itself is fixed; this only picks where you start, who's about and what's in the boxes. */}
+              <div className="dim small" title="The map is the same every raid; this picks your spawn, the bots and the loot">
+                Raid seed
+              </div>
               <input className="input mono" value={seed} onChange={(e) => setSeed(Number(e.target.value.replace(/\D/g, '')) || 0)} />
             </div>
           </div>

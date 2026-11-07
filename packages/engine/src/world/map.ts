@@ -109,6 +109,40 @@ export interface Extraction {
   kind: ExtractKind;
   /** Direction out of the map from here (radians, world x/y): the way you leave. */
   dir: number;
+  /** A condition on leaving this way (none: anyone can). */
+  rule?: ExtractRule;
+}
+
+/**
+ * What an exit asks of you, Tarkov-style: the power back on (a switch somewhere on the map), the driver paid in
+ * credits, or no backpack (a crawl through a tunnel).
+ */
+export type ExtractRule = { kind: 'power' } | { kind: 'fee'; amount: number } | { kind: 'noBackpack' };
+
+/** A locked door: its tiles are LockedDoor until the key opens them (then `floor`). */
+export interface Door {
+  id: number;
+  /** Tile indices it covers (a double door is two). */
+  tiles: number[];
+  /** Middle of the doorway. */
+  x: number;
+  y: number;
+  /** Runs along x (in a wall along x). */
+  alongX: boolean;
+  /** Item def id of the key that opens it. */
+  key: string;
+  label: string;
+  floor: Tile;
+}
+
+/** The base's power switch: thrown, it brings the power back on (and the exits that need it). */
+export interface PowerSwitch {
+  id: number;
+  x: number;
+  y: number;
+  /** Which way the wall it hangs on faces (radians, world x/y). */
+  facing: number;
+  label: string;
 }
 
 /** Name → kind. Unknown names fall back by keyword, then to a gate. */
@@ -215,6 +249,8 @@ export class GameMap {
   extractions: Extraction[] = [];
   botSpawns: BotSpawn[] = [];
   playerSpawn = { x: 0, y: 0 };
+  /** Where a raid can start (the map's fixed spawn points round its edges); each raid picks one. */
+  spawnPoints: { x: number; y: number }[] = [];
   /** Outdoor / indoor points of interest used by patrolling AI. */
   pois: { x: number; y: number }[] = [];
   mapId = 'custom';
@@ -227,6 +263,10 @@ export class GameMap {
   vehicleSpawns: VehicleSpawn[] = [];
   /** Laid-out places (an army base, later bunkers and blocks of flats): their fence line, gate and buildings. */
   sites: Site[] = [];
+  /** Locked doors (the armoury's). */
+  doors: Door[] = [];
+  /** Power switches. */
+  switches: PowerSwitch[] = [];
   /** Big set pieces drawn from these records (their footprint is already in the tiles): cranes, ships, stacks. */
   structures: Structure[] = [];
   /** Per-tile furniture id + 1 for pieces that block movement (0 = free; 0xffff = other set dressing). */

@@ -6,7 +6,7 @@ describe('bosses', () => {
     it(`${def.name} spawns on ${MAP_PRESETS[def.map].name} with an escort and a trophy`, () => {
       // Try a few seeds: bosses have a spawn chance.
       for (let seed = 1; seed < 12; seed++) {
-        const map = generateMap(seed, { mapId: def.map as MapId });
+        const map = generateMap(seed, { layoutSeed: seed, mapId: def.map as MapId });
         const spawn = map.botSpawns.find((s) => s.boss === def.id);
         if (!spawn) continue;
         expect(map.botSpawns.filter((s) => s.group === spawn.group && s.archetype === 'guard').length).toBe(def.guards);
@@ -30,7 +30,8 @@ describe('map events', () => {
   it('drops an airdrop crate that lands after the fall time and makes noise', () => {
     let tested = false;
     for (let seed = 1; seed < 10 && !tested; seed++) {
-      const r = new Raid({ seed, playerEq: starterKit(), mapId: 'testsite', timeOfDay: 'day' });
+      // No bots: the player has to live long enough to see it land.
+      const r = new Raid({ seed, playerEq: starterKit(), mapId: 'testsite', timeOfDay: 'day', botDensity: 0 });
       const at = (r as unknown as { airdropAt: number }).airdropAt;
       if (at < 0) continue;
       tested = true;

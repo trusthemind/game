@@ -26,7 +26,7 @@ describe('map generation', () => {
 
   it('spawns the player out in the open, not in a bush', () => {
     for (const seed of [1, 2, 3, 4, 5]) {
-      const map = generateMap(seed, { mapId: 'outskirts' });
+      const map = generateMap(seed, { layoutSeed: seed, mapId: 'outskirts' });
       const sx = Math.floor(map.playerSpawn.x);
       const sy = Math.floor(map.playerSpawn.y);
       let blocked = 0;
@@ -97,5 +97,23 @@ describe('collision boxes', () => {
         }
       }
     expect(wall).toBe(true);
+  });
+});
+
+describe('fixed layouts', () => {
+  it('lay a named map out the same every raid; the raid seed moves the spawn and the bots', () => {
+    const a = generateMap(1, { mapId: 'pinehollow' });
+    const b = generateMap(2, { mapId: 'pinehollow' });
+    expect(Buffer.from(a.tiles).equals(Buffer.from(b.tiles))).toBe(true);
+    expect(a.buildings.map((x) => [x.x, x.y, x.w, x.h])).toEqual(b.buildings.map((x) => [x.x, x.y, x.w, x.h]));
+    expect(a.extractions.map((e) => e.name)).toEqual(b.extractions.map((e) => e.name));
+    expect(a.containers.map((c) => [c.x, c.y, c.kind])).toEqual(b.containers.map((c) => [c.x, c.y, c.kind]));
+    expect(a.spawnPoints).toEqual(b.spawnPoints);
+    expect(a.spawnPoints.length).toBeGreaterThanOrEqual(4);
+    // Different raids start in different places (over a few seeds) and meet different bots.
+    const starts = new Set([1, 2, 3, 4, 5, 6].map((s) => JSON.stringify(generateMap(s, { mapId: 'pinehollow' }).playerSpawn)));
+    expect(starts.size).toBeGreaterThan(1);
+    expect(JSON.stringify(a.botSpawns)).not.toBe(JSON.stringify(b.botSpawns));
+    for (const s of a.spawnPoints) expect(a.isWalkable(s.x, s.y)).toBe(true);
   });
 });
