@@ -1125,12 +1125,21 @@ function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array): vo
     return h + (inward ? 0 : Math.PI);
   };
   const sp = { x: map.playerSpawn.x + 0.5, y: map.playerSpawn.y + 0.5 };
-  // What's left running: mostly cars and the odd van or motorcycle, now and then an army truck, rarely a BTR.
-  const POOL: [VehicleDefId, number][] = [['uaz469', 3], ['niva', 3], ['vaz2107', 3], ['uaz452', 2], ['izh', 2], ['ural4320', 1], ['btr80', 0.4]];
-  const pickDef = (): VehicleDefId => {
-    let r = rng.range(0, POOL.reduce((n, [, w]) => n + w, 0));
-    for (const [id, w] of POOL) if ((r -= w) < 0) return id;
-    return 'uaz469';
+  // What's left running depends on where it stands: army trucks and the odd BTR at the base, vans and lorries
+  // round the warehouses and the port, cars in town, 4x4s and motorcycles out at the farms and in the woods.
+  const POOLS: Record<District, [VehicleDefId, number][]> = {
+    military: [['ural4320', 3], ['uaz469', 3], ['btr80', 1]],
+    industrial: [['ural4320', 2], ['uaz452', 3], ['vaz2107', 2], ['uaz469', 1]],
+    docks: [['ural4320', 2], ['uaz452', 3], ['vaz2107', 2]],
+    town: [['vaz2107', 4], ['niva', 2], ['uaz452', 2], ['izh', 2], ['uaz469', 1]],
+    farm: [['niva', 3], ['uaz469', 2], ['izh', 2], ['uaz452', 1]],
+    forest: [['niva', 3], ['uaz469', 3], ['izh', 2]],
+  };
+  const pickDef = (x: number, y: number): VehicleDefId => {
+    const pool = POOLS[map.districtOf(x, y) ?? 'town'];
+    let r = rng.range(0, pool.reduce((n, [, w]) => n + w, 0));
+    for (const [id, w] of pool) if ((r -= w) < 0) return id;
+    return pool[0]![0];
   };
   const tryPark = (ok: (x: number, y: number) => boolean, around?: { x: number; y: number; r: number }): boolean => {
     for (let t = 0; t < 1500; t++) {
@@ -1141,7 +1150,7 @@ function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array): vo
       if ((tile !== Tile.Road && tile !== Tile.Dirt) || !network[map.idx(x, y)] || !reach[map.idx(x, y)] || !ok(x, y) || map.isIndoors(x, y)) continue;
       const h = roadHeading(x, y);
       if (h === null) continue;
-      const s: VehicleSpawn = { def: pickDef(), x: x + 0.5, y: y + 0.5, heading: h + rng.range(-0.1, 0.1), variant: 0, wreck: false, fuel: rng.range(0.35, 0.8) };
+      const s: VehicleSpawn = { def: pickDef(x, y), x: x + 0.5, y: y + 0.5, heading: h + rng.range(-0.1, 0.1), variant: 0, wreck: false, fuel: rng.range(0.35, 0.8) };
       const v = createVehicle(kept.length + 1, s);
       if (vehicleBlocked(v, map, kept) || map.extractions.some((e) => near(s.x, s.y, 12, e))) continue;
       // Room to pull away: a car length clear ahead, not nose to tail with a wreck.
@@ -1156,21 +1165,36 @@ function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array): vo
   // Near the spawn first, then on the nearest road a little further out; failing a road, any open ground will do.
   if (!tryPark((x, y) => near(x, y, 28, sp) && !near(x, y, 6, sp), { ...sp, r: 28 }) && !tryPark((x, y) => near(x, y, 50, sp) && !near(x, y, 6, sp), { ...sp, r: 50 }))
     parkOffRoad(sp);
-  function parkOffRoad(c: { x: number; y: number }): void {
+  function parkOffRoad(c: { x: number; y: number }, r = 26): boolean {
     for (let t = 0; t < 1500; t++) {
-      const x = Math.round(c.x + rng.range(-26, 26));
-      const y = Math.round(c.y + rng.range(-26, 26));
-      if (!map.inBounds(x, y) || !reach[map.idx(x, y)] || map.isIndoors(x, y) || near(x, y, 6, c)) continue;
-      const s: VehicleSpawn = { def: pickDef(), x: x + 0.5, y: y + 0.5, heading: rng.range(-Math.PI, Math.PI), variant: 0, wreck: false, fuel: rng.range(0.35, 0.8) };
+      const x = Math.round(c.x + rng.range(-r, r));
+      const y = Math.round(c.y + rng.range(-r, r));
+      if (!map.inBounds(x, y) || !reach[map.idx(x, y)] || map.isIndoors(x, y) || near(x, y, 6, sp)) continue;
+      const s: VehicleSpawn = { def: pickDef(x, y), x: x + 0.5, y: y + 0.5, heading: rng.range(-Math.PI, Math.PI), variant: 0, wreck: false, fuel: rng.range(0.35, 0.8) };
       const v = createVehicle(kept.length + 1, s);
       if (vehicleBlocked(v, map, kept) || map.extractions.some((e) => near(s.x, s.y, 12, e))) continue;
       kept.push(v);
       spawns.push(s);
-      return;
+      return true;
     }
+    return false;
   }
-  const extra = map.width >= 300 ? 3 : map.width >= 200 ? 2 : 1;
-  for (let i = 0; i < extra; i++) tryPark((x, y) => !near(x, y, 60, sp) && spawns.every((o) => o.wreck || !near(x, y, 70, o)));
+  const apart = (x: number, y: number, r: number) => spawns.every((o) => o.wreck || !near(x, y, r, o));
+  // One at the army base and at a couple of farms or patches of woods (the vehicles that belong there), off the
+  // road if need be: three at most, the base first.
+  const rural = map.districts
+    .filter((d) => d.kind === 'military' || d.kind === 'farm' || d.kind === 'forest')
+    .sort((a, b) => (a.kind === 'military' ? 0 : 1) - (b.kind === 'military' ? 0 : 1));
+  let placed = 0;
+  for (const d of rural) {
+    if (placed >= 3) break;
+    if (near(d.x, d.y, 40, sp) || !apart(d.x, d.y, 30)) continue;
+    if (tryPark((x, y) => near(x, y, 24, d) && apart(x, y, 30), { x: d.x, y: d.y, r: 24 }) || parkOffRoad(d, 16)) placed++;
+  }
+  // Then along the roads across the map, well spread out: 4 to 8 in all, by the map's size.
+  const total = map.width >= 300 ? 8 : map.width >= 200 ? 6 : 4;
+  for (let i = 0, n = spawns.filter((o) => !o.wreck).length; i < 20 && n < total; i++)
+    if (tryPark((x, y) => !near(x, y, 50, sp) && apart(x, y, 45))) n++;
   map.vehicleSpawns = spawns;
 }
 

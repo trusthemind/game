@@ -165,6 +165,19 @@ describe('vehicle physics', () => {
   });
 });
 
+describe('vehicles on the map', () => {
+  it('every map has six or more running vehicles (eight on the biggest), spread out, of more than one kind', () => {
+    for (const id of ['outskirts', 'pinehollow', 'portkirov', 'zavadsk'] as const)
+      for (const seed of [3, 18]) {
+        const m = generateMap(seed, { mapId: id });
+        const run = m.vehicleSpawns.filter((v) => !v.wreck);
+        expect(run.length, `${id} ${seed}`).toBeGreaterThanOrEqual(m.width >= 300 ? 8 : 6);
+        expect(new Set(run.map((v) => v.def)).size, `${id} ${seed}`).toBeGreaterThan(1);
+        for (const a of run) for (const b of run) if (a !== b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(12);
+      }
+  }, 60000);
+});
+
 describe('vehicles in a raid', () => {
   const drive = (raid: Raid, intent: ActorIntent, seconds: number) => {
     for (let i = 0; i < seconds * 60; i++) raid.tick(1 / 60, intent);
