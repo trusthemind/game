@@ -16,6 +16,8 @@ function setup(distance: number, facingAway: boolean) {
       if (ok) {
         scav.pos.x = x + 0.5;
         scav.pos.y = y + 0.5;
+        // Nothing nearby to wander off and loot.
+        m.containers = m.containers.filter((c) => Math.hypot(c.x - x, c.y - y) > 30);
         r.player.pos.x = x + distance + 0.5;
         r.player.pos.y = y + 0.5;
         break outer;
@@ -24,6 +26,8 @@ function setup(distance: number, facingAway: boolean) {
   scav.facing = facingAway ? Math.PI : 0;
   const brain = scav.brain!;
   brain.state = 'idle';
+  // No glancing round while we watch (two glances of up to 80° each can turn it all the way round).
+  (brain as unknown as { lookT: number }).lookT = 60;
   return { r, scav };
 }
 

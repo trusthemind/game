@@ -89,6 +89,8 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
     for (let x = 0; x < map.width; x++) {
       // The sea is its own sheet below the ground (port.ts).
       if (map.get(x, y) === Tile.Water) continue;
+      // The rock round the bunker: nothing to draw (the outer ground and the fog of war cover it).
+      if (y >= map.surfaceH && map.get(x, y) === Tile.Border) continue;
       let kind = FLOOR_OF[map.get(x, y)] ?? 'grass';
       if (map.isIndoors(x, y) && (kind === 'concrete' || map.get(x, y) === Tile.Window)) {
         const b = map.buildings[map.buildingAt[map.idx(x, y)]! - 1];
@@ -154,7 +156,7 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
       else if (t === Tile.Tree) trees.push([x, y]);
       // Border forest: sparse, the dark outer ground + fog of war sells the density. It opens where an
       // extraction leads out, so the road, trail or pier carries on past the edge.
-      else if (t === Tile.Border && (x * 7 + y * 13) % 5 === 0 && !inExitGap(x + 0.5, y + 0.5)) border.push([x, y]);
+      else if (t === Tile.Border && y < map.surfaceH && (x * 7 + y * 13) % 5 === 0 && !inExitGap(x + 0.5, y + 0.5)) border.push([x, y]);
     }
     function inExitGap(x: number, y: number): boolean {
       return map.extractions.some((e) => {
@@ -542,6 +544,52 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
     g.add(body, lever, bulb);
     levers.push(lever);
     group.add(g);
+  }
+
+  // ── Hatches: a concrete collar with a steel lid up top; a steel ladder against the wall down in the bunker.
+  if (map.hatches.length) {
+    const collar = mat(new THREE.MeshStandardMaterial({ map: getTexture('concrete'), color: 0x8f8c84, roughness: 0.9 }));
+    const lid = mat(new THREE.MeshStandardMaterial({ color: 0x4d5546, roughness: 0.5, metalness: 0.65 }));
+    const rail = mat(new THREE.MeshStandardMaterial({ color: 0x6b6e6a, roughness: 0.45, metalness: 0.7 }));
+    for (const h of map.hatches) {
+      const g = new THREE.Group();
+      g.position.set(h.x, 0, h.y);
+      if (!h.underground) {
+        const ring = new THREE.Mesh(geo(new THREE.BoxGeometry(1.7, 0.28, 1.7)), collar);
+        ring.position.y = 0.14;
+        const plate = new THREE.Mesh(geo(new THREE.BoxGeometry(1.15, 0.1, 1.15)), lid);
+        plate.position.y = 0.31;
+        const wheel = new THREE.Mesh(geo(new THREE.TorusGeometry(0.22, 0.035, 6, 16).rotateX(Math.PI / 2)), rail);
+        wheel.position.y = 0.4;
+        ring.receiveShadow = plate.receiveShadow = shadows;
+        ring.castShadow = shadows;
+        g.add(ring, plate, wheel);
+      } else {
+        // Against whichever side has the wall.
+        const tx = Math.floor(h.x);
+        const ty = Math.floor(h.y);
+        const sides: [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+        const [wx, wy] = sides.find(([dx, dy]) => map.isSolid(tx + dx, ty + dy)) ?? [0, -1];
+        g.position.x += wx * 0.38;
+        g.position.z += wy * 0.38;
+        g.rotation.y = Math.atan2(wx, wy);
+        for (const s of [-0.24, 0.24]) {
+          const r = new THREE.Mesh(geo(new THREE.BoxGeometry(0.05, WALL_H + 0.2, 0.05)), rail);
+          r.position.set(s, (WALL_H + 0.2) / 2, 0);
+          g.add(r);
+        }
+        for (let k = 0.3; k < WALL_H; k += 0.32) {
+          const rung = new THREE.Mesh(geo(new THREE.BoxGeometry(0.5, 0.035, 0.035)), rail);
+          rung.position.set(0, k, 0);
+          g.add(rung);
+        }
+        // The shaft's opening in the ceiling above it.
+        const shaft = new THREE.Mesh(geo(new THREE.BoxGeometry(0.9, 0.06, 0.9)), lid);
+        shaft.position.set(0, WALL_H + 0.05, -0.2);
+        g.add(shaft);
+      }
+      group.add(g);
+    }
   }
 
   return {

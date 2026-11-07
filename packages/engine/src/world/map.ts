@@ -25,7 +25,24 @@ export interface Structure {
   color?: number;
 }
 
-export type BuildingKind = 'house' | 'shop' | 'clinic' | 'warehouse' | 'military' | 'apartment' | 'barn' | 'cabin';
+export type BuildingKind = 'house' | 'shop' | 'clinic' | 'warehouse' | 'military' | 'apartment' | 'barn' | 'cabin' | 'bunker';
+
+/**
+ * A hatch: on the surface, a concrete collar with a steel lid; underground, the ladder up to it. Using one puts
+ * you at its pair. The base's hatch needs the power on; the emergency hatch out in the woods only opens from
+ * below (and stays open once it has been).
+ */
+export interface Hatch {
+  id: number;
+  x: number;
+  y: number;
+  /** The hatch at the other end. */
+  to: number;
+  underground: boolean;
+  needsPower?: boolean;
+  fromBelowOnly?: boolean;
+  label: string;
+}
 
 export type District = 'town' | 'industrial' | 'military' | 'forest' | 'farm' | 'docks';
 
@@ -330,17 +347,26 @@ export class GameMap {
   places: Place[] = [];
   /** Power switches. */
   switches: PowerSwitch[] = [];
+  /** Hatches between the surface and the bunker. */
+  hatches: Hatch[] = [];
   /** Big set pieces drawn from these records (their footprint is already in the tiles): cranes, ships, stacks. */
   structures: Structure[] = [];
   /** Per-tile furniture id + 1 for pieces that block movement (0 = free; 0xffff = other set dressing). */
   readonly furnitureAt: Uint16Array;
   readonly furnitureCells = new Map<number, Pick<Furniture, 'box'>[]>();
 
+  /**
+   * Rows from here down are underground (a bunker's strip below the map's south edge, walled off and reached
+   * only by its hatches). The surface is everything above.
+   */
+  surfaceH: number;
+
   constructor(
     readonly width: number,
     readonly height: number,
     readonly seed: number,
   ) {
+    this.surfaceH = height;
     this.tiles = new Uint8Array(width * height);
     this.buildingAt = new Uint16Array(width * height);
     this.districtAt = new Uint8Array(width * height);

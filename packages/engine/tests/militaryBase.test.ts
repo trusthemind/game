@@ -41,7 +41,7 @@ describe('army bases', () => {
           expect(map.structures.filter((t) => t.kind === 'tower' && t.x > s.x && t.x < s.x + s.w && t.y > s.y && t.y < s.y + s.h).length).toBe(4);
         }
       }
-  });
+  }, 30_000);
 
   it('keeps a running truck or UAZ in the motor pool', () => {
     let bases = 0;

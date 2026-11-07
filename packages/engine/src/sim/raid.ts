@@ -164,6 +164,7 @@ export type Interactable =
   | { kind: 'extract'; id: number; label: string; x: number; y: number; fee?: number }
   | { kind: 'door'; id: number; label: string; x: number; y: number; hasKey: boolean }
   | { kind: 'switch'; id: number; label: string; x: number; y: number; on: boolean }
+  | { kind: 'hatch'; id: number; label: string; x: number; y: number; usable: boolean }
   | { kind: 'window'; id: number; label: string; x: number; y: number; broken: boolean }
   | { kind: 'vehicle'; id: number; label: string; x: number; y: number; inside: boolean };
 
@@ -233,6 +234,8 @@ export class Raid {
   powerOn = false;
   /** Exits whose driver has been paid. */
   readonly paidExtracts = new Set<number>();
+  /** Hatches that open only from below and have been. */
+  readonly openedHatches = new Set<number>();
   /** The exit the player was last told they can't use yet (so it's said once per visit). */
   private toldBlocked: number | null = null;
   /** Drivable cars and roadside wrecks. */
@@ -281,7 +284,7 @@ export class Raid {
       eq: opts.playerEq,
     });
     this.player.flashlight = this.timeOfDay !== 'day';
-    this.player.facing = Math.atan2(this.map.height / 2 - sp.y, this.map.width / 2 - sp.x);
+    this.player.facing = Math.atan2(this.map.surfaceH / 2 - sp.y, this.map.width / 2 - sp.x);
     this.valueIn = equipmentValue(opts.playerEq);
     this.difficulty = opts.difficulty ?? 'normal';
     this.hadGrave = !!opts.grave && opts.grave.mapId === this.map.mapId;
@@ -446,7 +449,7 @@ export class Raid {
     const m = this.map;
     for (let tries = 0; tries < 400; tries++) {
       const x = rng.int(clearance + 2, m.width - clearance - 3);
-      const y = rng.int(clearance + 2, m.height - clearance - 3);
+      const y = rng.int(clearance + 2, m.surfaceH - clearance - 3);
       if (Math.hypot(x - this.player.pos.x, y - this.player.pos.y) < minDist) continue;
       let ok = true;
       for (let dy = -clearance; dy <= clearance && ok; dy++)
@@ -1419,6 +1422,13 @@ export class Raid {
         best = { kind: 'switch', id: s.id, label: 'Turn the power on', x: s.x, y: s.y, on: false };
       }
     }
+    for (const h of this.map.hatches) {
+      const dd = Math.hypot(h.x - p.x, h.y - p.y);
+      if (dd < Math.min(bestD, 1.4)) {
+        bestD = dd;
+        best = this.hatchInteractable(h.id);
+      }
+    }
     // Standing at a paid exit with the driver unpaid: pay him.
     for (const e of this.map.extractions) {
       if (e.rule?.kind !== 'fee' || this.paidExtracts.has(e.id)) continue;
@@ -1472,6 +1482,56 @@ export class Raid {
       const opened = this.map.extractions.filter((e) => e.rule?.kind === 'power').map((e) => e.name);
       this.emit({ t: 'msg', text: opened.length ? `Power is on: ${opened.join(', ')} is open` : 'Power is on', tone: 'good' });
     }
+    return true;
+  }
+
+  /** Why a hatch won't open for you now (null: it will). */
+  hatchBlocked(id: number): string | null {
+    const h = this.map.hatches.find((x) => x.id === id);
+    if (!h) return 'No hatch';
+    if (h.needsPower && !this.powerOn) return 'The hatch is shut: no power to the lock. Find the switch';
+    if (h.fromBelowOnly && !this.openedHatches.has(h.id)) return 'Shut fast. It opens from below';
+    return null;
+  }
+
+  hatchInteractable(id: number): Interactable {
+    const h = this.map.hatches.find((x) => x.id === id)!;
+    const usable = !this.hatchBlocked(id);
+    const verb = h.underground ? 'Climb up' : 'Climb down';
+    return { kind: 'hatch', id, label: usable ? `${verb}: ${h.label}` : `${h.label} (shut)`, x: h.x, y: h.y, usable };
+  }
+
+  /**
+   * Climb through a hatch to its other end: down into the bunker, or up a ladder to the surface. A companion
+   * close behind comes too. Going up the emergency ladder opens that hatch for good.
+   */
+  useHatch(a: Actor, id: number): boolean {
+    const h = this.map.hatches.find((x) => x.id === id);
+    const to = h && this.map.hatches.find((x) => x.id === h.to);
+    if (!h || !to || a.vehicle) return false;
+    if (Math.hypot(h.x - a.pos.x, h.y - a.pos.y) > 1.6) return false;
+    const blocked = this.hatchBlocked(id);
+    if (blocked) {
+      if (a === this.player) this.emit({ t: 'msg', text: blocked, tone: 'bad' });
+      return false;
+    }
+    if (to.fromBelowOnly) this.openedHatches.add(to.id);
+    const land = (who: Actor, k: number) => {
+      // Step off the hatch onto open floor beside it.
+      const spot = this.pathfinder.nearestWalkable(Math.floor(to.x + (k % 2 ? 1 : -1)), Math.floor(to.y + (k > 1 ? 1 : 0)), 3) ?? { x: Math.floor(to.x), y: Math.floor(to.y) };
+      const from = { ...who.pos };
+      who.pos.x = spot.x + 0.5;
+      who.pos.y = spot.y + 0.5;
+      who.vel.x = who.vel.y = 0;
+      this.emit({ t: 'hatch', actor: who.id, fx: from.x, fy: from.y, x: who.pos.x, y: who.pos.y });
+    };
+    const followers = this.actors.filter((c) => c.alive && c.companion && c !== a && dist(c.pos, a.pos) < 6);
+    land(a, 0);
+    followers.forEach((c, i) => land(c, i + 1));
+    this.makeNoise(h.x, h.y, 8, a.id, 'impact');
+    this.makeNoise(to.x, to.y, 8, a.id, 'impact');
+    this.hash.rebuild(this.liveActors());
+    if (a === this.player) this.emit({ t: 'msg', text: to.underground ? 'Down in the bunker' : 'Back on the surface', tone: 'info' });
     return true;
   }
 
@@ -1546,6 +1606,10 @@ export class Raid {
     for (const dr of this.map.doors) {
       const d = Math.hypot(dr.x - x, dr.y - y);
       if (d < r + 0.5 && this.doorLocked(dr)) out.push({ d, it: this.doorInteractable(dr, this.player) });
+    }
+    for (const h of this.map.hatches) {
+      const d = Math.hypot(h.x - x, h.y - y);
+      if (d < r) out.push({ d, it: this.hatchInteractable(h.id) });
     }
     for (const s of this.map.switches) {
       const d = Math.hypot(s.x - x, s.y - y);

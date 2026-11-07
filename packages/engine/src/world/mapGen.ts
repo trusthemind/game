@@ -1,7 +1,7 @@
 import { BOSSES } from '../items/bosses';
 import { Rng } from '../core/rng';
 import { createGrid } from '../items/inventory';
-import { GameMap, extractKind, extractSolids, extractToWorld, ROAD_EXTRACTS, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype, type Site, type LootContainer, type Room, type RoomType } from './map';
+import { GameMap, extractKind, extractSolids, extractToWorld, ROAD_EXTRACTS, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype, type Site, type LootContainer, type Room, type RoomType, type Hatch } from './map';
 import { Tile } from './tiles';
 import { furnish } from './furniture';
 import { createVehicle, vehicleBlocked, type Vehicle, type VehicleDefId, type VehicleSpawn } from '../sim/vehicle';
@@ -129,9 +129,10 @@ const ROOM_CONTAINERS: Record<BuildingKind, readonly (readonly [ContainerKind, n
   military: [['weaponbox', 4], ['ammocrate', 4], ['modbox', 2], ['crate', 2], ['safe', 1.2], ['medcabinet', 1]],
   barn: [['crate', 4], ['toolbox', 3], ['jacket', 1], ['stash', 0.5]],
   cabin: [['drawer', 3], ['jacket', 3], ['ammocrate', 1.5], ['weaponbox', 0.6], ['stash', 1]],
+  bunker: [['weaponbox', 3], ['ammocrate', 3], ['modbox', 2], ['safe', 1], ['medcabinet', 1]],
 };
 
-const KIND_TIER: Record<BuildingKind, number> = { house: 0, apartment: 0, shop: 0, clinic: 1, warehouse: 1, military: 3, barn: 0, cabin: 1 };
+const KIND_TIER: Record<BuildingKind, number> = { house: 0, apartment: 0, shop: 0, clinic: 1, warehouse: 1, military: 3, barn: 0, cabin: 1, bunker: 3 };
 const DISTRICT_NAMES: Record<District, string[]> = {
   town: ['Lenin Square', 'Old Town', 'Sadova Street', 'Microdistrict 7', 'Market Quarter'],
   industrial: ['Tractor Plant', 'Concrete Works', 'Bus Depot', 'Pumping Station'],
@@ -156,10 +157,13 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   const density = (opts.botDensity ?? 1) * preset.botDensity;
   const layoutSeed = opts.layoutSeed ?? preset.layoutSeed ?? seed;
   const rng = new Rng(layoutSeed);
-  const map = new GameMap(size, size, layoutSeed);
+  // The map, and below its south edge a strip of rock for the bunker (reached only through its hatches).
+  const map = new GameMap(size, size + BUNKER_BAND, layoutSeed);
+  map.surfaceH = size;
   map.mapId = preset.id;
   map.name = preset.name;
   map.tiles.fill(Tile.Grass);
+  for (let y = size; y < map.height; y++) for (let x = 0; x < size; x++) map.set(x, y, Tile.Border);
 
   // Border: impassable treeline.
   for (let i = 0; i < size; i++)
@@ -621,6 +625,8 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   map.containers = map.containers.filter((c) => reach[map.idx(c.x, c.y)] || neighbourReachable(map, reach, c.x, c.y));
   map.extractions = map.extractions.filter((e) => reach[map.idx(Math.floor(e.x), Math.floor(e.y))]);
 
+  // The bunker under the base: built before the furniture goes in, so it's furnished too.
+  buildBunker(map, rng.fork('bunker'), reach, (r, k) => addBuilding(r, k, 1, true));
   furnish(map);
   // Locks, keys, the power switch and the exits that ask for something. Locked rooms drop out of what's
   // reachable (no bot spawns or patrols behind a locked door).
@@ -635,6 +641,13 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   for (const b of map.buildings)
     if (b.kind === 'clinic') map.places.push({ name: 'Clinic', x: b.x + b.w / 2, y: b.y + b.h / 2, r: Math.max(b.w, b.h) / 2 + 2, major: false });
   reach = floodFill(map, map.playerSpawn);
+  // What bots can stand on: the surface, and the bunker (they don't use the hatches; its guards stay down there).
+  const botReach = reach.slice();
+  const ladder = map.hatches.find((h) => h.underground);
+  if (ladder) {
+    const below = floodFill(map, { x: Math.floor(ladder.x), y: Math.floor(ladder.y) });
+    for (let i = 0; i < below.length; i++) if (below[i]) botReach[i] = 1;
+  }
   map.spawnPoints = map.spawnPoints.map((s) => (map.isWalkable(s.x, s.y) ? s : nearestWalkable(map, s))).filter((s) => reach[map.idx(s.x, s.y)]);
 
   // ── This raid: where you start, the cars left running, the bots ──
@@ -648,7 +661,7 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   for (const d of map.districts) map.pois.push({ x: d.x, y: d.y });
   map.pois = map.pois.filter((p) => map.isWalkable(Math.floor(p.x), Math.floor(p.y)) && reach[map.idx(Math.floor(p.x), Math.floor(p.y))]);
 
-  placeBots(map, raidRng, reach, density);
+  placeBots(map, raidRng, botReach, density);
   return map;
 }
 
@@ -1222,6 +1235,96 @@ function lockAndWire(map: GameMap, rng: Rng): void {
   }
 }
 
+/** Rows of rock below the map for its bunker. */
+const BUNKER_BAND = 34;
+
+/**
+ * A Soviet bunker under the army base, Tarkov's Reserve style: a concrete warren in the rock strip below the
+ * map (command centre, radio room, armoury, bunks, stores), its hatch in the base yard (dead until the power
+ * is on) and an emergency hatch out in the woods that only opens from below.
+ */
+function buildBunker(map: GameMap, rng: Rng, reach: Uint8Array, addBuilding: (r: Rect, k: BuildingKind) => void): void {
+  const site = map.sites[0];
+  if (!site) return;
+  const size = map.width;
+  const w = Math.min(44, size - 24);
+  const h = 22;
+  const x = Math.round(Math.min(size - w - 6, Math.max(6, site.x + site.w / 2 - w / 2)));
+  const y = map.surfaceH + Math.floor((map.height - map.surfaceH - h) / 2);
+  const before = map.buildings.length;
+  addBuilding({ x, y, w, h }, 'bunker');
+  const b = map.buildings[before];
+  if (!b) return;
+  // No way out but the ladders: seal the doorways placeBuilding cut in its outer wall.
+  for (let xx = b.x; xx < b.x + b.w; xx++) for (const yy of [b.y, b.y + b.h - 1]) if (!map.isSolid(xx, yy)) map.set(xx, yy, Tile.Wall);
+  for (let yy = b.y; yy < b.y + b.h; yy++) for (const xx of [b.x, b.x + b.w - 1]) if (!map.isSolid(xx, yy)) map.set(xx, yy, Tile.Wall);
+
+  // Surface hatches: one in the base yard near the headquarters, the emergency one out in the open.
+  const clearAround = (cx: number, cy: number, r: number) => {
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) if (!map.isWalkable(cx + dx, cy + dy) || map.isIndoors(cx + dx, cy + dy)) return false;
+    return true;
+  };
+  const hq = map.buildings.find((o) => o.id === site.buildings.hq);
+  const yard: { x: number; y: number; d: number }[] = [];
+  for (let yy = site.y + 3; yy < site.y + site.h - 3; yy++)
+    for (let xx = site.x + 3; xx < site.x + site.w - 3; xx++) {
+      if (map.get(xx, yy) !== Tile.Concrete || !reach[map.idx(xx, yy)] || !clearAround(xx, yy, 2)) continue;
+      if (map.vehicleSpawns.some((v) => Math.hypot(v.x - xx, v.y - yy) < 6)) continue;
+      const d = hq ? Math.hypot(hq.x + hq.w / 2 - xx, hq.y + hq.h / 2 - yy) : 0;
+      yard.push({ x: xx, y: yy, d });
+    }
+  yard.sort((p, q) => p.d - q.d);
+  const top = yard[0];
+  if (!top) return;
+  let exit: { x: number; y: number } | null = null;
+  for (let t = 0; t < 3000 && !exit; t++) {
+    const a = rng.range(0, Math.PI * 2);
+    const d = rng.range(45, 100);
+    const ex = Math.round(top.x + Math.cos(a) * d);
+    const ey = Math.round(top.y + Math.sin(a) * d);
+    if (ex < 12 || ey < 12 || ex > size - 13 || ey > map.surfaceH - 13) continue;
+    const tl = map.get(ex, ey);
+    if ((tl !== Tile.Grass && tl !== Tile.Dirt) || !reach[map.idx(ex, ey)] || !clearAround(ex, ey, 2)) continue;
+    if (map.spawnPoints.some((s) => Math.hypot(s.x - ex, s.y - ey) < 30) || map.extractions.some((e) => Math.hypot(e.x - ex, e.y - ey) < 25)) continue;
+    exit = { x: ex, y: ey };
+  }
+  // Ladders: in the two rooms furthest apart.
+  const rooms = b.rooms.filter((r) => r.w >= 3 && r.h >= 3);
+  let pair: [Room, Room] | null = null;
+  let far = -1;
+  for (const p of rooms)
+    for (const q of rooms) {
+      const d = Math.hypot(p.x + p.w / 2 - q.x - q.w / 2, p.y + p.h / 2 - q.y - q.h / 2);
+      if (d > far) {
+        far = d;
+        pair = [p, q];
+      }
+    }
+  if (!pair) return;
+  const ladderIn = (room: Room) => {
+    for (let t = 0; t < 40; t++) {
+      const s = wallHuggingSpot(map, room, rng);
+      if (s && !map.containers.some((c) => Math.hypot(c.x - s.x, c.y - s.y) < 1.5)) return s;
+    }
+    return { x: Math.floor(room.x + room.w / 2), y: Math.floor(room.y + room.h / 2) };
+  };
+  const la = ladderIn(pair[0]);
+  const lb = ladderIn(pair[1]);
+  const hatch = (h: Omit<Hatch, 'id'>) => map.hatches.push({ id: map.hatches.length, ...h });
+  hatch({ x: top.x + 0.5, y: top.y + 0.5, to: 1, underground: false, needsPower: true, label: 'Bunker hatch' });
+  hatch({ x: la.x + 0.5, y: la.y + 0.5, to: 0, underground: true, label: 'Ladder up to the base' });
+  if (exit) {
+    hatch({ x: exit.x + 0.5, y: exit.y + 0.5, to: 3, underground: false, fromBelowOnly: true, label: 'Emergency hatch' });
+    hatch({ x: lb.x + 0.5, y: lb.y + 0.5, to: 2, underground: true, label: 'Emergency exit ladder' });
+  }
+  // Its loot is the base's best: nothing below the top tier.
+  for (const c of map.containers) if (c.y >= map.surfaceH) c.tier = 3;
+  map.places.push({ name: 'Bunker', x: b.x + b.w / 2, y: b.y + b.h / 2, r: Math.max(b.w, b.h) / 2 + 2, major: true });
+  map.places.push({ name: 'Bunker Hatch', x: top.x + 0.5, y: top.y + 0.5, r: 3, major: false });
+  if (exit) map.places.push({ name: 'Emergency Hatch', x: exit.x + 0.5, y: exit.y + 0.5, r: 4, major: true });
+}
+
 /** The reachable tile nearest `t` (within 80 tiles), by straight-line distance. */
 function nearestReached(map: GameMap, reach: Uint8Array, t: { x: number; y: number }): { x: number; y: number } | null {
   for (let r = 1; r <= 80; r++) {
@@ -1355,7 +1458,7 @@ function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, 
       else map.set(dx, dy + 1, floor);
     }
   }
-  if (kind !== 'warehouse' && !compound && kind !== 'barn') {
+  if (kind !== 'warehouse' && !compound && kind !== 'barn' && kind !== 'bunker') {
     for (let xx = x + 2; xx < x + w - 2; xx += rng.int(3, 4)) {
       if (map.get(xx, y) === Tile.Wall && isStraightWall(map, xx, y, true)) map.set(xx, y, Tile.Window);
       if (map.get(xx, y + h - 1) === Tile.Wall && isStraightWall(map, xx, y + h - 1, true)) map.set(xx, y + h - 1, Tile.Window);
@@ -1469,6 +1572,13 @@ function assignRoomTypes(b: Building, rng: Rng, role?: BaseRole): void {
     case 'armoury':
       for (const r of rooms) r.type = 'armoury';
       break;
+    case 'bunker':
+      set(free()[0], 'command');
+      set(free()[0], 'dorm');
+      if (free().length >= 2) set(free()[free().length - 1], 'radio');
+      if (free().length >= 2) set(free()[free().length - 1], 'armoury');
+      rest(() => (rng.chance(0.6) ? 'storage' : 'lockers'));
+      break;
     default: {
       // A depot on its own: bunks, lockers, a store, an office.
       set(free()[0], 'dorm');
@@ -1516,18 +1626,29 @@ function splitRooms(map: GameMap, r: Rect, rng: Rng, out: Rect[], min: number, f
     return;
   }
   const vertical = canW && (!canH || r.w >= r.h);
+  // A room split later on either side can run its wall right up to this doorway and shut it: keep the tiles
+  // either side of it open.
+  const keepOpen = (x: number, y: number) => {
+    if (map.get(x, y) === Tile.Wall && x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h) map.set(x, y, floor);
+  };
   if (vertical) {
     const cx = r.x + rng.int(min, r.w - min - 1);
     for (let y = r.y; y < r.y + r.h; y++) map.set(cx, y, Tile.Wall);
-    map.set(cx, r.y + rng.int(1, r.h - 2), floor);
+    const gy = r.y + rng.int(1, r.h - 2);
+    map.set(cx, gy, floor);
     splitRooms(map, { x: r.x, y: r.y, w: cx - r.x, h: r.h }, rng, out, min, floor);
     splitRooms(map, { x: cx + 1, y: r.y, w: r.x + r.w - cx - 1, h: r.h }, rng, out, min, floor);
+    keepOpen(cx - 1, gy);
+    keepOpen(cx + 1, gy);
   } else {
     const cy = r.y + rng.int(min, r.h - min - 1);
     for (let x = r.x; x < r.x + r.w; x++) map.set(x, cy, Tile.Wall);
-    map.set(r.x + rng.int(1, r.w - 2), cy, floor);
+    const gx = r.x + rng.int(1, r.w - 2);
+    map.set(gx, cy, floor);
     splitRooms(map, { x: r.x, y: r.y, w: r.w, h: cy - r.y }, rng, out, min, floor);
     splitRooms(map, { x: r.x, y: cy + 1, w: r.w, h: r.y + r.h - cy - 1 }, rng, out, min, floor);
+    keepOpen(gx, cy - 1);
+    keepOpen(gx, cy + 1);
   }
 }
 
@@ -1560,10 +1681,10 @@ function decorateLot(map: GameMap, lot: Rect, rng: Rng, trees = 0.07): void {
 }
 
 function scatterTrees(map: GameMap, rng: Rng): void {
-  for (let y = 3; y < map.height - 3; y++)
+  for (let y = 3; y < map.surfaceH - 3; y++)
     for (let x = 3; x < map.width - 3; x++) {
       if (map.get(x, y) !== Tile.Grass) continue;
-      const nearEdge = Math.min(x, y, map.width - x, map.height - y) < 6;
+      const nearEdge = Math.min(x, y, map.width - x, map.surfaceH - y) < 6;
       const d = map.districtOf(x, y);
       const base = d === 'town' || d === 'industrial' || d === 'docks' ? 0.006 : d === 'farm' ? 0.01 : 0.02;
       if (rng.chance(nearEdge ? 0.14 : base)) map.set(x, y, Tile.Tree);
@@ -1580,6 +1701,8 @@ function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array, rai
   const kept: Vehicle[] = [];
   const spawns: VehicleSpawn[] = [];
   const near = (x: number, y: number, r: number, p: { x: number; y: number }) => Math.hypot(x - p.x, y - p.y) < r;
+  // Never parked over a hatch.
+  const onHatch = (x: number, y: number) => map.hatches.some((h) => near(x, y, 5, h));
   for (const s of map.vehicleSpawns) {
     const v = createVehicle(kept.length + 1, { ...s, heading: s.heading + (rng.chance(0.5) ? Math.PI : 0) + rng.range(-0.06, 0.06), variant: rng.int(0, 3) });
     const exitBlocked = map.extractions.some((e) => near(v.pos.x, v.pos.y, 13, e)) || near(v.pos.x, v.pos.y, 5, { x: map.playerSpawn.x + 0.5, y: map.playerSpawn.y + 0.5 });
@@ -1609,7 +1732,7 @@ function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array, rai
     if (!horiz && !vert) return null;
     const h = horiz && (!vert || rng.chance(0.5)) ? 0 : Math.PI / 2;
     // Nose towards the middle of the map, not into a dead end at its edge.
-    const inward = Math.cos(h) * (map.width / 2 - x) + Math.sin(h) * (map.height / 2 - y) >= 0;
+    const inward = Math.cos(h) * (map.width / 2 - x) + Math.sin(h) * (map.surfaceH / 2 - y) >= 0;
     return h + (inward ? 0 : Math.PI);
   };
   const sp = { x: map.playerSpawn.x + 0.5, y: map.playerSpawn.y + 0.5 };
@@ -1632,10 +1755,10 @@ function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array, rai
   const tryPark = (ok: (x: number, y: number) => boolean, around?: { x: number; y: number; r: number }): boolean => {
     for (let t = 0; t < 1500; t++) {
       const x = around ? Math.round(around.x + rng.range(-around.r, around.r)) : rng.int(4, map.width - 5);
-      const y = around ? Math.round(around.y + rng.range(-around.r, around.r)) : rng.int(4, map.height - 5);
-      if (x < 4 || y < 4 || x > map.width - 5 || y > map.height - 5) continue;
+      const y = around ? Math.round(around.y + rng.range(-around.r, around.r)) : rng.int(4, map.surfaceH - 5);
+      if (x < 4 || y < 4 || x > map.width - 5 || y > map.surfaceH - 5) continue;
       const tile = map.get(x, y);
-      if ((tile !== Tile.Road && tile !== Tile.Dirt) || !network[map.idx(x, y)] || !reach[map.idx(x, y)] || !ok(x, y) || map.isIndoors(x, y)) continue;
+      if ((tile !== Tile.Road && tile !== Tile.Dirt) || !network[map.idx(x, y)] || !reach[map.idx(x, y)] || !ok(x, y) || map.isIndoors(x, y) || onHatch(x, y)) continue;
       const h = roadHeading(x, y);
       if (h === null) continue;
       const s: VehicleSpawn = { def: pickDef(x, y), x: x + 0.5, y: y + 0.5, heading: h + rng.range(-0.1, 0.1), variant: 0, wreck: false, fuel: rng.range(0.35, 0.8) };
@@ -1657,7 +1780,7 @@ function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array, rai
     for (let t = 0; t < 1500; t++) {
       const x = Math.round(c.x + rng.range(-r, r));
       const y = Math.round(c.y + rng.range(-r, r));
-      if (!map.inBounds(x, y) || !reach[map.idx(x, y)] || map.isIndoors(x, y) || near(x, y, 6, sp)) continue;
+      if (!map.inBounds(x, y) || !reach[map.idx(x, y)] || map.isIndoors(x, y) || near(x, y, 6, sp) || onHatch(x, y)) continue;
       const s: VehicleSpawn = { def: pickDef(x, y), x: x + 0.5, y: y + 0.5, heading: rng.range(-Math.PI, Math.PI), variant: 0, wreck: false, fuel: rng.range(0.35, 0.8) };
       const v = createVehicle(kept.length + 1, s);
       if (vehicleBlocked(v, map, kept) || map.extractions.some((e) => near(s.x, s.y, 12, e))) continue;
@@ -1715,7 +1838,7 @@ function scatterCars(map: GameMap, rng: Rng, roadsX: number[], roadsY: number[])
     }
   };
   for (const rx of roadsX)
-    for (let y = 6; y < map.height - 6; y += rng.int(9, 18)) {
+    for (let y = 6; y < map.surfaceH - 6; y += rng.int(9, 18)) {
       const low = rng.chance(0.5);
       tryCar(rx + (low ? 0 : AVENUE_W - 1), y, false, low ? -1 : 1);
     }
@@ -1735,14 +1858,14 @@ function countSolidAround(map: GameMap, x: number, y: number): number {
 function randomTile(map: GameMap, rng: Rng, pred: (x: number, y: number) => boolean): { x: number; y: number } | null {
   for (let i = 0; i < 400; i++) {
     const x = rng.int(3, map.width - 4);
-    const y = rng.int(3, map.height - 4);
+    const y = rng.int(3, map.surfaceH - 4);
     if (pred(x, y)) return { x, y };
   }
   return null;
 }
 
 function findOpenTile(map: GameMap, rng: Rng): { x: number; y: number } {
-  return randomTile(map, rng, (x, y) => map.get(x, y) === Tile.Road) ?? { x: map.width >> 1, y: map.height >> 1 };
+  return randomTile(map, rng, (x, y) => map.get(x, y) === Tile.Road) ?? { x: map.width >> 1, y: map.surfaceH >> 1 };
 }
 
 /** The walkable tile closest to `p` (rings outwards), or `p` itself if there's none. */
@@ -1786,7 +1909,7 @@ function placeBots(map: GameMap, rng: Rng, reach: Uint8Array, density: number): 
   if (density <= 0) return;
   const farFromPlayer = (x: number, y: number) => Math.hypot(x - map.playerSpawn.x, y - map.playerSpawn.y) > 40;
   // Populations scale with map area (reference: 112×112).
-  const area = (map.width * map.height) / (112 * 112);
+  const area = (map.width * map.surfaceH) / (112 * 112);
   const scale = density * Math.min(4.2, Math.sqrt(area) * 1.15);
   const ok = (x: number, y: number) => map.isWalkable(x, y) && reach[map.idx(x, y)] === 1 && farFromPlayer(x, y);
   let group = 0;
@@ -1839,6 +1962,11 @@ function placeBots(map: GameMap, rng: Rng, reach: Uint8Array, density: number): 
     const barracks = map.buildings.find((b) => b.id === s.buildings.barracks);
     if (barracks) spawnGroup('guard', 2 + Math.round(density), centre(barracks));
     spawnGroup('guard', 2, s.gate);
+  }
+  // The bunker's own detail, in its command centre.
+  for (const b of map.buildings.filter((o) => o.kind === 'bunker')) {
+    const cmd = b.rooms.find((r) => r.type === 'command') ?? b.rooms[0];
+    if (cmd && density > 0) spawnGroup('guard', 2 + Math.round(density), { x: cmd.x + cmd.w / 2, y: cmd.y + cmd.h / 2 });
   }
   const scavGroups = Math.round(7 * scale);
   const urbanPois = map.pois.filter((p) => {

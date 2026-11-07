@@ -119,6 +119,7 @@ const THEMES: Record<BuildingKind, Theme[]> = {
     { wall: [['shelf_large', 2], ['closet', 1]], centre: 'table', decor: ['chair', 'chair', 'chair'] },
   ],
   barn: [{ wall: [['shelf_large', 1]], decor: ['stool'] }],
+  bunker: [{ wall: [['shelf_large', 3], ['closet', 1]], decor: ['stool'] }],
 };
 
 /**
@@ -257,6 +258,8 @@ function commit(map: GameMap, b: Building, kind: FurnitureKind, box: [number, nu
   if (map.furniture.some((f) => overlaps(padded, f.box))) return false;
   // Keep loot containers reachable and visible: nothing on top of or hard against them.
   if (map.containers.some((c) => overlaps(padded, [c.x + 0.05, c.y + 0.05, c.x + 0.95, c.y + 0.95]))) return false;
+  // Nor in front of a ladder.
+  if (map.hatches.some((h) => overlaps(padded, [h.x - 0.9, h.y - 0.9, h.x + 0.9, h.y + 0.9]))) return false;
   const tiles = size.blocks ? blockedTiles(box) : [];
   // Reaching into a wall tile is fine (that's the gap behind the wall face); every other tile must be free floor of this building.
   const inside = tiles.filter(([x, y]) => map.get(x, y) !== Tile.Wall);

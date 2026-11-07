@@ -400,6 +400,10 @@ export class GameRenderer {
         case 'door':
           this.world.openDoor(e.id);
           break;
+        case 'hatch':
+          // Down a ladder or up one: the camera goes with you rather than gliding across the map.
+          if (e.actor === this.raid.player.id) this.snapCamera();
+          break;
         case 'power':
           this.world.powerOn();
           this.effects.burst(e.x, e.y, 10, 'spark');
@@ -588,7 +592,13 @@ export class GameRenderer {
     // On/off by intensity, never by visibility: a light appearing or vanishing changes the light count and
     // three.js recompiles every lit shader (a visible freeze). Its shadow map only updates while it's on.
     const torch = p.flashlight && p.alive;
-    this.flashlight.intensity = torch ? LIGHTING[this.raid.timeOfDay].flashlight : 0;
+    // Down in the bunker it's dark whatever the hour: the sky's light all but gone, a dim glow round you, and
+    // the torch at full night strength.
+    const under = p.pos.y >= this.raid.map.surfaceH;
+    this.sun.intensity = under ? L.sun * 0.06 : L.sun;
+    this.hemi.intensity = under ? 0.22 : L.hemi;
+    this.playerGlow.intensity = under ? 3 : this.raid.timeOfDay === 'day' ? 0 : 2.2;
+    this.flashlight.intensity = torch ? (under ? LIGHTING.night.flashlight : L.flashlight) : 0;
     this.flashlight.shadow.autoUpdate = torch;
     // An off light still samples its shadow map (0 × NaN = NaN): a never-rendered map poisons every lit pixel
     // and the frame goes black. Render it once whenever the torch switches, including the first frame.

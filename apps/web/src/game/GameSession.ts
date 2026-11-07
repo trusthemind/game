@@ -198,6 +198,9 @@ export class GameSession {
         case 'door':
           audio.door(e.x, e.y);
           break;
+        case 'hatch':
+          if (e.actor === pid) audio.door(e.x, e.y);
+          break;
         case 'power':
           audio.impact(e.x, e.y, 'metal');
           break;
@@ -434,6 +437,8 @@ export class GameSession {
       this.raid.unlockDoor(this.raid.player, target.id);
     } else if (target.kind === 'switch') {
       this.raid.flipSwitch(this.raid.player, target.id);
+    } else if (target.kind === 'hatch') {
+      this.raid.useHatch(this.raid.player, target.id);
     } else if (target.kind === 'extract' && target.fee) {
       this.raid.payExtract(this.raid.player, target.id);
     } else if (target.kind === 'vehicle') {
@@ -488,6 +493,7 @@ export class GameSession {
         }
         if (t.kind === 'door') opts.push({ label: t.hasKey ? 'Unlock' : 'Locked (no key)', run: () => go(t.x, t.y, 1.6, () => raid.unlockDoor(p, t.id)) });
         if (t.kind === 'switch' && !t.on) opts.push({ label: 'Throw the switch', run: () => go(t.x, t.y, 1.4, () => raid.flipSwitch(p, t.id)) });
+        if (t.kind === 'hatch') opts.push({ label: t.usable ? t.label : `${t.label}: won't open`, run: () => go(t.x, t.y, 1.2, () => raid.useHatch(p, t.id)) });
         if (t.kind === 'vehicle' && !t.inside) {
           const v = raid.vehicles.find((x) => x.id === t.id);
           opts.push({ label: 'Get in', run: () => go(t.x, t.y, 2, () => this.interactWith(t)) });
