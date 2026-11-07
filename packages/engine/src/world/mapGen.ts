@@ -1,7 +1,7 @@
 import { BOSSES } from '../items/bosses';
 import { Rng } from '../core/rng';
 import { createGrid } from '../items/inventory';
-import { GameMap, extractKind, extractSolids, extractToWorld, ROAD_EXTRACTS, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype, type Site, type LootContainer } from './map';
+import { GameMap, extractKind, extractSolids, extractToWorld, ROAD_EXTRACTS, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype, type Site, type LootContainer, type Room, type RoomType } from './map';
 import { Tile } from './tiles';
 import { furnish } from './furniture';
 import { createVehicle, vehicleBlocked, type Vehicle, type VehicleDefId, type VehicleSpawn } from '../sim/vehicle';
@@ -343,9 +343,9 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
 
 
   let buildingId = 0;
-  const addBuilding = (lot: Rect, kind: BuildingKind, floors?: number, exact = false) => {
+  const addBuilding = (lot: Rect, kind: BuildingKind, floors?: number, exact = false, role?: BaseRole) => {
     if (lot.w < 7 || lot.h < 7) return;
-    const b = placeBuilding(map, lot, kind, buildingId++, rng, exact);
+    const b = placeBuilding(map, lot, kind, buildingId++, rng, exact, role);
     // Blocks of flats stand three to five storeys in a town, five or nine in the city.
     b.floors = floors ?? (kind === 'apartment' ? rng.int(3, 5) : 1);
     map.buildings.push(b);
@@ -364,7 +364,7 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
       continue;
     }
     if (milLots.has(lot)) {
-      militaryBase(map, lot, rng, (r, k) => addBuilding(r, k, 1, true), addBuilding);
+      militaryBase(map, lot, rng, (r, k, role) => addBuilding(r, k, 1, true, role), addBuilding);
       continue;
     }
     switch (d) {
@@ -523,12 +523,21 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
     }
   }
   const exSides = [(spawnSide + 2) % 4, (spawnSide + 1) % 4, (spawnSide + 3) % 4, (spawnSide + 2) % 4, spawnSide];
-  for (const side of exSides.slice(0, size >= 200 ? 5 : 3)) {
+  // A crowded edge (a city's, with spawn points on every side) can leave too few spots: then a second round,
+  // closer to the spawns and to each other, round all four sides.
+  const want = size >= 200 ? 5 : 3;
+  const rounds: { sides: number[]; spawnGap: number; gap: number }[] = [
+    { sides: exSides.slice(0, want), spawnGap: Math.max(20, size * 0.15), gap: 40 },
+    { sides: [0, 1, 2, 3, 0, 1, 2, 3], spawnGap: 20, gap: 30 },
+  ];
+  for (const round of rounds)
+  for (const side of round.sides) {
+    if (round !== rounds[0] && (map.extractions.length >= Math.min(4, want) || !(roadNames.length || wildNames.length))) break;
     const open = edgeTiles(side, INSET).filter(
       // Not on top of a spawn point (a raid can start at any of them).
       (p) =>
-        map.spawnPoints.every((s) => Math.hypot(p.x - s.x, p.y - s.y) > Math.max(20, size * 0.15)) &&
-        map.extractions.every((e) => Math.hypot(e.x - p.x, e.y - p.y) > 40),
+        map.spawnPoints.every((s) => Math.hypot(p.x - s.x, p.y - s.y) > round.spawnGap) &&
+        map.extractions.every((e) => Math.hypot(e.x - p.x, e.y - p.y) > round.gap),
     );
     let c = open.filter((p) => !nearBuilding(p.x, p.y, side, 10, 8));
     if (!c.length) c = open.filter((p) => !nearBuilding(p.x, p.y, side, 6, 4));
@@ -786,7 +795,7 @@ function militaryBase(
   map: GameMap,
   lot: Rect,
   rng: Rng,
-  addBuilding: (r: Rect, k: BuildingKind) => void,
+  addBuilding: (r: Rect, k: BuildingKind, role?: BaseRole) => void,
   depot: (r: Rect, k: BuildingKind) => void,
 ): void {
   const r = clampLot(lot, 44);
@@ -816,7 +825,7 @@ function militaryBase(
       if (t === Tile.Grass || t === Tile.Tree || t === Tile.Fence) map.set(x, y, Tile.Dirt);
     }
   // Buildings, laid out with the gate at the "front" (rotated to whichever side it's on).
-  const place = (fx: number, fy: number, w: number, h: number, kind: BuildingKind) => {
+  const place = (fx: number, fy: number, w: number, h: number, kind: BuildingKind, role?: BaseRole) => {
     // (fx, fy) from the inside corner opposite the gate; w along the back wall.
     const ix = r.x + 2;
     const iy = r.y + 2;
@@ -831,15 +840,15 @@ function militaryBase(
             ? { x: ix + fy, y: iy + iw - fx - w, w: h, h: w }
             : { x: ix + ih - fy - h, y: iy + fx, w: h, h: w };
     const before = map.buildings.length;
-    addBuilding(rect, kind);
+    addBuilding(rect, kind, role);
     return map.buildings.length > before ? map.buildings[map.buildings.length - 1]!.id : undefined;
   };
   const back = roadSide % 2 === 0 ? r.w - 4 : r.h - 4;
   const deep = roadSide % 2 === 0 ? r.h - 4 : r.w - 4;
   const site: Site = { kind: 'base', x: r.x, y: r.y, w: r.w, h: r.h, gate: { x: 0, y: 0 }, buildings: {} };
-  site.buildings.barracks = place(Math.floor((back - 20) / 2), 0, 20, 9, 'military');
-  site.buildings.hq = place(0, 11, 11, 9, 'military');
-  site.buildings.armoury = place(back - 9, 11, 9, 8, 'military');
+  site.buildings.barracks = place(Math.floor((back - 20) / 2), 0, 20, 9, 'military', 'barracks');
+  site.buildings.hq = place(0, 11, 11, 9, 'military', 'hq');
+  site.buildings.armoury = place(back - 9, 11, 9, 8, 'military', 'armoury');
   // Motor pool by the gate: what's parked there runs.
   const pool = [
     { f: back * 0.22, d: deep - 4 },
@@ -1299,7 +1308,7 @@ function nextContainerId(map: GameMap): number {
   return id;
 }
 
-function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, rng: Rng, exact = false): Building {
+function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, rng: Rng, exact = false, role?: BaseRole): Building {
   // The lone depot (a military building on its own) fences itself in, with a 3-tile lane between its fence (on
   // the lot edge) and the walls so its gates lead somewhere. `exact` takes the lot as the footprint: a barracks
   // or a headquarters inside a base, which has its own fence.
@@ -1325,6 +1334,7 @@ function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, 
   const interior: Rect = { x: x + 1, y: y + 1, w: w - 2, h: h - 2 };
   const minRoom = kind === 'warehouse' || kind === 'barn' ? 7 : 4;
   splitRooms(map, interior, rng, b.rooms, minRoom, floor);
+  assignRoomTypes(b, rng, role);
 
   // Exterior doors (2 on each building so you can't be trapped) + windows.
   // A compound gets a door on every side, facing its gates (the middle of each fence side).
@@ -1376,19 +1386,120 @@ function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, 
       if (map.get(ax, ay) === Tile.Fence) map.set(ax, ay, Tile.Dirt);
   }
 
-  // Containers along room walls.
+  // Containers along room walls: what a room holds depends on what it's for.
   const tier = KIND_TIER[kind];
   for (const room of b.rooms) {
-    const n = Math.max(1, Math.round((room.w * room.h) / 14)) + (kind === 'military' ? 1 : 0);
+    const loot = room.type ? ROOM_LOOT[room.type] : null;
+    const n = Math.max(1, Math.round((room.w * room.h) / 14) + (loot?.extra ?? 0)) + (kind === 'military' ? 1 : 0);
     for (let i = 0; i < n; i++) {
       const spot = wallHuggingSpot(map, room, rng);
       if (!spot) continue;
-      const ck = rng.weighted(ROOM_CONTAINERS[kind]);
-      map.containers.push(makeContainer(nextContainerId(map), ck, spot.x, spot.y, tier));
+      const ck = rng.weighted(loot?.table ?? ROOM_CONTAINERS[kind]);
+      map.containers.push(makeContainer(nextContainerId(map), ck, spot.x, spot.y, Math.min(3, tier + (loot?.tier ?? 0))));
     }
   }
   return b;
 }
+
+/** Which of a base's buildings this is (its rooms follow). */
+type BaseRole = 'barracks' | 'hq' | 'armoury';
+
+/**
+ * What each room is for, from the building's kind (and, at a base, its role) and the rooms' sizes: the big
+ * room of a house is its living room and the smallest its bathroom; a shop's front is the shop floor; the
+ * headquarters has the commander's office and a radio room.
+ */
+function assignRoomTypes(b: Building, rng: Rng, role?: BaseRole): void {
+  const rooms = [...b.rooms].sort((p, q) => q.w * q.h - p.w * p.h);
+  const n = rooms.length;
+  const narrow = (r: Room) => Math.min(r.w, r.h) <= 2;
+  const set = (r: Room | undefined, t: RoomType) => r && !r.type && (r.type = t);
+  const rest = (t: RoomType | (() => RoomType)) => {
+    for (const r of rooms) if (!r.type) r.type = typeof t === 'function' ? t() : t;
+  };
+  for (const r of rooms) if (narrow(r) && n > 1) r.type = 'hall';
+  const free = () => rooms.filter((r) => !r.type);
+  switch (role ?? b.kind) {
+    case 'house':
+    case 'apartment': {
+      const f = free();
+      if (f.length >= 2 && f[f.length - 1]!.w * f[f.length - 1]!.h <= 24) set(f[f.length - 1], 'bathroom');
+      set(free()[0], 'living');
+      // The kitchen: the smallest of the rest that isn't a cupboard.
+      const k = free().filter((r) => r.w >= 3 && r.h >= 3);
+      set(k[k.length - 1], 'kitchen');
+      rest('bedroom');
+      break;
+    }
+    case 'cabin':
+      set(free()[0], 'living');
+      rest('bedroom');
+      break;
+    case 'shop':
+      set(free()[0], 'salesfloor');
+      if (free().length >= 2) set(free()[free().length - 1], 'office');
+      rest('storeroom');
+      break;
+    case 'clinic':
+      set(free()[0], 'ward');
+      if (free().length >= 2) set(free()[free().length - 1], 'pharmacy');
+      if (free().length >= 2) set(free()[free().length - 1], 'office');
+      rest('exam');
+      break;
+    case 'warehouse':
+      if (free().length >= 2 && free()[free().length - 1]!.w * free()[free().length - 1]!.h <= 30) set(free()[free().length - 1], 'office');
+      rest('storage');
+      break;
+    case 'barn':
+      rest('storage');
+      break;
+    case 'barracks':
+      set(free()[0], 'dorm');
+      if (free().length >= 2) set(free()[free().length - 1], 'washroom');
+      set(free()[0], 'lockers');
+      rest('dorm');
+      break;
+    case 'hq':
+      set(free()[0], 'command');
+      if (free().length >= 1) set(free()[free().length - 1], 'radio');
+      rest('office');
+      // A one-room headquarters is all office.
+      if (n === 1) rooms[0]!.type = 'command';
+      break;
+    case 'armoury':
+      for (const r of rooms) r.type = 'armoury';
+      break;
+    default: {
+      // A depot on its own: bunks, lockers, a store, an office.
+      set(free()[0], 'dorm');
+      if (free().length >= 2) set(free()[free().length - 1], 'office');
+      set(free()[0], 'lockers');
+      rest(() => (rng.chance(0.5) ? 'storage' : 'dorm'));
+    }
+  }
+}
+
+/** Containers by room, weighted; `extra` more (or fewer) of them than the size alone gives; `tier` on top. */
+const ROOM_LOOT: Record<RoomType, { table: readonly (readonly [ContainerKind, number])[]; extra?: number; tier?: number }> = {
+  kitchen: { table: [['fridge', 6], ['drawer', 3], ['shelf', 1]] },
+  living: { table: [['drawer', 4], ['wardrobe', 1], ['jacket', 2], ['safe', 0.25]] },
+  bedroom: { table: [['wardrobe', 5], ['drawer', 3], ['jacket', 2], ['safe', 0.35]] },
+  bathroom: { table: [['medcabinet', 5], ['drawer', 1]], extra: -1 },
+  hall: { table: [['jacket', 4], ['drawer', 1]], extra: -1 },
+  salesfloor: { table: [['shelf', 6], ['register', 2], ['fridge', 1]] },
+  storeroom: { table: [['crate', 5], ['shelf', 3], ['toolbox', 1]] },
+  office: { table: [['drawer', 5], ['safe', 0.8], ['shelf', 1]] },
+  ward: { table: [['medcabinet', 3], ['drawer', 2]] },
+  exam: { table: [['medcabinet', 5], ['drawer', 1]] },
+  pharmacy: { table: [['medcabinet', 7], ['safe', 0.5]], extra: 1, tier: 1 },
+  storage: { table: [['crate', 6], ['toolbox', 3], ['ammocrate', 0.8], ['modbox', 0.6]] },
+  dorm: { table: [['jacket', 5], ['drawer', 2], ['ammocrate', 1], ['weaponbox', 0.4]] },
+  washroom: { table: [['medcabinet', 3], ['jacket', 1]], extra: -1 },
+  lockers: { table: [['jacket', 3], ['ammocrate', 3], ['weaponbox', 1.2], ['medcabinet', 1]], extra: 1 },
+  command: { table: [['safe', 2], ['drawer', 3], ['weaponbox', 0.6]], tier: 1 },
+  radio: { table: [['modbox', 3], ['drawer', 2], ['safe', 0.6]], tier: 1 },
+  armoury: { table: [['weaponbox', 5], ['ammocrate', 3], ['modbox', 2]], extra: 2 },
+};
 
 /** A straight stretch of exterior wall with open ground on both sides (so a window can be climbed through). */
 function isStraightWall(map: GameMap, x: number, y: number, horizontal: boolean): boolean {

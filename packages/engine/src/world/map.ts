@@ -36,10 +36,56 @@ export interface Rect {
   h: number;
 }
 
+/** What a room is for: decides its loot, its furniture and what the HUD calls it. */
+export type RoomType =
+  | 'kitchen'
+  | 'living'
+  | 'bedroom'
+  | 'bathroom'
+  | 'hall'
+  | 'salesfloor'
+  | 'storeroom'
+  | 'office'
+  | 'ward'
+  | 'exam'
+  | 'pharmacy'
+  | 'storage'
+  | 'dorm'
+  | 'washroom'
+  | 'lockers'
+  | 'command'
+  | 'radio'
+  | 'armoury';
+
+export const ROOM_NAMES: Record<RoomType, string> = {
+  kitchen: 'Kitchen',
+  living: 'Living room',
+  bedroom: 'Bedroom',
+  bathroom: 'Bathroom',
+  hall: 'Hallway',
+  salesfloor: 'Shop floor',
+  storeroom: 'Stockroom',
+  office: 'Office',
+  ward: 'Ward',
+  exam: 'Exam room',
+  pharmacy: 'Pharmacy',
+  storage: 'Storage',
+  dorm: 'Dormitory',
+  washroom: 'Washroom',
+  lockers: 'Locker room',
+  command: "Commander's office",
+  radio: 'Radio room',
+  armoury: 'Weapon storage',
+};
+
+export interface Room extends Rect {
+  type?: RoomType;
+}
+
 export interface Building extends Rect {
   id: number;
   kind: BuildingKind;
-  rooms: Rect[];
+  rooms: Room[];
   /** Storeys drawn (the ground floor is the one you walk in; the rest is the block above it). Default 1. */
   floors?: number;
 }
@@ -313,7 +359,21 @@ export class GameMap {
     }
     const district = this.inBounds(Math.floor(x), Math.floor(y)) ? this.districts[this.districtAt[this.idx(Math.floor(x), Math.floor(y))]!]?.name : undefined;
     const top = major?.name ?? district ?? '';
-    return spot ? `${top} · ${spot.name}` : top;
+    const where = spot ? `${top} · ${spot.name}` : top;
+    // Indoors: which room, too.
+    const room = this.roomAt(x, y);
+    return room?.type ? `${where} · ${ROOM_NAMES[room.type]}` : where;
+  }
+
+  /** The room (x, y) is in, if it's inside a building. */
+  roomAt(x: number, y: number): Room | null {
+    const tx = Math.floor(x);
+    const ty = Math.floor(y);
+    if (!this.inBounds(tx, ty)) return null;
+    const b = this.buildingAt[this.idx(tx, ty)];
+    if (!b) return null;
+    const bl = this.buildings[b - 1];
+    return bl?.rooms.find((r) => tx >= r.x && ty >= r.y && tx < r.x + r.w && ty < r.y + r.h) ?? null;
   }
 
   districtOf(x: number, y: number): District | null {

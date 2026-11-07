@@ -246,8 +246,8 @@ describe('vehicles in a raid', () => {
     const it = { ...emptyIntent(), moveY: -1 };
     drive(raid, it, 2);
     expect(Math.hypot(car.pos.x - start.x, car.pos.y - start.y)).toBeGreaterThan(3);
-    // Rides along in its seat.
-    expect(Math.hypot(p.pos.x - car.pos.x, p.pos.y - car.pos.y)).toBeLessThan(1.2);
+    // Rides in the driver's seat: inside the car's body (a UAZ's sits a bit over a metre off its centre).
+    expect(Math.hypot(p.pos.x - car.pos.x, p.pos.y - car.pos.y)).toBeLessThan(1.5);
     // Can't jump out at speed.
     if (Math.abs(car.speed) > 3) expect(raid.exitVehicle(p)).toBe(false);
     drive(raid, { ...emptyIntent(), moveY: 1 }, 1.5);

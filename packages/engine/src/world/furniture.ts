@@ -1,5 +1,5 @@
 import { Rng } from '../core/rng';
-import type { Building, BuildingKind, GameMap, Rect } from './map';
+import type { Building, BuildingKind, GameMap, Rect, RoomType } from './map';
 import { Tile } from './tiles';
 
 /**
@@ -100,7 +100,6 @@ const HOME_THEMES: Theme[] = [
 
 /** The smallest room of a home with two or more rooms is its bathroom (when it's bathroom-sized). */
 const BATHROOM: Theme = { wall: [['bathtub', 1], ['toilet', 1]], unique: true, decor: ['radiator'] };
-const HAS_BATHROOMS = new Set<BuildingKind>(['house', 'apartment']);
 
 const THEMES: Record<BuildingKind, Theme[]> = {
   house: HOME_THEMES,
@@ -122,19 +121,42 @@ const THEMES: Record<BuildingKind, Theme[]> = {
   barn: [{ wall: [['shelf_large', 1]], decor: ['stool'] }],
 };
 
+/**
+ * Furniture by what a room is for (see assignRoomTypes in mapGen): a kitchen gets its stove and fridge and a
+ * table with chairs, a dormitory its rows of bunks, the commander's office a desk with chairs round it, the
+ * weapon storage racks and nothing to sleep on. A room without a type falls back to its building's themes.
+ */
+const ROOM_THEMES: Record<RoomType, Theme[]> = {
+  kitchen: [HOME_THEMES[3]!],
+  living: [HOME_THEMES[2]!],
+  bedroom: [HOME_THEMES[0]!, HOME_THEMES[1]!],
+  bathroom: [BATHROOM],
+  hall: [{ wall: [['closet', 1]], decor: ['radiator'] }],
+  salesfloor: [{ wall: [['shelf_large', 4], ['bookcase_empty', 1]], decor: ['plant'] }],
+  storeroom: [{ wall: [['shelf_large', 3], ['bookcase_empty', 2]], decor: ['stool'] }],
+  office: [{ wall: [['bookcase', 2], ['closet', 1], ['dresser', 1]], centre: 'table', decor: ['chair', 'chair', 'lamp', 'plant'] }],
+  ward: [{ wall: [['bed', 4], ['dresser', 1]], decor: ['chair', 'radiator'] }],
+  exam: [{ wall: [['bed', 1], ['bookcase', 1], ['dresser', 1]], decor: ['chair', 'lamp'] }],
+  pharmacy: [{ wall: [['bookcase', 3], ['shelf_large', 1]], decor: ['stool'] }],
+  storage: [{ wall: [['shelf_large', 4], ['bookcase_empty', 1]], decor: ['stool'] }],
+  dorm: [{ wall: [['bed', 5], ['closet', 1]], decor: ['stool', 'radiator'] }],
+  washroom: [{ wall: [['toilet', 2]], unique: false, decor: ['radiator'] }],
+  lockers: [{ wall: [['closet', 4], ['wardrobe_old', 1]], centre: 'table', decor: ['stool', 'stool'] }],
+  command: [{ wall: [['bookcase', 2], ['closet', 1], ['sofa', 1]], centre: 'table', decor: ['chair', 'chair', 'chair', 'armchair', 'plant'] }],
+  radio: [{ wall: [['shelf_large', 2], ['bookcase', 1]], centre: 'table', decor: ['chair', 'tv'] }],
+  armoury: [{ wall: [['shelf_large', 3]], decor: [] }],
+};
+
 /** Furnish every building. Uses its own RNG stream so the rest of map generation is unaffected. */
 export function furnish(map: GameMap): void {
   for (const b of map.buildings) furnishBuilding(map, b, new Rng((map.seed ^ Math.imul(b.id + 1, 0x9e3779b1)) >>> 0));
 }
 
 function furnishBuilding(map: GameMap, b: Building, rng: Rng): void {
-  const themes = THEMES[b.kind];
-  const smallest = b.rooms.reduce<Rect | null>((m, r) => (r.w >= 3 && r.h >= 3 && (!m || r.w * r.h < m.w * m.h) ? r : m), null);
-  const bathroom = HAS_BATHROOMS.has(b.kind) && b.rooms.length >= 2 && smallest && smallest.w * smallest.h <= 24 ? smallest : null;
   for (const room of b.rooms) {
     if (room.w < 3 || room.h < 3) continue;
     const area = room.w * room.h;
-    const theme = room === bathroom ? BATHROOM : rng.pick(themes);
+    const theme = rng.pick(room.type ? ROOM_THEMES[room.type] : THEMES[b.kind]);
     const wallPieces = Math.min(7, Math.max(2, Math.round(area / 9)));
     const pool = [...theme.wall];
     for (let i = 0; i < wallPieces && pool.length; i++) {
