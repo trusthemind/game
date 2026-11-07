@@ -575,6 +575,7 @@ const defs: ItemDef[] = [
   { id: 'mag_pmag30', name: 'Magpul PMAG 30', short: 'PMAG', category: 'mod', w: 1, h: 2, weight: 0.13, value: 3500, rarity: 2, mod: { slot: 'mag', mounts: ['stanag'], magSize: 30, reloadMul: 0.94 } },
 
   // ── Boss trophies (only from bosses) ─────────────────────
+  { id: 'gorelov_chain', name: "Racketeer's gold chain", short: 'CHAIN★', category: 'valuable', w: 1, h: 1, weight: 0.12, value: 340000, rarity: 5 },
   { id: 'kostia_ring', name: "Warlord's signet ring", short: 'SIGNET', category: 'valuable', w: 1, h: 1, weight: 0.05, value: 380000, rarity: 5 },
   { id: 'bohdan_claw', name: 'Bear-claw hunting trophy', short: 'TROPHY', category: 'valuable', w: 1, h: 2, weight: 0.4, value: 260000, rarity: 5 },
   { id: 'rina_ledger', name: "Smuggler's ledger", short: 'LEDGER', category: 'valuable', w: 2, h: 1, weight: 0.3, value: 320000, rarity: 5 },

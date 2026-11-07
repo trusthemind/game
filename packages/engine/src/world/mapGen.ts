@@ -43,6 +43,8 @@ export interface MapPreset {
   lodge?: boolean;
   /** A lighthouse at the end of the east pier (a port). */
   lighthouse?: boolean;
+  /** A department store (TsUM) on a lot next to the city square. */
+  store?: boolean;
   /**
    * The map's layout, the same every raid (as in Tarkov: you learn it). The raid's own seed only picks the spawn
    * point, the bots, the drivable cars and the loot. Without one, the raid seed lays the map out too.
@@ -193,6 +195,29 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
     botDensity: 1.1,
     extractNames: ['Tram Depot', 'Ring Road Checkpoint', 'Old Overpass', 'River Bridge', 'Collapsed Tunnel', 'Railway Gate'],
     city: true,
+    /*
+     * The city on a grid of four avenues each way, the tram down the middle one. Lenin Square and the
+     * department store (Gorelov's) in the centre; the old town, the railway quarter and the tram works to the
+     * west; the panel microdistricts north-east and south-west; the market and Sadova Street to the south and
+     * east; the hospital hill in the south-east; the interior troops' garrison in the north-east corner.
+     */
+    plan: {
+      roadsX: [0.2, 0.4, 0.6, 0.8],
+      roadsY: [0.2, 0.4, 0.6, 0.8],
+      districts: [
+        { kind: 'town', x: 0.5, y: 0.5, name: 'Lenin Square' },
+        { kind: 'town', x: 0.3, y: 0.28, name: 'Old Town' },
+        { kind: 'town', x: 0.12, y: 0.12, name: 'Railway Quarter' },
+        { kind: 'town', x: 0.68, y: 0.22, name: 'Microdistrict 7' },
+        { kind: 'town', x: 0.22, y: 0.72, name: 'Microdistrict 12' },
+        { kind: 'town', x: 0.5, y: 0.8, name: 'Market Quarter' },
+        { kind: 'town', x: 0.78, y: 0.55, name: 'Sadova Street' },
+        { kind: 'town', x: 0.84, y: 0.86, name: 'Hospital Hill' },
+        { kind: 'industrial', x: 0.12, y: 0.45, name: 'Tram Works' },
+        { kind: 'military', x: 0.88, y: 0.12, name: 'Interior Troops Garrison' },
+      ],
+    },
+    store: true,
   },
   testsite: {
     id: 'testsite',
@@ -463,6 +488,37 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   });
   // The kolkhoz: a block of the first farm district (the one named for it, if there is one).
   const farmDi = map.districts.findIndex((d) => d.name === 'Kolkhoz Fields');
+  // The department store: a window of the block nearest the square, on the side facing it.
+  let storeLot: Rect | undefined;
+  if (preset.store && square) {
+    const sx = square.x + square.w / 2;
+    const sy = square.y + square.h / 2;
+    let best = Infinity;
+    for (const b of blocks) {
+      if (b === square) continue;
+      const w = Math.min(b.w, 28);
+      const h = Math.min(b.h, 22);
+      if (w < 22 || h < 18) continue;
+      for (let y = b.y; y <= b.y + b.h - h; y += 2)
+        for (let x = b.x; x <= b.x + b.w - w; x += 2) {
+          const r = { x, y, w, h };
+          const d = Math.hypot(x + w / 2 - sx, y + h / 2 - sy);
+          if (d < best && !wet(r) && !reserved.some((o) => o.x < x + w && x < o.x + o.w && o.y < y + h && y < o.y + o.h)) {
+            best = d;
+            storeLot = r;
+          }
+        }
+    }
+    if (storeLot) {
+      const r = storeLot;
+      for (let i = lots.length - 1; i >= 0; i--) {
+        const l = lots[i]!.r;
+        if (l.x < r.x + r.w && r.x < l.x + l.w && l.y < r.y + r.h && r.y < l.y + l.h) lots.splice(i, 1);
+      }
+      lots.push({ r, d: 'town' });
+      reserved.push(r);
+    }
+  }
   const lodgeDi = map.districts.findIndex((d) => d.name === "Hunters' Hollow");
   const lodgeLot = preset.lodge && lodgeDi >= 0 ? reserveBlock(lodgeDi, [32, 28, 24], 22, 20) : undefined;
   const kolkhozLot = preset.kolkhoz ? reserveBlock(farmDi >= 0 ? farmDi : map.districts.findIndex((d) => d.kind === 'farm'), [40, 36, 32], 30, 26) : undefined;
@@ -508,6 +564,10 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
     }
     switch (d) {
       case 'town': {
+        if (lot === storeLot) {
+          departmentStore(map, lot, (rr, k, f) => addBuilding(rr, k, f, true));
+          break;
+        }
         if (preset.city) {
           cityLot(map, lot, rng, addBuilding, cityState);
           break;
@@ -1148,6 +1208,19 @@ function huntersLodge(map: GameMap, lot: Rect, rng: Rng, addBuilding: (r: Rect, 
 }
 
 /**
+ * The department store (TsUM) by the square: one big two-storey block filling its lot, shop floors, stock
+ * rooms and an office inside, a paved forecourt. Named on the map; Gorelov's.
+ */
+function departmentStore(map: GameMap, lot: Rect, addBuilding: (r: Rect, k: BuildingKind, floors?: number) => void): void {
+  const r = clampLot(lot, 30);
+  for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) map.set(x, y, Tile.Concrete);
+  const b = { x: r.x + 2, y: r.y + 2, w: r.w - 4, h: r.h - 5 };
+  addBuilding(b, 'shop', 2);
+  map.pois.push({ x: r.x + r.w / 2, y: r.y + r.h - 2 });
+  map.places.push({ name: 'Central Department Store', x: b.x + b.w / 2, y: b.y + b.h / 2, r: Math.max(b.w, b.h) / 2 + 1, major: true });
+}
+
+/**
  * A kolkhoz farmyard: a beaten-earth yard with two cattle barns, the machine shed, a pair of grain silos and
  * stacks of hay bales, a toolbox or two about. Its name goes on the map.
  */
@@ -1279,7 +1352,7 @@ function garages(map: GameMap, lot: Rect, rng: Rng): void {
       }
   }
   map.pois.push({ x: lot.x + lot.w / 2, y: lot.y + lot.h / 2 });
-  map.places.push({ name: 'Garages', x: lot.x + lot.w / 2, y: lot.y + lot.h / 2, r: Math.max(lot.w, lot.h) / 2, major: true });
+  map.places.push({ name: 'Garages', x: lot.x + lot.w / 2, y: lot.y + lot.h / 2, r: Math.max(lot.w, lot.h) / 2, major: false });
 }
 
 /**
@@ -1781,6 +1854,8 @@ function assignRoomTypes(b: Building, rng: Rng, role?: BaseRole): void {
       break;
     case 'shop':
       set(free()[0], 'salesfloor');
+      // A big store (the department store) is shop floor wherever there's room for it.
+      if (n >= 4) for (const r of free()) if (r.w * r.h >= 24) r.type = 'salesfloor';
       if (free().length >= 2) set(free()[free().length - 1], 'office');
       rest('storeroom');
       break;

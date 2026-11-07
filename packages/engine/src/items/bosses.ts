@@ -15,7 +15,7 @@ export interface BossDef {
   map: MapId;
   district: District;
   /** Building kind to camp in, if any (otherwise roams the district). */
-  building?: 'military' | 'warehouse' | 'cabin';
+  building?: 'military' | 'warehouse' | 'cabin' | 'shop';
   /** The named place his buildings are in (map.places), when he has a lair of his own. */
   home?: string;
   guards: number;
@@ -41,6 +41,31 @@ function fill(eq: Equipment, items: [string, number][]) {
 }
 
 export const BOSSES: BossDef[] = [
+  {
+    // The city's racketeer: holds the department store on the square with his crew.
+    id: 'gorelov',
+    name: 'Racketeer Gorelov',
+    map: 'zavadsk',
+    district: 'town',
+    building: 'shop',
+    home: 'Central Department Store',
+    guards: 3,
+    chance: 0.8,
+    sex: 'm',
+    hp: 155,
+    loadout(rng) {
+      const eq = createEquipment();
+      eq.slots.primary = gun('akm', ['sup_762', 'holo'], 'a_762bp');
+      eq.slots.secondary = gun('glock17', ['red_dot'], 'a_9x19ap');
+      eq.slots.melee = createItem('bat');
+      eq.slots.armor = createItem('gzhel');
+      eq.slots.helmet = createItem('zsh');
+      eq.slots.rig = createItem('r_bank');
+      fill(eq, [['gorelov_chain', 1], ['rolex', 1], ['bitcoin', 1], ['roubles', 60000], ['grizzly', 1], ['a_762bp', 60]]);
+      if (rng.chance(0.25)) fill(eq, [['sc_beta', 1]]);
+      return eq;
+    },
+  },
   {
     id: 'kostia',
     name: 'Warlord Kostia',

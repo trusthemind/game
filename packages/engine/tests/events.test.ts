@@ -17,7 +17,7 @@ describe('bosses', () => {
         expect(boss.maxHp).toBeGreaterThan(raid.player.maxHp * 1.3);
         expect(boss.maxHp).toBeLessThan(raid.player.maxHp * 2);
         const carried = JSON.stringify(boss.eq);
-        expect(carried).toMatch(/kostia_ring|bohdan_claw|rina_ledger/);
+        expect(carried).toMatch(/kostia_ring|bohdan_claw|rina_ledger|gorelov_chain/);
         expect(raid.bossesPresent).toContain(def.id);
         return;
       }
