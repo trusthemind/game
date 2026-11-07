@@ -28,8 +28,14 @@ describe('rooms', () => {
     const kitchens = rooms.filter((r) => r.type === 'kitchen');
     expect(kitchens.some((r) => furnitureIn(map, r).includes('gas_stove'))).toBe(true);
     const dorms = rooms.filter((r) => r.type === 'dorm');
-    expect(dorms.some((r) => furnitureIn(map, r).includes('bed'))).toBe(true);
-    for (const r of rooms.filter((x) => x.type === 'armoury')) expect(furnitureIn(map, r)).not.toContain('bed');
+    // Bunks in rows down the dormitory, gun racks round the armoury, desks with a chair at each.
+    expect(dorms.some((r) => furnitureIn(map, r).filter((k) => k === 'bunk_bed').length >= 2)).toBe(true);
+    for (const r of rooms.filter((x) => x.type === 'armoury')) {
+      expect(furnitureIn(map, r)).not.toContain('bed');
+      expect(furnitureIn(map, r)).toContain('gun_rack');
+    }
+    const offices = rooms.filter((r) => r.type === 'office' || r.type === 'command');
+    expect(offices.some((r) => furnitureIn(map, r).includes('metal_table') && furnitureIn(map, r).includes('office_chair'))).toBe(true);
     const boxes = (t: string) => map.containers.filter((c) => rooms.some((r) => r.type === t && inRoom(r, c.x, c.y))).map((c) => c.kind);
     const k = boxes('kitchen');
     expect(k.filter((c) => c === 'fridge').length).toBeGreaterThan(k.length * 0.3);

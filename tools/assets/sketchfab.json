@@ -468,5 +468,100 @@
   "uid": "c9a1ba7a825f412684c2308b82d9d2a9",
   "slug": "veh_izh_taras",
   "use": "vehicle: IZh Planeta"
+ },
+ {
+  "uid": "3ddab7a93381496eba3c36677e777912",
+  "slug": "furn_bunk_bed",
+  "use": "furniture: bunk bed (barracks)"
+ },
+ {
+  "uid": "41f55ae53fca41c3b861cebe5244b5dd",
+  "slug": "furn_locker",
+  "use": "furniture: metal locker"
+ },
+ {
+  "uid": "1053729ad9d24d71a578622251f76deb",
+  "slug": "furn_metal_cabinet",
+  "use": "furniture: metal cabinet"
+ },
+ {
+  "uid": "92a14c8d231b4812bc7b97d03da6ddd9",
+  "slug": "furn_metal_table",
+  "use": "furniture: old metal table"
+ },
+ {
+  "uid": "675f34f7304e4d92812a41e9750539aa",
+  "slug": "furn_office_chair",
+  "use": "furniture: office chair"
+ },
+ {
+  "uid": "b79b141b1eb74ce1bf7d0a23272d2846",
+  "slug": "furn_metal_shelf",
+  "use": "furniture: rusted metal shelf"
+ },
+ {
+  "uid": "48b5af11696c45f3970b2a036162bda9",
+  "slug": "furn_store_shelf",
+  "use": "furniture: store / warehouse shelving"
+ },
+ {
+  "uid": "394e6e2958e04c3bbc8bc7c305e48f4c",
+  "slug": "furn_gun_rack",
+  "use": "furniture: gun rack"
+ },
+ {
+  "uid": "619484b78fbe449ea5c0cdb68e8f2bd6",
+  "slug": "furn_filing_cabinet",
+  "use": "furniture: filing cabinet"
+ },
+ {
+  "uid": "62f6779cb7e448b19aaf58544c3c7218",
+  "slug": "furn_server_rack",
+  "use": "furniture: server rack"
+ },
+ {
+  "uid": "f8c13a19e84343e7b644c19f7b9488d3",
+  "slug": "furn_hospital_bed",
+  "use": "furniture: hospital bed"
+ },
+ {
+  "uid": "3251d73995f54398b118d1aa0bb34489",
+  "slug": "furn_med_cupboard",
+  "use": "furniture: medicine wall cupboard"
+ },
+ {
+  "uid": "1fad5a06682c4c3b84059233f12923f1",
+  "slug": "furn_sofa_soviet",
+  "use": "furniture: Soviet sofa"
+ },
+ {
+  "uid": "2940f09e319a44d3bab3b4793346e811",
+  "slug": "furn_armchair_soviet",
+  "use": "furniture: Soviet armchair"
+ },
+ {
+  "uid": "e53a5ef2faf84edcaddf49d4d27f366c",
+  "slug": "furn_table_wood",
+  "use": "furniture: old wooden table"
+ },
+ {
+  "uid": "aaa6d521741944359a6b5a6b67a0bee7",
+  "slug": "furn_rifle_box",
+  "use": "furniture: rifle box"
+ },
+ {
+  "uid": "9e78d9b0aba144fa8463fa0135f2da80",
+  "slug": "furn_generator",
+  "use": "furniture: diesel generator"
+ },
+ {
+  "uid": "ca45829b1b634ddbba186d595a1a5d2c",
+  "slug": "furn_school_desk",
+  "use": "furniture: Soviet school desk"
+ },
+ {
+  "uid": "032b4d1dac2f4f1aabb32aed4d362d4b",
+  "slug": "furn_bookshelf_soviet",
+  "use": "furniture: Soviet bookshelf"
  }
 ]

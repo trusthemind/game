@@ -49,7 +49,7 @@ const CONTAINER_SHAPE: Record<ContainerKind, { w: number; h: number; d: number; 
 };
 
 /** Containers drawn with a furniture model instead of a box. */
-const CONTAINER_MODEL: Partial<Record<ContainerKind, string>> = { wardrobe: 'wardrobe_old', fridge: 'fridge_old', drawer: 'dresser', shelf: 'bookcase_empty' };
+const CONTAINER_MODEL: Partial<Record<ContainerKind, string>> = { wardrobe: 'wardrobe_old', fridge: 'fridge_old', drawer: 'dresser', shelf: 'bookcase_empty', medcabinet: 'med_cupboard' };
 
 export interface WorldMeshes {
   group: THREE.Group;

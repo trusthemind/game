@@ -19,6 +19,29 @@ const SPEC: Record<string, { yaw: number; axis: 'w' | 'h' | 'd'; metres: number;
   radiator: { yaw: 0, axis: 'w', metres: 0.9 },
   wardrobe_old: { yaw: Math.PI, axis: 'h', metres: 1.9 },
   chair_old: { yaw: 0, axis: 'h', metres: 0.85 },
+  // The second set (barracks, offices, clinic, stores, radio room, armoury). Checked in #furnlab against the
+  // sim's footprints (FURNITURE_SIZE): front to +Z, backed against the wall at −Z.
+  bunk_bed: { yaw: Math.PI / 2, axis: 'h', metres: 1.7 },
+  locker: { yaw: 0, axis: 'h', metres: 1.85 },
+  metal_cabinet: { yaw: 0, axis: 'h', metres: 1.9 },
+  metal_table: { yaw: Math.PI / 2, axis: 'h', metres: 0.78 },
+  office_chair: { yaw: 0, axis: 'h', metres: 0.95 },
+  metal_shelf: { yaw: Math.PI / 2, axis: 'h', metres: 1.9 },
+  store_shelf: { yaw: 0, axis: 'h', metres: 1.6 },
+  gun_rack: { yaw: Math.PI / 2, axis: 'h', metres: 1.4 },
+  filing_cabinet: { yaw: 0, axis: 'h', metres: 1.3 },
+  server_rack: { yaw: 0, axis: 'h', metres: 2.0 },
+  // Measured by its length: the drip stand would set its height.
+  hospital_bed: { yaw: Math.PI / 2, axis: 'w', metres: 2.0 },
+  med_cupboard: { yaw: 0, axis: 'h', metres: 0.7 },
+  sofa_soviet: { yaw: -Math.PI / 2, axis: 'h', metres: 0.85 },
+  armchair_soviet: { yaw: Math.PI / 2, axis: 'h', metres: 0.85 },
+  table_wood: { yaw: Math.PI / 2, axis: 'h', metres: 0.78 },
+  rifle_box: { yaw: Math.PI / 2, axis: 'w', metres: 1.3 },
+  generator: { yaw: Math.PI / 2, axis: 'h', metres: 0.85 },
+  // A school desk with its bench built on.
+  school_desk: { yaw: 0, axis: 'h', metres: 0.75 },
+  bookshelf_soviet: { yaw: 0, axis: 'h', metres: 1.9 },
 };
 
 /** A float copy of an attribute (the GLB is quantised: Int16 positions can't take a baked matrix). */

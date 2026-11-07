@@ -56,5 +56,14 @@ for (const m of list) {
   } else console.log(`  ${m.slug}: already there`);
   credits.push(`"${info.name}" by ${info.user.displayName} (${info.viewerUrl}) — ${licence === 'CC0' ? 'CC0 1.0' : 'CC BY 4.0'}${m.use ? ` — ${m.use}` : ''}`);
 }
-fs.writeFileSync(path.join(HERE, 'sketchfab-credits.txt'), credits.join('\n') + '\n');
+// Fetching a few by slug keeps everyone else's credit: lines are matched up by the model's page.
+const creditsFile = path.join(HERE, 'sketchfab-credits.txt');
+const page = (line) => line.match(/\((https:\/\/sketchfab\.com\/[^)]+)\)/)?.[1];
+const merged = only.size && fs.existsSync(creditsFile) ? fs.readFileSync(creditsFile, 'utf8').split('\n').filter(Boolean) : [];
+for (const line of credits) {
+  const i = merged.findIndex((l) => page(l) === page(line));
+  if (i >= 0) merged[i] = line;
+  else merged.push(line);
+}
+fs.writeFileSync(creditsFile, (only.size ? merged : credits).join('\n') + '\n');
 console.log(`${credits.length} models, credits in tools/assets/sketchfab-credits.txt`);

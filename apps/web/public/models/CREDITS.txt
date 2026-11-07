@@ -45,7 +45,7 @@ rebound to the game skeleton at load (apps/web/src/render/rebind.ts):
   rus_a.glb       — "Russian Soldier" by doctortex
                     https://sketchfab.com/3d-models/russian-soldier-e9aa211b67264dc086af1d2f4d4e3d84
 
-Vehicles and Soviet household furniture — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Textures
+Vehicles and furniture (Soviet household, barracks, office, clinic, stores, armoury) — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Textures
 resized to WebP, meshopt-compressed (tools/assets/vehicles.mjs); turned, scaled and merged at load
 (apps/web/src/render/vehicle.ts, furnitureSf.ts):
   vehicles.glb
@@ -66,6 +66,25 @@ resized to WebP, meshopt-compressed (tools/assets/vehicles.mjs); turned, scaled 
     radiator     — "Old Radiator" by thethieme  https://sketchfab.com/3d-models/old-radiator-8a1a2e0263aa401591c1e87d824a79ef
     wardrobe_old — "Old Russian wardrobe in 1983 V 2.0" by Paule Gennadievich  https://sketchfab.com/3d-models/old-russian-wardrobe-in-1983-v-20-f0ad9f13bc784d5ebaa81e6956cf5118
     chair_old    — "Old Soviet Chair" by shaqsh  https://sketchfab.com/3d-models/old-soviet-chair-f22abd940288406b9f3079a4ee91b53c
+    bunk_bed         — "Bunk Bed" by neverfollow81  https://sketchfab.com/3d-models/bunk-bed-3ddab7a93381496eba3c36677e777912
+    locker           — "Locker" by neverfollow81  https://sketchfab.com/3d-models/locker-41f55ae53fca41c3b861cebe5244b5dd
+    metal_cabinet    — "Metal Cabinet (Low Poly)" by Berk Gedik  https://sketchfab.com/3d-models/metal-cabinet-low-poly-1053729ad9d24d71a578622251f76deb
+    metal_table      — "Old Metal Table (Low Poly)" by Berk Gedik  https://sketchfab.com/3d-models/old-metal-table-low-poly-92a14c8d231b4812bc7b97d03da6ddd9
+    office_chair     — "Office Chair Modern" by thethieme  https://sketchfab.com/3d-models/office-chair-modern-675f34f7304e4d92812a41e9750539aa
+    metal_shelf      — "Rusted metal shelf" by ELIZION  https://sketchfab.com/3d-models/rusted-metal-shelf-b79b141b1eb74ce1bf7d0a23272d2846
+    store_shelf      — "Basket Shelving for Store or Warehouse" by jimbogies  https://sketchfab.com/3d-models/basket-shelving-for-store-or-warehouse-48b5af11696c45f3970b2a036162bda9
+    gun_rack         — "Gun Rack" by Javier_Fernandez  https://sketchfab.com/3d-models/gun-rack-394e6e2958e04c3bbc8bc7c305e48f4c
+    filing_cabinet   — "Rusty Filing Cabinet" by Amiel Goco  https://sketchfab.com/3d-models/rusty-filing-cabinet-619484b78fbe449ea5c0cdb68e8f2bd6
+    server_rack      — "Server Rack" by Spellkaze  https://sketchfab.com/3d-models/server-rack-62f6779cb7e448b19aaf58544c3c7218
+    hospital_bed     — "Hospital Bed" by loxfear  https://sketchfab.com/3d-models/hospital-bed-f8c13a19e84343e7b644c19f7b9488d3
+    med_cupboard     — "Medicine Wall Cupboard, Hospital" by Medical Modeller  https://sketchfab.com/3d-models/medicine-wall-cupboard-hospital-3251d73995f54398b118d1aa0bb34489
+    sofa_soviet      — "Советский диван | USSR Sofa" by Vladislav Horiainov  https://sketchfab.com/3d-models/ussr-sofa-1fad5a06682c4c3b84059233f12923f1
+    armchair_soviet  — "Кресло СССР | USSR" by Vladislav Horiainov  https://sketchfab.com/3d-models/ussr-2940f09e319a44d3bab3b4793346e811
+    table_wood       — "Old Wooden Table" by Coozy  https://sketchfab.com/3d-models/old-wooden-table-e53a5ef2faf84edcaddf49d4d27f366c
+    rifle_box        — "Rifle Box (Low Poly)" by Berk Gedik  https://sketchfab.com/3d-models/rifle-box-low-poly-aaa6d521741944359a6b5a6b67a0bee7
+    generator        — "Diesel Generator" by Lifmon  https://sketchfab.com/3d-models/diesel-generator-9e78d9b0aba144fa8463fa0135f2da80
+    school_desk      — "Old school desk "USSR"" by Evgenii Sobolev  https://sketchfab.com/3d-models/old-school-desk-ussr-ca45829b1b634ddbba186d595a1a5d2c
+    bookshelf_soviet — "Old soviet boockshelf" by dashkilya  https://sketchfab.com/3d-models/old-soviet-boockshelf-032b4d1dac2f4f1aabb32aed4d362d4b
 
 Guns built from parts — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Split into parts, brought into
 one frame per platform (scaled, turned, parts moved, the FAB handguard stretched), textures resized to WebP,
