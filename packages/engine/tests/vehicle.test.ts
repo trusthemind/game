@@ -184,7 +184,9 @@ describe('vehicles in a raid', () => {
   };
   const setup = (seed: number) => {
     const raid = new Raid({ seed, playerEq: starterKit(), mapId: 'outskirts', botDensity: 0, events: false, timeOfDay: 'day' });
-    const car = raid.vehicles.find((v) => !v.wreck)!;
+    // The car parked nearest the spawn (not a motorbike, nor a truck boxed in at the army base's motor pool).
+    const sp = raid.player.pos;
+    const car = raid.vehicles.filter((v) => !v.wreck && !VEHICLE_DEFS[v.def].open).sort((a, b) => Math.hypot(a.pos.x - sp.x, a.pos.y - sp.y) - Math.hypot(b.pos.x - sp.x, b.pos.y - sp.y))[0]!;
     return { raid, car };
   };
 

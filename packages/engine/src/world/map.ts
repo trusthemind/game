@@ -16,7 +16,7 @@ import type { VehicleSpawn } from '../sim/vehicle';
  * - logs: a pile of sawn logs at a sawmill (a blocker), lying along x if w > h.
  */
 export interface Structure {
-  kind: 'stack' | 'crane' | 'ship' | 'monument' | 'canopy' | 'garages' | 'bridge' | 'logs';
+  kind: 'stack' | 'crane' | 'ship' | 'monument' | 'canopy' | 'garages' | 'bridge' | 'logs' | 'tower';
   x: number;
   y: number;
   w: number;
@@ -194,6 +194,18 @@ export interface BotSpawn {
   boss?: string;
 }
 
+export interface Site {
+  kind: 'base';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Middle of the gap in the fence. */
+  gate: { x: number; y: number };
+  /** Building ids by role. */
+  buildings: Partial<Record<'barracks' | 'hq' | 'armoury', number>>;
+}
+
 export class GameMap {
   readonly tiles: Uint8Array;
   /** Per-tile building id + 1 (0 = outdoors). */
@@ -213,6 +225,8 @@ export class GameMap {
   furniture: Furniture[] = [];
   /** Drivable cars and roadside wrecks (sim/vehicle.ts). */
   vehicleSpawns: VehicleSpawn[] = [];
+  /** Laid-out places (an army base, later bunkers and blocks of flats): their fence line, gate and buildings. */
+  sites: Site[] = [];
   /** Big set pieces drawn from these records (their footprint is already in the tiles): cranes, ships, stacks. */
   structures: Structure[] = [];
   /** Per-tile furniture id + 1 for pieces that block movement (0 = free; 0xffff = other set dressing). */

@@ -1,7 +1,7 @@
 import { BOSSES } from '../items/bosses';
 import { Rng } from '../core/rng';
 import { createGrid } from '../items/inventory';
-import { GameMap, extractKind, extractSolids, extractToWorld, ROAD_EXTRACTS, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype } from './map';
+import { GameMap, extractKind, extractSolids, extractToWorld, ROAD_EXTRACTS, type Building, type BuildingKind, type ContainerKind, type District, type Rect, type BotArchetype, type Site } from './map';
 import { Tile } from './tiles';
 import { furnish } from './furniture';
 import { createVehicle, vehicleBlocked, type Vehicle, type VehicleDefId, type VehicleSpawn } from '../sim/vehicle';
@@ -274,15 +274,66 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   const milLots = new Set<Rect>();
   map.districts.forEach((dist, di) => {
     if (dist.kind !== 'military') return;
-    const mine = lots.filter((l) => map.districtAt[map.idx(Math.floor(l.r.x + l.r.w / 2), Math.floor(l.r.y + l.r.h / 2))] === di);
+    const inDistrict = (r: Rect) =>
+      map.districtAt[map.idx(Math.floor(r.x + r.w / 2), Math.floor(r.y + r.h / 2))] === di;
+    // A base wants most of a block: the dry window (44 tiles, smaller if need be) that lies most in the district,
+    // the lots it covers given up to it.
+    // Where the district came out too small for one (the port's docks swallow it, say), the base goes out in
+    // the woods, the fields or the yards instead.
+    const mineTile = (i: number) => map.districtAt[i] === di;
+    const wildTile = (i: number) => ['forest', 'farm', 'industrial'].includes(map.districts[map.districtAt[i]!]!.kind);
+    const share = (r: Rect, ok: (i: number) => boolean) => {
+      let n = 0;
+      let all = 0;
+      for (let y = r.y; y < r.y + r.h; y += 2)
+        for (let x = r.x; x < r.x + r.w; x += 2, all++) if (ok(map.idx(x, y))) n++;
+      return n / all;
+    };
+    let block: Rect | undefined;
+    for (const ok of [mineTile, wildTile]) {
+      let best = 0.25;
+      for (const b of blocks) {
+        if (b === square) continue;
+        for (const side of [44, 40, 36, 32]) {
+          const w = Math.min(b.w, side);
+          const h = Math.min(b.h, side);
+          if (w < 30 || h < 26) continue;
+          for (let y = b.y; y <= b.y + b.h - h; y += 4)
+            for (let x = b.x; x <= b.x + b.w - w; x += 4) {
+              // Clear of the map's edge, where the exits clear their own ground.
+              if (Math.min(x, y, size - x - w, size - y - h) < 20) continue;
+              const r = { x, y, w, h };
+              const score = (share(r, ok) * (w * h)) / (44 * 44);
+              if (score > best && !wet(r)) {
+                best = score;
+                block = r;
+              }
+            }
+        }
+      }
+      if (block) break;
+    }
+    if (block) {
+      const overlaps = (r: Rect) =>
+        r.x < block.x + block.w && block.x < r.x + r.w && r.y < block.y + block.h && block.y < r.y + r.h;
+      for (let i = lots.length - 1; i >= 0; i--) if (overlaps(lots[i]!.r)) lots.splice(i, 1);
+      lots.push({ r: block, d: 'military' });
+      milLots.add(block);
+      // It's the army's ground, whatever the district map said at its edge.
+      for (let y = block.y; y < block.y + block.h; y++)
+        for (let x = block.x; x < block.x + block.w; x++) map.districtAt[map.idx(x, y)] = di;
+      return;
+    }
+    const mine = lots.filter((l) => inDistrict(l.r));
     mine.sort((a, b) => Number(wet(a.r)) - Number(wet(b.r)) || b.r.w * b.r.h - a.r.w * a.r.h);
     if (mine[0]) milLots.add(mine[0].r);
   });
 
+
   let buildingId = 0;
-  const addBuilding = (lot: Rect, kind: BuildingKind, floors?: number) => {
+  const addBuilding = (lot: Rect, kind: BuildingKind, floors?: number, exact = false) => {
     if (lot.w < 7 || lot.h < 7) return;
-    const b = placeBuilding(map, lot, kind, buildingId++, rng);
+    const b = placeBuilding(map, lot, kind, buildingId++, rng, exact);
     // Blocks of flats stand three to five storeys in a town, five or nine in the city.
     b.floors = floors ?? (kind === 'apartment' ? rng.int(3, 5) : 1);
     map.buildings.push(b);
@@ -301,7 +352,7 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
       continue;
     }
     if (milLots.has(lot)) {
-      addBuilding(clampLot(lot, 34), 'military');
+      militaryBase(map, lot, rng, (r, k) => addBuilding(r, k, 1, true), addBuilding);
       continue;
     }
     switch (d) {
@@ -521,7 +572,9 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   ];
   for (const t of important) {
     if (!map.inBounds(t.x, t.y) || reach[map.idx(t.x, t.y)]) continue;
-    carveTo(map, t, map.playerSpawn);
+    // The shortest way through to ground that is reachable, not a line across the map to the spawn (through
+    // whatever fence or base wall is in between).
+    carveTo(map, t, nearestReached(map, reach, t) ?? map.playerSpawn);
     reach = floodFill(map, map.playerSpawn);
   }
 
@@ -672,6 +725,139 @@ function sawmill(map: GameMap, lot: Rect, rng: Rng, addBuilding: (r: Rect, k: Bu
   }
   map.pois.push({ x: lot.x + lot.w / 2, y: lot.y + lot.h / 2 });
   if (rng.chance(0.7)) map.containers.push(makeContainer(nextContainerId(map), 'toolbox', lot.x + 8, lot.y + 13, 1));
+}
+
+/**
+ * An army base: a fenced square of concrete with one gate (on the side the road comes from), the barracks along
+ * the back, the headquarters and the armoury either side, and a motor pool by the gate with a truck and a UAZ
+ * (now and then a BTR) still in running order. Too small a lot gets the old single depot building.
+ */
+function militaryBase(
+  map: GameMap,
+  lot: Rect,
+  rng: Rng,
+  addBuilding: (r: Rect, k: BuildingKind) => void,
+  depot: (r: Rect, k: BuildingKind) => void,
+): void {
+  const r = clampLot(lot, 44);
+  if (r.w < 30 || r.h < 26) return depot(clampLot(lot, 34), 'military');
+  for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) map.set(x, y, Tile.Concrete);
+  // The gate: on the side nearest a road, else the south side; a dirt track runs out from it to the road.
+  const len = (side: number) => (side % 2 === 0 ? r.w : r.h);
+  const out = (side: number, k: number, a: number): [number, number] =>
+    side === 0 ? [r.x + k, r.y - a] : side === 1 ? [r.x + r.w - 1 + a, r.y + k] : side === 2 ? [r.x + k, r.y + r.h - 1 + a] : [r.x - a, r.y + k];
+  const roadAt = (x: number, y: number) => map.get(x, y) === Tile.Road;
+  const reach = (side: number) => {
+    for (let a = 1; a <= 16; a++) if (roadAt(...out(side, Math.floor(len(side) / 2), a))) return a;
+    return Infinity;
+  };
+  const roadSide = [2, 0, 1, 3].reduce((b, side) => (reach(side) < reach(b) ? side : b));
+  const gateAt = Math.floor(len(roadSide) / 2) - 2;
+  for (const side of [0, 1, 2, 3])
+    for (let k = 0; k < len(side); k++) {
+      if (side === roadSide && k >= gateAt && k < gateAt + 5) continue;
+      map.set(...out(side, k, 0), Tile.Fence);
+    }
+  const track = Number.isFinite(reach(roadSide)) ? reach(roadSide) - 1 : 4;
+  for (let a = 1; a <= track; a++)
+    for (let k = gateAt; k < gateAt + 5; k++) {
+      const [x, y] = out(roadSide, k, a);
+      const t = map.get(x, y);
+      if (t === Tile.Grass || t === Tile.Tree || t === Tile.Fence) map.set(x, y, Tile.Dirt);
+    }
+  // Buildings, laid out with the gate at the "front" (rotated to whichever side it's on).
+  const place = (fx: number, fy: number, w: number, h: number, kind: BuildingKind) => {
+    // (fx, fy) from the inside corner opposite the gate; w along the back wall.
+    const ix = r.x + 2;
+    const iy = r.y + 2;
+    const iw = r.w - 4;
+    const ih = r.h - 4;
+    const rect =
+      roadSide === 2
+        ? { x: ix + fx, y: iy + fy, w, h }
+        : roadSide === 0
+          ? { x: ix + iw - fx - w, y: iy + ih - fy - h, w, h }
+          : roadSide === 1
+            ? { x: ix + fy, y: iy + iw - fx - w, w: h, h: w }
+            : { x: ix + ih - fy - h, y: iy + fx, w: h, h: w };
+    const before = map.buildings.length;
+    addBuilding(rect, kind);
+    return map.buildings.length > before ? map.buildings[map.buildings.length - 1]!.id : undefined;
+  };
+  const back = roadSide % 2 === 0 ? r.w - 4 : r.h - 4;
+  const deep = roadSide % 2 === 0 ? r.h - 4 : r.w - 4;
+  const site: Site = { kind: 'base', x: r.x, y: r.y, w: r.w, h: r.h, gate: { x: 0, y: 0 }, buildings: {} };
+  site.buildings.barracks = place(Math.floor((back - 20) / 2), 0, 20, 9, 'military');
+  site.buildings.hq = place(0, 11, 11, 9, 'military');
+  site.buildings.armoury = place(back - 9, 11, 9, 8, 'military');
+  // Motor pool by the gate: what's parked there runs.
+  const pool = [
+    { f: back * 0.22, d: deep - 4 },
+    { f: back * 0.78, d: deep - 4 },
+  ];
+  const toWorld = (f: number, d: number) => {
+    const ix = r.x + 2;
+    const iy = r.y + 2;
+    const iw = r.w - 4;
+    const ih = r.h - 4;
+    return roadSide === 2
+      ? { x: ix + f, y: iy + d }
+      : roadSide === 0
+        ? { x: ix + iw - f, y: iy + ih - d }
+        : roadSide === 1
+          ? { x: ix + d, y: iy + iw - f }
+          : { x: ix + ih - d, y: iy + f };
+  };
+  const along = roadSide % 2 === 0 ? 0 : Math.PI / 2;
+  pool.forEach(({ f, d }, i) => {
+    const at = toWorld(f, d);
+    const def: VehicleDefId = i === 0 ? (rng.chance(0.3) ? 'btr80' : 'ural4320') : 'uaz469';
+    map.vehicleSpawns.push({
+      def,
+      x: at.x,
+      y: at.y,
+      heading: along,
+      variant: 0,
+      wreck: false,
+      fuel: rng.range(0.4, 0.8),
+    });
+  });
+  // Storage containers across the middle of the yard (cover between the buildings and the gate), army green
+  // and grey.
+  if (deep >= 30) {
+    const d = Math.round((20 + deep - 7) / 2);
+    for (const f of [back * 0.3, back * 0.62]) {
+      if (rng.chance(0.2)) continue;
+      const a = toWorld(f, d);
+      const b = toWorld(f + 6, d + 2);
+      const x = Math.round(Math.min(a.x, b.x));
+      const y = Math.round(Math.min(a.y, b.y));
+      const w = Math.round(Math.abs(b.x - a.x));
+      const h = Math.round(Math.abs(b.y - a.y));
+      for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) map.set(xx, yy, Tile.Container);
+      map.structures.push({ kind: 'stack', x, y, w, h, levels: rng.int(1, 2), color: rng.pick([2, 3]) });
+    }
+  }
+  // Watchtowers in the four corners: legs you can walk between, a cabin up top.
+  for (const [cx, cy] of [
+    [r.x + 1, r.y + 1],
+    [r.x + r.w - 4, r.y + 1],
+    [r.x + 1, r.y + r.h - 4],
+    [r.x + r.w - 4, r.y + r.h - 4],
+  ] as const) {
+    for (const [lx, ly] of [
+      [cx, cy],
+      [cx + 3, cy],
+      [cx, cy + 3],
+      [cx + 3, cy + 3],
+    ] as const)
+      map.addBlocker([lx + 0.3, ly + 0.3, lx + 0.7, ly + 0.7]);
+    map.structures.push({ kind: 'tower', x: cx, y: cy, w: 3, h: 3 });
+  }
+  map.pois.push(toWorld(back / 2, 4), toWorld(back / 2, deep - 2), toWorld(4, deep / 2), toWorld(back - 4, deep / 2));
+  const g = toWorld(back / 2, deep + 1.5);
+  site.gate = g;
+  map.sites.push(site);
 }
 
 /** The city square: paving, a monument on its plinth in the middle, lime trees at the corners. */
@@ -861,6 +1047,28 @@ function forest(map: GameMap, lot: Rect, rng: Rng): void {
 }
 
 /** Bresenham corridor from `a` towards `b`, clearing trees/fences (never building walls). */
+/** The reachable tile nearest `t` (within 80 tiles), by straight-line distance. */
+function nearestReached(map: GameMap, reach: Uint8Array, t: { x: number; y: number }): { x: number; y: number } | null {
+  for (let r = 1; r <= 80; r++) {
+    let best: { x: number; y: number } | null = null;
+    let bd = Infinity;
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = t.x + dx;
+        const y = t.y + dy;
+        if (!map.inBounds(x, y) || !reach[map.idx(x, y)] || !map.isWalkable(x, y)) continue;
+        const d = dx * dx + dy * dy;
+        if (d < bd) {
+          bd = d;
+          best = { x, y };
+        }
+      }
+    if (best) return best;
+  }
+  return null;
+}
+
 function carveTo(map: GameMap, a: { x: number; y: number }, b: { x: number; y: number }): void {
   let x = a.x;
   let y = a.y;
@@ -925,13 +1133,16 @@ function nextContainerId(map: GameMap): number {
   return id;
 }
 
-function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, rng: Rng): Building {
-  // A compound keeps a 3-tile lane between its fence (on the lot edge) and the walls, so its gates lead somewhere.
-  const margin = kind === 'military' ? 4 : rng.int(1, 2);
+function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, rng: Rng, exact = false): Building {
+  // The lone depot (a military building on its own) fences itself in, with a 3-tile lane between its fence (on
+  // the lot edge) and the walls so its gates lead somewhere. `exact` takes the lot as the footprint: a barracks
+  // or a headquarters inside a base, which has its own fence.
+  const compound = kind === 'military' && !exact;
+  const margin = compound ? 4 : exact ? 0 : rng.int(1, 2);
   const maxW = lot.w - margin * 2;
   const maxH = lot.h - margin * 2;
-  const w = kind === 'military' ? maxW : Math.max(7, Math.min(maxW, rng.int(Math.ceil(maxW * 0.65), maxW)));
-  const h = kind === 'military' ? maxH : Math.max(7, Math.min(maxH, rng.int(Math.ceil(maxH * 0.65), maxH)));
+  const w = compound || exact ? maxW : Math.max(7, Math.min(maxW, rng.int(Math.ceil(maxW * 0.65), maxW)));
+  const h = compound || exact ? maxH : Math.max(7, Math.min(maxH, rng.int(Math.ceil(maxH * 0.65), maxH)));
   const x = lot.x + margin + rng.int(0, maxW - w);
   const y = lot.y + margin + rng.int(0, maxH - h);
   const b: Building = { id, kind, x, y, w, h, rooms: [] };
@@ -951,11 +1162,11 @@ function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, 
 
   // Exterior doors (2 on each building so you can't be trapped) + windows.
   // A compound gets a door on every side, facing its gates (the middle of each fence side).
-  const doorSides = kind === 'military' ? [0, 1, 2, 3] : rng.shuffle([0, 1, 2, 3]).slice(0, 2);
+  const doorSides = compound ? [0, 1, 2, 3] : rng.shuffle([0, 1, 2, 3]).slice(0, 2);
   for (const side of doorSides) {
     const along = side % 2 === 0 ? w : h;
     const t =
-      kind === 'military'
+      compound
         ? side % 2 === 0
           ? Math.floor((lot.x + lot.x + lot.w - 1) / 2) - x
           : Math.floor((lot.y + lot.y + lot.h - 1) / 2) - y
@@ -968,7 +1179,7 @@ function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, 
       else map.set(dx, dy + 1, floor);
     }
   }
-  if (kind !== 'warehouse' && kind !== 'military' && kind !== 'barn') {
+  if (kind !== 'warehouse' && !compound && kind !== 'barn') {
     for (let xx = x + 2; xx < x + w - 2; xx += rng.int(3, 4)) {
       if (map.get(xx, y) === Tile.Wall && isStraightWall(map, xx, y, true)) map.set(xx, y, Tile.Window);
       if (map.get(xx, y + h - 1) === Tile.Wall && isStraightWall(map, xx, y + h - 1, true)) map.set(xx, y + h - 1, Tile.Window);
@@ -980,7 +1191,7 @@ function placeBuilding(map: GameMap, lot: Rect, kind: BuildingKind, id: number, 
   }
 
   // Military compound: fence ring with gates.
-  if (kind === 'military') {
+  if (compound) {
     const fx0 = lot.x;
     const fy0 = lot.y;
     const fx1 = lot.x + lot.w - 1;
@@ -1162,9 +1373,9 @@ function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array): vo
     }
     return false;
   };
-  // Near the spawn first, then on the nearest road a little further out; failing a road, any open ground will do.
-  if (!tryPark((x, y) => near(x, y, 28, sp) && !near(x, y, 6, sp), { ...sp, r: 28 }) && !tryPark((x, y) => near(x, y, 50, sp) && !near(x, y, 6, sp), { ...sp, r: 50 }))
-    parkOffRoad(sp);
+  // Near the spawn: on a road if there's one close by, else on open ground close by, else on a road further out.
+  if (!tryPark((x, y) => near(x, y, 28, sp) && !near(x, y, 6, sp), { ...sp, r: 28 }) && !parkOffRoad(sp))
+    tryPark((x, y) => near(x, y, 50, sp) && !near(x, y, 6, sp), { ...sp, r: 50 });
   function parkOffRoad(c: { x: number; y: number }, r = 26): boolean {
     for (let t = 0; t < 1500; t++) {
       const x = Math.round(c.x + rng.range(-r, r));
@@ -1188,6 +1399,8 @@ function placeVehicles(map: GameMap, reach: Uint8Array, network: Uint8Array): vo
   let placed = 0;
   for (const d of rural) {
     if (placed >= 3) break;
+    // A base has its motor pool already.
+    if (d.kind === 'military' && map.sites.some((s) => s.kind === 'base')) continue;
     if (near(d.x, d.y, 40, sp) || !apart(d.x, d.y, 30)) continue;
     if (tryPark((x, y) => near(x, y, 24, d) && apart(x, y, 30), { x: d.x, y: d.y, r: 24 }) || parkOffRoad(d, 16)) placed++;
   }
@@ -1305,11 +1518,13 @@ function placeBots(map: GameMap, rng: Rng, reach: Uint8Array, density: number): 
     map.botSpawns.every((s) => s.archetype === arch || (s.archetype === 'guard' && arch === 'boss') || Math.hypot(s.x - p.x, s.y - p.y) > 16);
   const spawnGroup = (arch: BotArchetype, count: number, near: { x: number; y: number }, g = group++, boss?: string) => {
     if (arch !== 'guard' && arch !== 'boss' && !clear(arch, near)) return;
+    // Indoors, they stay in that building (not out past its wall).
+    const home = map.inBounds(Math.floor(near.x), Math.floor(near.y)) ? map.buildingAt[map.idx(Math.floor(near.x), Math.floor(near.y))]! : 0;
     for (let i = 0; i < count; i++) {
       for (let t = 0; t < 30; t++) {
         const x = Math.round(near.x + rng.range(-3, 3));
         const y = Math.round(near.y + rng.range(-3, 3));
-        if (ok(x, y)) {
+        if (ok(x, y) && (!home || t >= 20 || map.buildingAt[map.idx(x, y)] === home)) {
           map.botSpawns.push({ archetype: arch, x: x + 0.5, y: y + 0.5, group: g, ...(boss ? { boss } : {}) });
           break;
         }
@@ -1326,7 +1541,9 @@ function placeBots(map: GameMap, rng: Rng, reach: Uint8Array, density: number): 
   for (const def of BOSSES.filter((b) => b.map === map.mapId)) {
     if (!bossRng.chance(def.chance)) continue;
     const inDistrict = (x: number, y: number) => map.districtOf(Math.floor(x), Math.floor(y)) === def.district;
-    const homes = map.buildings.filter((b) => b.kind === def.building && inDistrict(b.x + b.w / 2, b.y + b.h / 2));
+    // A warlord holds court in the base's headquarters.
+    const hq = def.building === 'military' ? map.sites.flatMap((s) => map.buildings.filter((b) => b.id === s.buildings.hq && inDistrict(b.x + b.w / 2, b.y + b.h / 2))) : [];
+    const homes = hq.length ? hq : map.buildings.filter((b) => b.kind === def.building && inDistrict(b.x + b.w / 2, b.y + b.h / 2));
     const any = map.buildings.filter((b) => b.kind === def.building);
     const pois = map.pois.filter((p) => inDistrict(p.x, p.y));
     const home = homes.length ? centre(bossRng.pick(homes)) : any.length ? centre(bossRng.pick(any)) : pois.length ? bossRng.pick(pois) : null;
@@ -1335,10 +1552,17 @@ function placeBots(map: GameMap, rng: Rng, reach: Uint8Array, density: number): 
     spawnGroup('boss', 1, home, g, def.id);
     if (def.guards) spawnGroup('guard', def.guards, home, g);
   }
-  // Military compounds always have a guard detail.
+  // Military compounds always have a guard detail: a lone depot one, a base one in the barracks and a pair on
+  // the gate.
+  const inBase = new Set(map.sites.flatMap((s) => Object.values(s.buildings)));
   map.buildings
-    .filter((b) => b.kind === 'military')
+    .filter((b) => b.kind === 'military' && !inBase.has(b.id))
     .forEach((mil) => spawnGroup('guard', 2 + Math.round(density), centre(mil)));
+  for (const s of map.sites) {
+    const barracks = map.buildings.find((b) => b.id === s.buildings.barracks);
+    if (barracks) spawnGroup('guard', 2 + Math.round(density), centre(barracks));
+    spawnGroup('guard', 2, s.gate);
+  }
   const scavGroups = Math.round(7 * scale);
   const urbanPois = map.pois.filter((p) => {
     const d = map.districtOf(Math.floor(p.x), Math.floor(p.y));

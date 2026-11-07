@@ -18,8 +18,38 @@ export function cityPieces(map: GameMap, mat: Mat, geo: Geo, shadows: boolean): 
     if (s.kind === 'garages') out.push(garages(s, mat, geo, shadows));
     if (s.kind === 'bridge') out.push(railings(s, mat, geo, shadows));
     if (s.kind === 'logs') out.push(logs(s, mat, geo, shadows));
+    if (s.kind === 'tower') out.push(watchtower(s, mat, geo, shadows));
   }
   return out;
+}
+
+/**
+ * A wooden guard tower on four legs: a platform at 4.5 m, a waist-high plank parapet, corner posts and a tin
+ * roof. Its footprint (`w`×`h`, leg centre to leg centre plus one) only blocks at the legs.
+ */
+function watchtower(s: Structure, mat: Mat, geo: Geo, shadows: boolean): THREE.Object3D {
+  const g = new THREE.Group();
+  const wood = mat(new THREE.MeshStandardMaterial({ map: getTexture('bark'), color: 0x7a6650, roughness: 0.95 }), 'tall');
+  const tin = mat(new THREE.MeshStandardMaterial({ color: 0x5a6250, roughness: 0.6, metalness: 0.4 }), 'tall');
+  const box = (w: number, h: number, d: number, x: number, y: number, z: number, m: THREE.Material) => {
+    const b = new THREE.Mesh(geo(new THREE.BoxGeometry(w, h, d)), m);
+    b.position.set(s.x + x, y, s.y + z);
+    b.castShadow = shadows;
+    b.matrixAutoUpdate = false;
+    b.updateMatrix();
+    g.add(b);
+  };
+  const S = s.w + 1;
+  const P = 4.5;
+  for (const x of [0.5, S - 0.5]) for (const z of [0.5, S - 0.5]) box(0.25, 7, 0.25, x, 3.5, z, wood);
+  // Cross braces halfway up, the platform, the parapet and the roof.
+  for (const z of [0.5, S - 0.5]) box(S - 1, 0.15, 0.15, S / 2, 2.2, z, wood);
+  for (const x of [0.5, S - 0.5]) box(0.15, 0.15, S - 1, x, 2.2, S / 2, wood);
+  box(S + 0.4, 0.2, S + 0.4, S / 2, P, S / 2, wood);
+  for (const z of [-0.1, S + 0.1]) box(S + 0.4, 1.0, 0.08, S / 2, P + 0.6, z, wood);
+  for (const x of [-0.1, S + 0.1]) box(0.08, 1.0, S + 0.4, x, P + 0.6, S / 2, wood);
+  box(S + 1.0, 0.12, S + 1.0, S / 2, 7.05, S / 2, tin);
+  return g;
 }
 
 /** Steel railings along both sides of a bridge: posts every 2 m and a top rail, plus the deck's edge beam. */
