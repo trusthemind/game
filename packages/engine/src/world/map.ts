@@ -182,7 +182,7 @@ export interface Extraction {
  * What an exit asks of you, Tarkov-style: the power back on (a switch somewhere on the map), the driver paid in
  * credits, or no backpack (a crawl through a tunnel).
  */
-export type ExtractRule = { kind: 'power' } | { kind: 'fee'; amount: number } | { kind: 'noBackpack' };
+export type ExtractRule = { kind: 'power' } | { kind: 'fee'; amount: number } | { kind: 'noBackpack' } | { kind: 'train' };
 
 /** A locked door: its tiles are LockedDoor until the key opens them (then `floor`). */
 export interface Door {

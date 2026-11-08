@@ -236,6 +236,10 @@ export class Raid {
   readonly paidExtracts = new Set<number>();
   /** Hatches that open only from below and have been. */
   readonly openedHatches = new Set<number>();
+  /** The armoured train (a train exit): raid time it pulls in and leaves again; -1 on maps without one. */
+  trainAt = -1;
+  trainGone = -1;
+  private trainTold = 0;
   /** The exit the player was last told they can't use yet (so it's said once per visit). */
   private toldBlocked: number | null = null;
   /** Drivable cars and roadside wrecks. */
@@ -265,6 +269,11 @@ export class Raid {
     this.map = opts.map ?? generateMap(opts.seed, { mapId: opts.mapId, size: opts.mapSize, botDensity: opts.botDensity });
     this.pathfinder = new Pathfinder(this.map);
     this.timeLimit = opts.timeLimit ?? (MAP_PRESETS[this.map.mapId as MapId]?.raidMinutes ?? 25) * 60;
+    // The train comes somewhere in the middle of the raid and waits two and a half minutes.
+    if (this.map.extractions.some((e) => e.rule?.kind === 'train')) {
+      this.trainAt = this.rng.fork('train').range(0.35, 0.6) * this.timeLimit;
+      this.trainGone = this.trainAt + 150;
+    }
     const envRng = this.rng.fork('env');
     const rolledTod = envRng.weighted([['day', 3], ['dusk', 4], ['night', 3]] as const);
     this.timeOfDay = opts.timeOfDay ?? rolledTod;
@@ -1535,6 +1544,14 @@ export class Raid {
     return true;
   }
 
+  /** The train's state for the HUD: when it comes, how long it waits, or that it's gone. */
+  trainLabel(): string {
+    if (this.trainAt < 0) return '';
+    if (this.time < this.trainAt) return `train in ${mmss(this.trainAt - this.time)}`;
+    if (this.time < this.trainGone) return `train ✓ ${mmss(this.trainGone - this.time)}`;
+    return 'train gone';
+  }
+
   /** Credits carried, in all your grids. */
   creditsCarried(a: Actor): number {
     let n = 0;
@@ -1571,6 +1588,10 @@ export class Raid {
     if (r.kind === 'power' && !this.powerOn) return 'No power: find the switch at the army base';
     if (r.kind === 'fee' && !this.paidExtracts.has(e.id)) return `Pay the driver ${r.amount} CR`;
     if (r.kind === 'noBackpack' && a.eq.slots.backpack) return 'No backpacks: too tight to get through';
+    if (r.kind === 'train') {
+      if (this.time < this.trainAt) return `The train isn't in yet (${mmss(this.trainAt - this.time)})`;
+      if (this.time >= this.trainGone) return 'The train has gone';
+    }
     return null;
   }
 
@@ -2036,6 +2057,18 @@ export class Raid {
   private updateExtraction(dt: number): void {
     const p = this.player;
     if (!p.alive) return;
+    // The train: a horn when it pulls in, another when it's about to go, word when it's gone.
+    if (this.trainAt >= 0) {
+      const say = (n: number, text: string) => {
+        if (this.trainTold < n) {
+          this.trainTold = n;
+          this.emit({ t: 'msg', text, tone: n === 3 ? 'bad' : 'good' });
+        }
+      };
+      if (this.time >= this.trainAt) say(1, 'A horn from the rail depot: the armoured train is in');
+      if (this.time >= this.trainGone - 30) say(2, 'The train leaves in 30 seconds');
+      if (this.time >= this.trainGone) say(3, 'The train has gone');
+    }
     // Extracting by car isn't a thing yet: you get out at the exit.
     const ex = p.vehicle ? undefined : this.map.extractions.find((e) => Math.hypot(e.x - p.pos.x, e.y - p.pos.y) < e.radius);
     const blocked = ex ? this.extractBlocked(ex, p) : null;
@@ -2102,3 +2135,8 @@ export class Raid {
 }
 
 export type { Vec2, WeaponSlot };
+
+/** m:ss for a number of seconds. */
+function mmss(s: number): string {
+  return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+}

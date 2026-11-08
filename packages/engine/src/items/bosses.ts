@@ -15,7 +15,7 @@ export interface BossDef {
   map: MapId;
   district: District;
   /** Building kind to camp in, if any (otherwise roams the district). */
-  building?: 'military' | 'warehouse' | 'cabin' | 'shop';
+  building?: 'military' | 'warehouse' | 'cabin' | 'shop' | 'bunker';
   /** The named place his buildings are in (map.places), when he has a lair of his own. */
   home?: string;
   guards: number;
@@ -41,6 +41,31 @@ function fill(eq: Equipment, items: [string, number][]) {
 }
 
 export const BOSSES: BossDef[] = [
+  {
+    // The reserve's commander: holds the bunker's command centre with his staff.
+    id: 'zhuk',
+    name: 'Colonel Zhuk',
+    map: 'kordon',
+    district: 'military',
+    building: 'bunker',
+    home: 'Bunker',
+    guards: 3,
+    chance: 0.85,
+    sex: 'm',
+    hp: 165,
+    loadout(rng) {
+      const eq = createEquipment();
+      eq.slots.primary = gun('ak74m', ['sup_545', 'pso1'], 'a_545bs');
+      eq.slots.secondary = gun('mp443', [], 'a_9x19ap');
+      eq.slots.melee = createItem('knife');
+      eq.slots.armor = createItem('slick6');
+      eq.slots.helmet = createItem('altyn');
+      eq.slots.rig = createItem('r_bank');
+      fill(eq, [['zhuk_orders', 1], ['key_armoury', 1], ['intel', 1], ['grizzly', 1], ['stim', 1], ['a_545bs', 90]]);
+      if (rng.chance(0.25)) fill(eq, [[rng.chance(0.2) ? 'sc_gamma' : 'sc_beta', 1]]);
+      return eq;
+    },
+  },
   {
     // The city's racketeer: holds the department store on the square with his crew.
     id: 'gorelov',

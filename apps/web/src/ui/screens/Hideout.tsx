@@ -587,7 +587,7 @@ function DeployModal({ onClose }: { onClose(): void }) {
         </div>
         <div className="pad stack">
           <div className="map-picks">
-            {(['outskirts', 'pinehollow', 'portkirov', 'zavadsk'] as const).map((id) => {
+            {(['outskirts', 'pinehollow', 'portkirov', 'zavadsk', 'kordon'] as const).map((id) => {
               const m = MAP_PRESETS[id];
               return (
                 <button key={id} className={`map-pick ${mapId === id ? 'on' : ''}`} onClick={() => setMapId(id)}>

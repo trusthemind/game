@@ -110,7 +110,8 @@ export function Minimap({ raid, size = 196, full = false }: { raid: Raid; size?:
         ctx.fill();
         if (full) {
           const open = !raid.extractBlocked(e);
-          label(e.rule && !open ? `${e.name} (${e.rule.kind === 'power' ? 'power' : e.rule.kind === 'fee' ? `${e.rule.amount} CR` : 'no backpack'})` : e.name, e.x, e.y - 2.6, 10, open ? '#7dffb0' : '#ffb27a');
+          const need = e.rule?.kind === 'power' ? 'power' : e.rule?.kind === 'fee' ? `${e.rule.amount} CR` : e.rule?.kind === 'train' ? raid.trainLabel() : 'no backpack';
+          label(e.rule && !open ? `${e.name} (${need})` : e.name, e.x, e.y - 2.6, 10, open ? '#7dffb0' : '#ffb27a');
         }
       }
       for (const a of raid.actors) {

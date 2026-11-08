@@ -88,6 +88,7 @@
 .map-thumb.outskirts { background: linear-gradient(135deg, #3c4a2c 0 35%, #5a5b55 35% 60%, #2f3a22 60%); }
 .map-thumb.pinehollow { background: radial-gradient(circle at 30% 40%, #2c3a22, #1e2a18 60%), #1e2a18; }
 .map-thumb.portkirov { background: linear-gradient(180deg, #4a4c4a 0 70%, #24354a 70%); }
+.map-thumb.kordon { background: linear-gradient(90deg, transparent 0 46%, #5a4a3a 46% 54%, transparent 54%), repeating-linear-gradient(0deg, #4b5243 0 22%, #3a4034 22% 26%), #3a4034; }
 .map-thumb.zavadsk { background: repeating-linear-gradient(90deg, #6a6862 0 18%, #3a3c3a 18% 24%), #4a4a46; }
 
 .deploy-grid { grid-template-columns: 1fr 1fr 1.4fr 1fr; }

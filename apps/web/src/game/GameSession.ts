@@ -611,7 +611,7 @@ export class GameSession {
           dist: Math.hypot(e.x - p.pos.x, e.y - p.pos.y),
           angle: Math.atan2(e.y - p.pos.y, e.x - p.pos.x),
           kind: 'exit' as const,
-          note: exitNote(e.rule, raid.extractBlocked(e, p)),
+          note: e.rule?.kind === 'train' ? raid.trainLabel() : exitNote(e.rule, raid.extractBlocked(e, p)),
         })),
         ...raid.corpses
           .filter((c) => c.actorId < 0)
@@ -650,6 +650,6 @@ export class GameSession {
 /** A short tag for an exit's condition in the HUD list: what it still needs, or ✓ once it's met. */
 function exitNote(rule: ExtractRule | undefined, blocked: string | null): string | undefined {
   if (!rule) return undefined;
-  const what = rule.kind === 'power' ? 'power' : rule.kind === 'fee' ? `${rule.amount} CR` : 'no backpack';
+  const what = rule.kind === 'power' ? 'power' : rule.kind === 'fee' ? `${rule.amount} CR` : rule.kind === 'train' ? 'train' : 'no backpack';
   return blocked ? what : `${what} ✓`;
 }

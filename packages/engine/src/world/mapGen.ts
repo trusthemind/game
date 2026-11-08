@@ -6,7 +6,7 @@ import { Tile } from './tiles';
 import { furnish } from './furniture';
 import { createVehicle, vehicleBlocked, type Vehicle, type VehicleDefId, type VehicleSpawn } from '../sim/vehicle';
 
-export type MapId = 'outskirts' | 'pinehollow' | 'portkirov' | 'zavadsk' | 'testsite';
+export type MapId = 'outskirts' | 'pinehollow' | 'portkirov' | 'zavadsk' | 'kordon' | 'testsite';
 
 export interface MapPreset {
   id: MapId;
@@ -45,6 +45,8 @@ export interface MapPreset {
   lighthouse?: boolean;
   /** A department store (TsUM) on a lot next to the city square. */
   store?: boolean;
+  /** Every exit asks for something (none open to anyone): the reserve. */
+  hardExits?: boolean;
   /**
    * The map's layout, the same every raid (as in Tarkov: you learn it). The raid's own seed only picks the spawn
    * point, the bots, the drivable cars and the loot. Without one, the raid seed lays the map out too.
@@ -218,6 +220,39 @@ export const MAP_PRESETS: Record<MapId, MapPreset> = {
       ],
     },
     store: true,
+  },
+  kordon: {
+    id: 'kordon',
+    layoutSeed: 47,
+    name: 'Kordon-47',
+    tagline: 'A sealed military reserve: two garrisons, a bunker, the motor and rail depots. Every way out asks for something.',
+    size: 256,
+    districts: { military: 2, industrial: 2, forest: 2, town: 1, farm: 1 },
+    avenues: 2,
+    raidMinutes: 40,
+    botDensity: 1.3,
+    extractNames: ['Rail Depot', 'Checkpoint K-47', 'Drainage Tunnel', 'Radar Tower', 'Hermetic Gate', 'Forest Path'],
+    railway: true,
+    /*
+     * The reserve: North Barracks and the Kordon-47 HQ (the bunker under it) along the top, the motor depot in
+     * the north-east; the railway across the middle with the rail depot on it; woods either side; the
+     * officers' quarters and the firing range in the south.
+     */
+    plan: {
+      roadsX: [0.35, 0.68],
+      roadsY: [0.35, 0.7],
+      districts: [
+        { kind: 'military', x: 0.5, y: 0.18, name: 'Kordon-47 HQ' },
+        { kind: 'military', x: 0.18, y: 0.2, name: 'North Barracks' },
+        { kind: 'industrial', x: 0.85, y: 0.18, name: 'Motor Depot' },
+        { kind: 'industrial', x: 0.55, y: 0.55, name: 'Rail Depot' },
+        { kind: 'forest', x: 0.12, y: 0.58, name: 'Black Woods' },
+        { kind: 'forest', x: 0.88, y: 0.6, name: 'Swamp Edge' },
+        { kind: 'town', x: 0.3, y: 0.84, name: "Officers' Quarters" },
+        { kind: 'farm', x: 0.72, y: 0.86, name: 'Firing Range' },
+      ],
+    },
+    hardExits: true,
   },
   testsite: {
     id: 'testsite',
@@ -723,7 +758,13 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
       for (const list of [names, roadNames, wildNames]) list.splice(list.indexOf(name), list.includes(name) ? 1 : 0);
     }
   };
-  if (railY >= 0) placeOwn([['Rail Bridge', size - 1 - INSET, railY, 0]]);
+  if (railY >= 0) placeOwn([['Rail Bridge', size - 1 - INSET, railY, 0], ['Rail Depot', size - 1 - INSET, railY, 0]]);
+  // The armoured train's wagons stand on the track at the depot, waiting for the engine.
+  if (railY >= 0 && map.extractions.some((e) => e.name === 'Rail Depot'))
+    for (let k = 0; k < 3; k++) {
+      const wx = size - 1 - INSET - 18 - k * 8 - 6;
+      stack(map, rng, wx, railY, 6, 2, 1);
+    }
   // A port's own exits stand where they belong: the boat at the end of a pier, the crane yard on the quay, the
   // container gate at the side of the terminal. The rest go round the edges as on any map.
   if (port) {
@@ -842,7 +883,7 @@ export function generateMap(seed: number, opts: MapGenOptions = {}): GameMap {
   furnish(map);
   // Locks, keys, the power switch and the exits that ask for something. Locked rooms drop out of what's
   // reachable (no bot spawns or patrols behind a locked door).
-  lockAndWire(map, stage('locks'));
+  lockAndWire(map, stage('locks'), !!preset.hardExits);
   // Risk and reward: loot gets better the further it lies from every spawn (the middle of the map, where
   // everyone converges), a tier up past ~a third of the map's width away, two past half.
   for (const c of map.containers) {
@@ -1142,7 +1183,9 @@ function militaryBase(
   const g = toWorld(back / 2, deep + 1.5);
   site.gate = g;
   map.sites.push(site);
-  map.places.push({ name: 'Army Base', x: r.x + r.w / 2, y: r.y + r.h / 2, r: Math.max(r.w, r.h) / 2 + 3, major: true });
+  // The first base is the Army Base; a second one (the reserve has two) goes by its district's name.
+  const dname = map.districts[map.districtAt[map.idx(Math.floor(r.x + r.w / 2), Math.floor(r.y + r.h / 2))]!]?.name;
+  map.places.push({ name: map.sites.length > 1 && dname ? dname : 'Army Base', x: r.x + r.w / 2, y: r.y + r.h / 2, r: Math.max(r.w, r.h) / 2 + 3, major: true });
   for (const [role, name] of [['barracks', 'Barracks'], ['hq', 'Headquarters'], ['armoury', 'Armoury']] as const) {
     const b = map.buildings.find((o) => o.id === site.buildings[role]);
     if (b) map.places.push({ name, x: b.x + b.w / 2, y: b.y + b.h / 2, r: Math.max(b.w, b.h) / 2 + 1, major: false });
@@ -1456,7 +1499,7 @@ function forest(map: GameMap, lot: Rect, rng: Rng): void {
  * - some exits with a condition: power (once the switch is thrown), a driver to pay, no backpack through a
  *   tunnel or down a trail. At least two always stay open to anyone.
  */
-function lockAndWire(map: GameMap, rng: Rng): void {
+function lockAndWire(map: GameMap, rng: Rng, hardExits = false): void {
   // The furniture is in by now: a spot by a wall that isn't under a cupboard.
   const wallSpot = (room: Rect) => {
     for (let t = 0; t < 6; t++) {
@@ -1534,19 +1577,28 @@ function lockAndWire(map: GameMap, rng: Rng): void {
       }
     }
   }
-  // Exits with conditions. Keep two open to anyone.
+  // Exits with conditions. Keep two open to anyone (none on the reserve). A depot on the railway is the train.
+  const keep = hardExits ? 0 : 2;
   const free = () => map.extractions.filter((e) => !e.rule);
-  const take = (kinds: string[]) => (free().length > 2 ? free().find((e) => kinds.includes(e.kind)) : undefined);
+  const take = (kinds: string[]) => (free().length > keep ? free().find((e) => kinds.includes(e.kind)) : undefined);
+  const train = hardExits ? take(['depot']) : undefined;
+  if (train) train.rule = { kind: 'train' };
   const crawl = take(['tunnel', 'path', 'outlet']);
   if (crawl) crawl.rule = { kind: 'noBackpack' };
   const paid = take(['checkpoint', 'gate', 'overpass', 'station', 'depot', 'outpost']);
   if (paid) paid.rule = { kind: 'fee', amount: 5000 };
   const sw = map.switches[0];
-  if (sw && free().length > 2) {
+  if (sw && free().length > keep) {
     // The one the power runs to: nearest the switch.
     const near = free().sort((a, b) => Math.hypot(a.x - sw.x, a.y - sw.y) - Math.hypot(b.x - sw.x, b.y - sw.y))[0]!;
     near.rule = { kind: 'power' };
   }
+  // The reserve: whatever's left asks for something that suits it: a crawl without a pack through a tunnel or
+  // down a trail, otherwise the power (or a bribe, by turns).
+  if (hardExits)
+    free().forEach((e, i) => {
+      e.rule = ['tunnel', 'path', 'outlet'].includes(e.kind) ? { kind: 'noBackpack' } : sw && i % 2 === 0 ? { kind: 'power' } : { kind: 'fee', amount: 8000 };
+    });
 }
 
 /** Rows of rock below the map for its bunker. */
