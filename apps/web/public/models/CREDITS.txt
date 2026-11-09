@@ -130,3 +130,18 @@ meshopt-compressed (tools/assets/weapons.mjs):
     tac_light — "Zenitco / Зенит Perst 4 Laser Sight Attachment" by valterjherson1  https://sketchfab.com/3d-models/zenitco-perst-4-laser-sight-attachment-3ebaa8bc75c34a538f4dd28e33eda119
     sup_556, sup_762, sup_9, sup_54r — "Suppressors 10 Pack" by The WarVet  https://sketchfab.com/3d-models/suppressors-10-pack-3a3c123f94a446589873b1d4df53c83c
     scope_4x  — "ACOG Scope" by GC_3D_ART  https://sketchfab.com/3d-models/acog-scope-286f48a9123c4f05be81147c85f8d0d7
+
+Clothing sources in bodies/cl_*.glb — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Bodies, faces and
+hair removed, clothes decimated and fitted to our own body at load (apps/web/src/render/rebind.ts fitToRest, items in
+apps/web/src/render/clothKit.ts). Some clothing items also come from the bodies above (rus_a, ukr_a, ukr_b, pmc_a,
+pmc_heavy, fem_police):
+  cl_man.glb     — "Just man" by vrimen
+                   https://sketchfab.com/3d-models/just-man-e77a26778dc14b3c8f4838fe6a827dc3
+  cl_civ.glb     — ".Fuse Civilian 1" by Leonardo Carvalho
+                   https://sketchfab.com/3d-models/fuse-civilian-1-6fc4bddf4d364e6b9fa2f050011e03ce
+  cl_tim.glb     — "Character with animation" by Yury Misiyuk
+                   https://sketchfab.com/3d-models/character-with-animation-31ea9ee9c82340bc8fd8da2343f9234d
+  cl_soldier.glb — "Soldier fully rigged character" by Bad boy for life
+                   https://sketchfab.com/3d-models/soldier-fully-rigged-character-d5ee1b51099741d2b5e4010f4f781263
+  cl_alan.glb    — "Alan Survivor(rigged)" by RRB STUDIOS
+                   https://sketchfab.com/3d-models/alan-survivorrigged-cca25ef7b9794d49b909022ed8e81f15

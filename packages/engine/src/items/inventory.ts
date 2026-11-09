@@ -40,8 +40,9 @@ export interface GridContainer {
   secure?: boolean;
 }
 
-export type Slot = 'primary' | 'secondary' | 'melee' | 'helmet' | 'armor' | 'rig' | 'backpack' | 'secure';
-export const SLOTS: readonly Slot[] = ['primary', 'secondary', 'melee', 'helmet', 'armor', 'rig', 'backpack', 'secure'];
+export type Slot = 'primary' | 'secondary' | 'melee' | 'helmet' | 'armor' | 'rig' | 'backpack' | 'secure' | 'hat' | 'top' | 'pants' | 'boots';
+export const SLOTS: readonly Slot[] = ['primary', 'secondary', 'melee', 'helmet', 'armor', 'rig', 'backpack', 'secure', 'hat', 'top', 'pants', 'boots'];
+export const CLOTHING_SLOTS = ['hat', 'top', 'pants', 'boots'] as const;
 
 export interface Equipment {
   slots: Record<Slot, ItemInstance | null>;
@@ -102,7 +103,7 @@ function factoryParts(d: ItemDef): { weight: number; value: number } {
 
 export function createEquipment(): Equipment {
   return {
-    slots: { primary: null, secondary: null, melee: null, helmet: null, armor: null, rig: null, backpack: null, secure: null },
+    slots: { primary: null, secondary: null, melee: null, helmet: null, armor: null, rig: null, backpack: null, secure: null, hat: null, top: null, pants: null, boots: null },
     pockets: createGrid(4, 1),
   };
 }
@@ -176,7 +177,7 @@ export function addItem(grid: GridContainer, item: ItemInstance): boolean {
 }
 
 /** The sort button's order: what you reach for first at the top. */
-const SORT_ORDER: readonly Category[] = ['weapon', 'melee', 'mod', 'ammo', 'armor', 'helmet', 'rig', 'backpack', 'secure', 'med', 'food', 'drink', 'valuable', 'junk', 'money'];
+const SORT_ORDER: readonly Category[] = ['weapon', 'melee', 'mod', 'ammo', 'armor', 'helmet', 'rig', 'backpack', 'secure', 'clothing', 'med', 'food', 'drink', 'valuable', 'junk', 'money'];
 
 /**
  * Tidy a grid: top up part-stacks of the same thing, then lay everything out again from the top left, grouped by
@@ -280,6 +281,11 @@ export function slotAccepts(slot: Slot, def: ItemDef): boolean {
       return def.category === 'backpack';
     case 'secure':
       return def.category === 'secure';
+    case 'hat':
+    case 'top':
+    case 'pants':
+    case 'boots':
+      return def.clothing?.slot === slot;
   }
 }
 

@@ -563,5 +563,65 @@
   "uid": "032b4d1dac2f4f1aabb32aed4d362d4b",
   "slug": "furn_bookshelf_soviet",
   "use": "furniture: Soviet bookshelf"
+ },
+ {
+  "uid": "e77a26778dc14b3c8f4838fe6a827dc3",
+  "slug": "cl_just_man",
+  "use": "clothing: civilian jacket, trousers, shoes"
+ },
+ {
+  "uid": "f918c22225b0458095b833872e7c12ba",
+  "slug": "cl_police_m",
+  "use": "clothing: police top, trousers, shoes, cap"
+ },
+ {
+  "uid": "3ce345aeb369419c9f8da17ee78e4287",
+  "slug": "cl_gopnik",
+  "use": "clothing: tracksuit, cap"
+ },
+ {
+  "uid": "2cf897e60140403ba8368ea9e83c1e56",
+  "slug": "cl_hoodie",
+  "use": "clothing: hoodie"
+ },
+ {
+  "uid": "aa68b5e7994b4c518cfb93697875bece",
+  "slug": "cl_combat_boots",
+  "use": "clothing: combat boots"
+ },
+ {
+  "uid": "e9c56308a67d4a3db62e914fafa4d198",
+  "slug": "cl_soldier_bamen",
+  "use": "clothing: field uniform"
+ },
+ {
+  "uid": "d5ee1b51099741d2b5e4010f4f781263",
+  "slug": "cl_soldier_rigged",
+  "use": "clothing: field uniform"
+ },
+ {
+  "uid": "f56ffc64d18c40cf95d17559542ca44c",
+  "slug": "cl_survivor",
+  "use": "clothing: survivor"
+ },
+ {
+  "uid": "6fc4bddf4d364e6b9fa2f050011e03ce",
+  "slug": "cl_fuse_civ",
+  "use": "clothing: civilian"
+ },
+ {
+  "uid": "31ea9ee9c82340bc8fd8da2343f9234d",
+  "slug": "cl_fuse_tim",
+  "use": "clothing: civilian"
+ },
+ {
+  "uid": "1046cd56a67d4b79902e47aa0daf3ccb",
+  "slug": "cl_ushanka",
+  "use": "clothing: ushanka"
+ },
+ {
+  "uid": "81d98feb6e36492a89dd839c80229c50",
+  "slug": "cl_balaclava",
+  "use": "clothing: balaclava"
  }
 ]

@@ -1,0 +1,905 @@
+{
+ "schema_version": 1,
+ "art_direction_brief": "docs/art/clothing-brief.md",
+ "assets": [
+  {
+   "id": "c_green_cap",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/pmc_a.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/military-tactical-suit-lowpolygameready-ef698ce36b1545a78ce592dd3db4c7ed",
+    "creator": "DanlyVostok",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Military tactical suit (LowPolyGameReady)\" by DanlyVostok, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_patrol_cap",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_soldier.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/soldier-fully-rigged-character-d5ee1b51099741d2b5e4010f4f781263",
+    "creator": "Bad boy for life",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Soldier fully rigged character\" by Bad boy for life, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_balaclava",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/rus_a.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/russian-soldier-e9aa211b67264dc086af1d2f4d4e3d84",
+    "creator": "doctortex",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Russian Soldier\" by doctortex, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_balaclava_tan",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/ukr_a.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/ukrainian-soldier-94f74f6bdd994733a8a40c7ff088e12f",
+    "creator": "doctortex",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Ukrainian Soldier\" by doctortex, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_bomber",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_man.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/just-man-e77a26778dc14b3c8f4838fe6a827dc3",
+    "creator": "vrimen",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Just man\" by vrimen, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_knit",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_civ.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/fuse-civilian-1-6fc4bddf4d364e6b9fa2f050011e03ce",
+    "creator": "Leonardo Carvalho",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\".Fuse Civilian 1\" by Leonardo Carvalho, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_survivor_top",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_alan.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/alan-survivorrigged-cca25ef7b9794d49b909022ed8e81f15",
+    "creator": "RRB STUDIOS",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Alan Survivor(rigged)\" by RRB STUDIOS, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_police_shirt",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/fem_police.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/female-police-officer-fully-rigged-3d-character-e4f9e18ac0e34312a2e26cb1fd180fe4",
+    "creator": "Bad boy for life",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Female Police Officer fully rigged 3d character\" by Bad boy for life, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_smock",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/rus_a.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/russian-soldier-e9aa211b67264dc086af1d2f4d4e3d84",
+    "creator": "doctortex",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Russian Soldier\" by doctortex, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_acu_shirt",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_soldier.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/soldier-fully-rigged-character-d5ee1b51099741d2b5e4010f4f781263",
+    "creator": "Bad boy for life",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Soldier fully rigged character\" by Bad boy for life, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_kitel",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/pmc_heavy.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "see CREDITS.txt",
+    "creator": "DanlyVostok",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Soldier Full Tactical Gear (LowPolyGameReady)\" by DanlyVostok, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_trousers",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_man.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/just-man-e77a26778dc14b3c8f4838fe6a827dc3",
+    "creator": "vrimen",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Just man\" by vrimen, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_work_pants",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_civ.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/fuse-civilian-1-6fc4bddf4d364e6b9fa2f050011e03ce",
+    "creator": "Leonardo Carvalho",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\".Fuse Civilian 1\" by Leonardo Carvalho, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_ripped_jeans",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_tim.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/character-with-animation-31ea9ee9c82340bc8fd8da2343f9234d",
+    "creator": "Yury Misiyuk",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Character with animation\" by Yury Misiyuk, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_police_pants",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/fem_police.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/female-police-officer-fully-rigged-3d-character-e4f9e18ac0e34312a2e26cb1fd180fe4",
+    "creator": "Bad boy for life",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Female Police Officer\" by Bad boy for life, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_kneepad_pants",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_alan.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/alan-survivorrigged-cca25ef7b9794d49b909022ed8e81f15",
+    "creator": "RRB STUDIOS",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Alan Survivor(rigged)\" by RRB STUDIOS, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_flora_pants",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/rus_a.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/russian-soldier-e9aa211b67264dc086af1d2f4d4e3d84",
+    "creator": "doctortex",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Russian Soldier\" by doctortex, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_desert_pants",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/ukr_b.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/ukrainian-soldier-b5d8f735b24c49f7ab5b9cc21af4b229",
+    "creator": "doctortex",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Ukrainian Soldier\" by doctortex, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_acu_pants",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_soldier.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/soldier-fully-rigged-character-d5ee1b51099741d2b5e4010f4f781263",
+    "creator": "Bad boy for life",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Soldier fully rigged character\" by Bad boy for life, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_officer_pants",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/pmc_heavy.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "see CREDITS.txt",
+    "creator": "DanlyVostok",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Soldier Full Tactical Gear (LowPolyGameReady)\" by DanlyVostok, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_shoes",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_man.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/just-man-e77a26778dc14b3c8f4838fe6a827dc3",
+    "creator": "vrimen",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Just man\" by vrimen, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_sneakers",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_tim.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/character-with-animation-31ea9ee9c82340bc8fd8da2343f9234d",
+    "creator": "Yury Misiyuk",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Character with animation\" by Yury Misiyuk, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_tall_boots",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_civ.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/fuse-civilian-1-6fc4bddf4d364e6b9fa2f050011e03ce",
+    "creator": "Leonardo Carvalho",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\".Fuse Civilian 1\" by Leonardo Carvalho, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_police_shoes",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/fem_police.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/female-police-officer-fully-rigged-3d-character-e4f9e18ac0e34312a2e26cb1fd180fe4",
+    "creator": "Bad boy for life",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Female Police Officer\" by Bad boy for life, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_kirza",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/rus_a.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/russian-soldier-e9aa211b67264dc086af1d2f4d4e3d84",
+    "creator": "doctortex",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Russian Soldier\" by doctortex, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_combat_boots",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_soldier.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/soldier-fully-rigged-character-d5ee1b51099741d2b5e4010f4f781263",
+    "creator": "Bad boy for life",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Soldier fully rigged character\" by Bad boy for life, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_desert_boots",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/ukr_b.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/ukrainian-soldier-b5d8f735b24c49f7ab5b9cc21af4b229",
+    "creator": "doctortex",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Ukrainian Soldier\" by doctortex, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_survivor_boots",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_alan.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/alan-survivorrigged-cca25ef7b9794d49b909022ed8e81f15",
+    "creator": "RRB STUDIOS",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Alan Survivor(rigged)\" by RRB STUDIOS, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "c_officer_boots",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/pmc_heavy.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "see CREDITS.txt",
+    "creator": "DanlyVostok",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Soldier Full Tactical Gear (LowPolyGameReady)\" by DanlyVostok, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  }
+ ]
+}

@@ -32,6 +32,12 @@ export function GearPanel({ owner, cell = 48, title, compact = false, preview }:
             <EquipSlot owner={owner} slot="rig" w={2} h={2} cell={cell} />
             <EquipSlot owner={owner} slot="backpack" w={2} h={2} cell={cell} />
           </div>
+          <div className="row">
+            <EquipSlot owner={owner} slot="hat" w={1.25} h={1.25} cell={cell} />
+            <EquipSlot owner={owner} slot="top" w={1.25} h={1.25} cell={cell} />
+            <EquipSlot owner={owner} slot="pants" w={1.25} h={1.25} cell={cell} />
+            <EquipSlot owner={owner} slot="boots" w={1.25} h={1.25} cell={cell} />
+          </div>
           {!owner.startsWith('corpse:') && (
             <div className="row">
               <EquipSlot owner={owner} slot="secure" w={2} h={2} cell={cell} />

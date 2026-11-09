@@ -12,7 +12,7 @@ import {
   type Actor,
   type ItemInstance,
 } from '@ashfall/engine';
-import { BODY_IDS, bodySex, loadAssets, loadBodies } from '../render/assets';
+import { BODY_IDS, bodySex, CLOTH_SOURCES, loadAssets, loadBodies } from '../render/assets';
 import { buildGun } from '../render/gunsmith';
 import { assembleGun, loadWeaponParts } from '../render/weaponAssembly';
 import { attachSkinned, cloneHuman } from '../render/human';
@@ -117,6 +117,44 @@ export function CharLab() {
       cam.position.set(0, 2.2, Math.max(9.5, span * 1.25));
       cam.lookAt(0, 1.0, 0);
       // Console handle for close-ups: __bodyCam.position.set(…); __bodyCam.lookAt(…).
+      (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
+    }
+    if (view === 'kit') {
+      // Each body bare, then in a carrier, helmet and rig: worn kit must replace the model's own, never stack on it.
+      // `&ids=pmc_a,fem_jacket` (default: the player's two).
+      cast.length = 0;
+      const only = new URLSearchParams(location.hash.split('?')[1] ?? '').get('ids');
+      for (const id of only ? only.split(',') : ['pmc_a', 'fem_jacket']) {
+        const look = { ...lookFor(3, 'raider'), body: id || undefined, sex: id ? bodySex(id) : ('m' as const) };
+        cast.push({ look, eq: ['ak74m:primary'], active: 'primary', speed: 0 });
+        cast.push({ look, eq: ['ak74m:primary', 'trooper:armor', 'zsh:helmet', 'r_alpha:rig'], active: 'primary', speed: 0 });
+      }
+      cam.position.set(0, 1.75, Math.max(4.5, cast.length * 0.9));
+      cam.lookAt(0, 1.3, 0);
+      (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
+    }
+    if (view === 'wear') {
+      // Real clothes (clothKit.ts) fitted to our own bodies: outfits from the items, men and women.
+      cast.length = 0;
+      const outfits: [string, ...string[]][] = [
+        ['m', 'c_bomber', 'c_trousers', 'c_shoes'],
+        ['m', 'c_knit', 'c_work_pants', 'c_tall_boots', 'c_green_cap'],
+        ['m', 'c_acu_shirt', 'c_acu_pants', 'c_combat_boots', 'c_patrol_cap'],
+        ['m', 'c_smock', 'c_flora_pants', 'c_kirza', 'c_balaclava'],
+        ['m', 'c_kitel', 'c_officer_pants', 'c_officer_boots'],
+        ['f', 'c_survivor_top', 'c_kneepad_pants', 'c_survivor_boots'],
+        ['f', 'c_police_shirt', 'c_police_pants', 'c_police_shoes'],
+        ['m', 'c_knit', 'c_ripped_jeans', 'c_sneakers'],
+        ['f', 'c_bomber', 'c_desert_pants', 'c_desert_boots', 'c_balaclava_tan'],
+        ['m'],
+      ];
+      outfits.forEach(([sex, ...ids], i) => {
+        const base = lookFor(i + 60, 'scav');
+        const eq = ids.map((id) => `${id}:${getDef(id).clothing!.slot}`);
+        cast.push({ look: { ...base, sex: sex as 'm' | 'f', hair: sex === 'f' ? 'ponytail' : base.hair, body: undefined, hat: null, clothed: true }, eq, active: 'melee', speed: 0 });
+      });
+      cam.position.set(0, 1.5, 10);
+      cam.lookAt(0, 1.0, 0);
       (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
     }
     if (view === 'gestures') {
@@ -256,7 +294,7 @@ export function CharLab() {
     const views: { v: CharacterView; a: Actor }[] = [];
     const mixers: THREE.AnimationMixer[] = [];
     loadAssets().then(async (lib) => {
-      await loadBodies(lib, [...BODY_IDS]);
+      await loadBodies(lib, [...BODY_IDS, ...CLOTH_SOURCES]);
       if (view === 'humans') {
         cast.length = 0;
         const styles = [...lib.hair.keys()].filter((k) => k.startsWith('Hair_'));
@@ -431,7 +469,10 @@ export function CharLab() {
       view === 'hats' ||
       view === 'treat' ||
       view === 'parts' ||
-      view === 'raw'
+      view === 'raw' ||
+      view === 'kit' ||
+      view === 'clothes' ||
+      view === 'wear'
         ? []
         : ['lena', 'mykola', 'vera']) {
         const img = document.createElement('img');
@@ -443,6 +484,7 @@ export function CharLab() {
         document.body.appendChild(img);
       }
       (window as unknown as { __labReady?: boolean }).__labReady = true;
+      (window as unknown as { __lab: unknown }).__lab = views;
     });
     let last = performance.now();
     const tick = (now: number) => {

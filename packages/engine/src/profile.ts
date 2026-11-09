@@ -1,5 +1,5 @@
-import { addItem, carryGrids, removeItem, type ItemInstance, createEquipment, createGrid, createItem, type Equipment, type GridContainer, SLOTS } from './items/inventory';
-import { generateLoadout, starterKit } from './items/loadouts';
+import { addItem, carryGrids, removeItem, type ItemInstance, createEquipment, createGrid, createItem, type Equipment, type GridContainer, SLOTS, CLOTHING_SLOTS } from './items/inventory';
+import { generateLoadout, starterClothes, starterKit } from './items/loadouts';
 import { getDef, ITEMS } from './items/defs';
 import { upgradeLegacyGun } from './items/mods';
 import { Rng } from './core/rng';
@@ -10,7 +10,7 @@ import { applyRaidToTasks, type TaskState } from './tasks';
 import { newHideout, type HideoutState } from './hideout';
 import { companionLevel, companionRaidXp, companionState, gearTierFor, upgradeCompanionGear, type CompanionState } from './companions';
 
-export const PROFILE_VERSION = 8;
+export const PROFILE_VERSION = 9;
 
 export interface ProfileStats {
   raids: number;
@@ -121,6 +121,21 @@ function rebuildGuns(out: Profile): void {
   for (const m of spare) addItem(out.stash, m);
 }
 
+/** Items whose kind no longer exists (renamed or cut) disappear instead of breaking the save. */
+function dropUnknownItems(out: Profile): void {
+  const ok = (it: unknown) => !!it && typeof (it as ItemInstance).def === 'string' && !!ITEMS[(it as ItemInstance).def];
+  const visit = (o: unknown): void => {
+    if (!o || typeof o !== 'object') return;
+    if (Array.isArray(o)) return o.forEach(visit);
+    const rec = o as Record<string, unknown>;
+    if (Array.isArray(rec.items) && typeof rec.w === 'number') rec.items = (rec.items as { item: unknown }[]).filter((p) => ok(p.item));
+    if (rec.slots && typeof rec.slots === 'object')
+      for (const [k, v] of Object.entries(rec.slots as Record<string, unknown>)) if (v && !ok(v)) (rec.slots as Record<string, unknown>)[k] = null;
+    for (const v of Object.values(rec)) visit(v);
+  };
+  visit(out);
+}
+
 export function migrateProfile(raw: unknown): Profile {
   if (!raw || typeof raw !== 'object') return createProfile();
   const p = raw as Partial<Profile> & { version?: number };
@@ -178,6 +193,18 @@ export function migrateProfile(raw: unknown): Profile {
     rebuildGuns(out);
     out.version = 8;
   }
+  if (out.version < 9) {
+    // v8 → v9: clothes are items in four new slots. Everyone's kit gets the slots; you get dressed.
+    const slots = (eq: Equipment | undefined) => {
+      if (!eq?.slots) return;
+      for (const sl of CLOTHING_SLOTS) eq.slots[sl] ??= null;
+    };
+    slots(out.equipment);
+    for (const eq of Object.values(out.companionEq ?? {})) slots(eq);
+    starterClothes(out.equipment);
+    out.version = 9;
+  }
+  dropUnknownItems(out);
   out.companions ??= {};
   out.settings.difficulty ??= 'normal';
   out.grave ??= null;

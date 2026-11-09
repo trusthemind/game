@@ -14,7 +14,7 @@ import {
   VignetteEffect,
 } from 'postprocessing';
 import { VEHICLE_DEFS, type Interactable, type Raid, type RaidEvent } from '@ashfall/engine';
-import { CharacterView, disposeCharacterCaches, lookFor, type Appearance } from './character';
+import { CharacterView, disposeCharacterCaches, actorLook, lookBodies, lookFor, type Appearance } from './character';
 import { bodySettled, loadBodies, type AssetLibrary } from './assets';
 import { Effects } from './effects';
 import { SanitizeEffect, SharpenEffect } from './sharpen';
@@ -265,7 +265,7 @@ export class GameRenderer {
   /** Bodies worn by the player and everyone on the map at the start (loaded before the first frame). */
   bodiesAtStart(): string[] {
     const p = this.raid.player;
-    return this.raid.actors.map((a) => (a === p ? this.playerLook : lookFor(a.id, a.archetype, a.npcId, a.bossId)).body).filter((b): b is string => !!b);
+    return [...new Set(this.raid.actors.flatMap((a) => lookBodies(actorLook(a === p ? this.playerLook : lookFor(a.id, a.archetype, a.npcId, a.bossId, !!a.eq.slots.armor), a.eq))))];
   }
 
   private prewarm(): void {
@@ -457,10 +457,10 @@ export class GameRenderer {
     for (const a of raid.actors) {
       let v = this.views.get(a.id);
       if (!v) {
-        const look = a === p ? this.playerLook : lookFor(a.id, a.archetype, a.npcId, a.bossId);
+        const look = actorLook(a === p ? this.playerLook : lookFor(a.id, a.archetype, a.npcId, a.bossId, !!a.eq.slots.armor), a.eq);
         // Someone who spawned mid-raid in a body nobody wore yet appears once it has loaded.
-        if (!bodySettled(this.lib, look.body)) {
-          void loadBodies(this.lib, [look.body]);
+        if (!lookBodies(look).every((b) => bodySettled(this.lib, b))) {
+          void loadBodies(this.lib, lookBodies(look));
           continue;
         }
         v = new CharacterView(this.lib, look, this.uniforms, this.preset.shadows);

@@ -52,6 +52,8 @@ export const BODY_IDS = [
   'fem_leather',
 ] as const;
 export type BodyId = (typeof BODY_IDS)[number];
+/** Rigged models kept only for their clothes (models/bodies/cl_*.glb, see CLOTH_KIT). */
+export const CLOTH_SOURCES = ['cl_man', 'cl_civ', 'cl_soldier', 'cl_tim', 'cl_alan'] as const;
 /** Female bodies are the fem_* ones (their wearer gets female voice, proportions and portrait). */
 export const bodySex = (id: string): 'm' | 'f' => (id.startsWith('fem') ? 'f' : 'm');
 
@@ -78,7 +80,10 @@ export function loadBodies(lib: AssetLibrary, ids: Iterable<string | undefined>)
           cleanModel(g.scene);
           lib.bodies.set(id, g);
         },
-        () => void failedBodies.add(id),
+        (e) => {
+          console.warn(`body ${id} failed to load`, e);
+          failedBodies.add(id);
+        },
       );
       bodyLoads.set(id, p);
     }

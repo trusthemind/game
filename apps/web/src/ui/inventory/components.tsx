@@ -35,8 +35,11 @@ const useTip = create<{ item: ItemInstance | null; x: number; y: number; set(i: 
   set: (item, x = 0, y = 0) => {
     set({ item, x, y });
     if (item && useInspect.getState().item !== item) useInspect.setState({ item });
+    if (useHoverItem.getState().item !== item) useHoverItem.setState({ item });
   },
 }));
+/** The item under the pointer right now (null once it leaves): the character preview tries clothes on with it. */
+export const useHoverItem = create<{ item: ItemInstance | null }>(() => ({ item: null }));
 /** Last item the pointer rested on (stays after the pointer leaves), for the inspector panel. */
 export const useInspect = create<{ item: ItemInstance | null }>(() => ({ item: null }));
 const useMenu = create<{ actions: MenuAction[]; x: number; y: number; open(a: MenuAction[], x: number, y: number): void; close(): void }>((set) => ({
@@ -288,6 +291,10 @@ const SLOT_LABEL: Record<Slot, string> = {
   rig: 'Tactical rig',
   backpack: 'Backpack',
   secure: 'Secure',
+  hat: 'Headwear',
+  top: 'Top',
+  pants: 'Trousers',
+  boots: 'Footwear',
 };
 
 export function EquipSlot({ owner, slot, w = 2, h = 2, cell = 52 }: { owner: string; slot: Slot; w?: number; h?: number; cell?: number }) {

@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { getDef, type ItemInstance } from '@ashfall/engine';
-import { getAssets, loadAssets, type AssetLibrary } from './assets';
+import { bodySettled, getAssets, loadAssets, loadBodies, type AssetLibrary } from './assets';
 import { buildGun, gunKey, MOD_MODEL } from './gunsmith';
 import { loadWeaponParts, weaponParts } from './weaponAssembly';
 import { meleeModel } from './melee3d';
+import { clothingModel, clothingSource } from './character';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import {
   ammoModel,
@@ -37,8 +38,27 @@ export function thumbKey(item: ItemInstance): string | null {
   if (d.weapon) return `g:${gunKey(item)}`;
   // A gun part with its own model gets a new picture once the parts have loaded.
   if (d.mod && weaponParts()?.has(item.def)) return `i:${item.def}+`;
+  // Clothes are drawn from the model they come from: a new picture once it has loaded.
+  if (d.clothing) {
+    const src = clothingSource(item.def);
+    const lib = getAssets();
+    // Settled = loaded or failed for good (then the flat icon stays): asking again would loop.
+    if (src && lib && !bodySettled(lib, src)) {
+      // Asked once per model: every icon asks on every render, and each answer redraws them all.
+      if (!clothAsked.has(src)) {
+        clothAsked.add(src);
+        void loadBodies(lib, [src]).then(() => {
+          for (const fn of listeners) fn();
+        });
+      }
+      return `i:${item.def}`;
+    }
+    return `i:${item.def}+`;
+  }
   return `i:${item.def}`;
 }
+
+const clothAsked = new Set<string>();
 
 // Guns and parts drawn from parts: once those load, every picture that can use them is asked for again.
 let partsAsked = false;
@@ -88,7 +108,8 @@ function schedule(): void {
   else void loadAssets().then(() => requestAnimationFrame(run));
 }
 
-type View = 'side' | 'front' | 'top';
+/** 'flat': clothes laid out facing the camera, barely turned. */
+type View = 'side' | 'front' | 'top' | 'flat';
 
 function tinted(src: THREE.Object3D, tint: number): THREE.Object3D {
   const o = src.clone(true);
@@ -121,6 +142,7 @@ export function itemModel(lib: AssetLibrary, item: ItemInstance): { obj: THREE.O
   const side = (obj: THREE.Object3D | null) => (obj ? { obj, view: 'side' as const } : null);
   const front = (obj: THREE.Object3D | null) => (obj ? { obj, view: 'front' as const } : null);
   const top = (obj: THREE.Object3D | null) => (obj ? { obj, view: 'top' as const } : null);
+  const flat = (obj: THREE.Object3D | null) => (obj ? { obj, view: 'flat' as const } : null);
   switch (d.category) {
     case 'weapon': {
       const g = buildGun(lib, item);
@@ -186,6 +208,8 @@ export function itemModel(lib: AssetLibrary, item: ItemInstance): { obj: THREE.O
       return front(miscModel(id));
     case 'secure':
       return front(miscModel(id));
+    case 'clothing':
+      return d.clothing?.slot === 'hat' ? front(clothingModel(lib, id)) : flat(clothingModel(lib, id));
     default: {
       const m = miscModel(id);
       return m ? top(m) : null;
@@ -249,6 +273,8 @@ function render(lib: AssetLibrary, item: ItemInstance): string | null {
   g.add(model.obj);
   if (model.view === 'front') {
     g.rotation.set(0.32, -0.55, 0);
+  } else if (model.view === 'flat') {
+    g.rotation.set(0.12, -0.22, 0);
   } else if (model.view === 'top') {
     g.rotation.set(0.95, -0.35, 0);
   } else {

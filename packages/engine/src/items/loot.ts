@@ -20,11 +20,18 @@ const JUNK: Table = [['bolts', 8], ['wires', 8], ['battery', 2], ['tank', 3], ['
 const MODS: Table = [['red_dot', 5], ['tac_light', 5], ['fgrip', 5], ['brake', 4], ['stock_tac', 4], ['holo', 2.5], ['mag_sks20', 3], ['mag_ak45', 2], ['mag_akm40', 2],
   ['mag_9_33', 2], ['sup_9', 1.5], ['sup_545', 1], ['sup_762', 1], ['scope_4x', 1], ['sup_556', 0.6], ['mag_stanag60', 0.6], ['mag_saiga20', 0.5], ['mag_rpk95', 0.3],
   ['sup_54r', 0.4], ['scope_8x', 0.3]];
+/** Clothes in wardrobes (about half of what turns up there): the common stuff mostly, the camo now and then. */
+const CLOTHES: Table = [['c_green_cap', 1.2], ['c_patrol_cap', 0.3], ['c_balaclava', 1.2], ['c_balaclava_tan', 0.8],
+  ['c_bomber', 0.5], ['c_knit', 1.5], ['c_survivor_top', 1], ['c_police_shirt', 0.6], ['c_smock', 0.4], ['c_acu_shirt', 0.4], ['c_kitel', 0.15],
+  ['c_trousers', 1.5], ['c_work_pants', 1.5], ['c_ripped_jeans', 1.2], ['c_police_pants', 0.6], ['c_kneepad_pants', 0.4], ['c_flora_pants', 0.4],
+  ['c_desert_pants', 0.4], ['c_acu_pants', 0.4], ['c_officer_pants', 0.15],
+  ['c_shoes', 1.2], ['c_sneakers', 1.2], ['c_tall_boots', 1], ['c_police_shoes', 0.6], ['c_kirza', 1], ['c_combat_boots', 0.4], ['c_desert_boots', 0.4],
+  ['c_survivor_boots', 0.4], ['c_officer_boots', 0.15]];
 const SMALL_VAL: Table = [['chain', 6], ['rolex', 2], ['cpu', 2], ['flash', 2], ['bitcoin', 0.5], ['roubles', 8]];
 
 export const CONTAINERS: Record<ContainerKind, ContainerSpec> = {
   wardrobe: { label: 'Wardrobe', grid: [4, 4], rolls: [0, 3], searchTime: 0.7,
-    table: [['b_sling', 4], ['b_daypack', 2], ['r_scav', 4], ['bat', 1.2], ['knife', 1.5], ['hatchet', 0.8], ['paca', 1.5], ['ssh68', 2], ['roubles', 4], ['chain', 2], ['water', 1]] },
+    table: [...CLOTHES.map(([id, w]) => [id, w * 0.6] as const), ['b_sling', 4], ['b_daypack', 2], ['r_scav', 4], ['bat', 1.2], ['knife', 1.5], ['hatchet', 0.8], ['paca', 1.5], ['ssh68', 2], ['roubles', 4], ['chain', 2], ['water', 1]] },
   fridge: { label: 'Fridge', grid: [3, 4], rolls: [1, 4], searchTime: 0.5, table: FOOD },
 
   drawer: { label: 'Drawer', grid: [4, 2], rolls: [0, 3], searchTime: 0.55,

@@ -561,6 +561,13 @@ const BODIES = {
   ukr_a: ['char_ukr_a', 16000, null],
   ukr_b: ['char_ukr_b', 18000, null],
   rus_a: ['char_rus_a', 16000, null],
+  // Clothing sources only (not whole bodies: see CLOTH_KIT in apps/web/src/render/clothKit.ts). Bodies, faces and
+  // hair are dropped, the clothes kept with the skeleton they're skinned to. Dropped by material or mesh name.
+  cl_civ: ['cl_fuse_civ', 7000, /^Civilian 1_(Body|Moustache|Beard|Hair)_0$/],
+  cl_tim: ['cl_fuse_tim', 7000, /^(Eyes|default|Body)_/],
+  cl_soldier: ['cl_soldier_rigged', 7000, /^(Body|Eyes|Eyelashes|Moustaches|Beards|Eyewear)_/],
+  cl_man: ['cl_just_man', 10000, /^(body|eye_|topjaw|lowerjaw|tongue|head)/],
+  cl_alan: ['char_f_alan_survivor', 8000, /^Wolf3D_(Eye|Body|Hair|Skin|Teeth)$/],
 };
 
 async function buildBodies() {
@@ -569,7 +576,10 @@ async function buildBodies() {
   await MeshoptSimplifier.ready;
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
   fs.mkdirSync(path.join(OUT, 'bodies'), { recursive: true });
+  // BODY_ONLY=cl_civ,cl_man rebuilds just those.
+  const pick = process.env.BODY_ONLY ? new Set(process.env.BODY_ONLY.split(',')) : null;
   for (const [id, [slug, budget, drop]] of Object.entries(BODIES)) {
+    if (pick && !pick.has(id)) continue;
     const src = path.join(SRC, 'sketchfab', slug, 'scene.gltf');
     if (!fs.existsSync(src)) {
       console.warn(`  ! missing ${slug} (run tools/assets/sketchfab.mjs)`);
@@ -583,7 +593,7 @@ async function buildBodies() {
     // Unskinned meshes (the guns, knives and goggles these come holding) are never drawn: the rebind skips them.
     for (const n of root.listNodes()) {
       const m = n.getMesh();
-      if (m && (!n.getSkin() || (drop && m.listPrimitives().some((p) => drop.test(p.getMaterial()?.getName() ?? ''))))) n.setMesh(null);
+      if (m && (!n.getSkin() || (drop && (drop.test(m.getName()) || m.listPrimitives().some((p) => drop.test(p.getMaterial()?.getName() ?? '')))))) n.setMesh(null);
     }
     // Fuse exports mark every material as blended, so boots and trousers sort behind the skin they cover.
     // Cut-out alpha keeps hair cards and lashes and draws in depth order.

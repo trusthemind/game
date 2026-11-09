@@ -194,7 +194,7 @@ function sampleItem(id: string): ItemInstance {
   return it;
 }
 
-const CATS: (Category | 'all')[] = ['all', 'weapon', 'melee', 'ammo', 'armor', 'helmet', 'rig', 'backpack', 'med', 'food', 'drink'];
+const CATS: (Category | 'all')[] = ['all', 'weapon', 'melee', 'ammo', 'armor', 'helmet', 'mod', 'rig', 'backpack', 'clothing', 'med', 'food', 'drink'];
 
 function TraderTab() {
   const profile = useProfile((s) => s.profile)!;
@@ -222,7 +222,7 @@ function TraderTab() {
         <div className="chips">
           {CATS.map((c) => (
             <button key={c} className={`chip ${cat === c ? 'on' : ''}`} onClick={() => setCat(c)}>
-              {c}
+              {c === 'mod' ? 'weapon mods' : c}
             </button>
           ))}
         </div>

@@ -93,6 +93,22 @@ for (const s of ['l', 'r'] as const) {
     for (let k = 1; k <= 3; k++) MAP[`${S}_${f}${k}`] = `${ours}_0${k}_${s}`;
 }
 
+// Blender's human metarig (names as three.js leaves them: no dots).
+Object.assign(MAP, { spine: 'pelvis', spine001: 'spine_01', spine002: 'spine_02', spine003: 'spine_03', spine004: 'neck_01', spine006: 'Head' });
+for (const s of ['l', 'r'] as const) {
+  const S = s.toUpperCase();
+  Object.assign(MAP, {
+    [`shoulder${S}`]: `clavicle_${s}`,
+    [`upper_arm${S}`]: `upperarm_${s}`,
+    [`forearm${S}`]: `lowerarm_${s}`,
+    [`hand${S}`]: `hand_${s}`,
+    [`thigh${S}`]: `thigh_${s}`,
+    [`shin${S}`]: `calf_${s}`,
+    [`foot${S}`]: `foot_${s}`,
+    [`toe${S}`]: `ball_${s}`,
+  });
+}
+
 /** Child each of our bones should point at when the pose is matched (direction only). */
 const AIM: Record<string, string> = {
   pelvis: 'spine_01',
@@ -126,6 +142,9 @@ const clean = (name: string) =>
   name
     .replace(/^mixamorig[:_]?/, '')
     .replace(/^CC_Base_/, '')
+    // HumanIK (Character3_Hips …) and Blender's metarig (spine003_Metarig: three.js drops the dots).
+    .replace(/^Character\d+_/, '')
+    .replace(/_Metarig$/, '')
     .replace(/_\d+$/, '');
 
 export interface Rebound {
@@ -295,6 +314,8 @@ export function rebindToSkeleton(
     const mats = Array.isArray(sm.material) ? sm.material.map(materialFor) : materialFor(sm.material);
     const mesh = new THREE.SkinnedMesh(g, mats);
     mesh.name = sm.name;
+    // The source material's name says what a piece is (helmet, plate, pouch…): see SF_KIT in character.ts.
+    mesh.userData.part = (Array.isArray(sm.material) ? sm.material[0]! : sm.material).name;
     mesh.frustumCulled = false;
     model.add(mesh);
     mesh.bind(new THREE.Skeleton(bones, inverses), new THREE.Matrix4());
@@ -307,4 +328,192 @@ export function rebindToSkeleton(
   for (const [b, rq] of restQ) b.quaternion.copy(rq);
   model.updateMatrixWorld(true);
   return { meshes: out };
+}
+
+/**
+ * Put clothes from a rigged model onto OUR body as it is (the opposite of rebindToSkeleton, which reshapes the
+ * skeleton to the model): each source joint is carried onto the matching bone of our rest pose (moved, swung to
+ * point the same way, stretched along the bone to its length), and every vertex follows its joints by its skin
+ * weights. Pieces from different models then all fit the same body and skeleton, so a jacket from one and
+ * trousers from another can be worn together, over our own head and hands.
+ *
+ * `keep` picks the pieces (by "<glTF mesh name> <material name>"); the rest of the model is left out.
+ */
+export function fitToRest(
+  src: THREE.Object3D,
+  meshNames: Map<THREE.Object3D, string>,
+  pose: THREE.AnimationClip | undefined,
+  model: THREE.Object3D,
+  bones: THREE.Bone[],
+  materialFor: (m: THREE.Material) => THREE.Material,
+  keep: (meshName: string) => boolean,
+  cacheKey: string,
+): THREE.SkinnedMesh[] {
+  if (pose) {
+    const mx = new THREE.AnimationMixer(src);
+    mx.clipAction(pose).play();
+    mx.update(0);
+    mx.stopAllAction();
+  }
+  src.updateMatrixWorld(true);
+  model.updateMatrixWorld(true);
+  const toModel = new THREE.Matrix4().copy(model.matrixWorld).invert();
+  const ours = new Map(bones.map((b) => [b.name, b]));
+  const modelPos = (b: THREE.Object3D) => new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(toModel, b.matrixWorld));
+  const skinned: THREE.SkinnedMesh[] = [];
+  src.traverse((o) => {
+    const sm = o as THREE.SkinnedMesh;
+    if (!sm.isSkinnedMesh) return;
+    const mat = (Array.isArray(sm.material) ? sm.material[0]! : sm.material).name;
+    if (keep(`${meshNames.get(o) ?? o.name} ${mat}`)) skinned.push(sm);
+  });
+  if (!skinned.length) return [];
+  // Joints of the whole model (not just the kept pieces), as drawn in this pose.
+  const srcBind = new Map<string, THREE.Matrix4>();
+  src.traverse((o) => {
+    const sm = o as THREE.SkinnedMesh;
+    if (!sm.isSkinnedMesh) return;
+    sm.skeleton.update();
+    for (const b of sm.skeleton.bones) {
+      const name = MAP[clean(b.name)];
+      if (name && !srcBind.has(name)) srcBind.set(name, b.matrixWorld.clone());
+    }
+  });
+  const sp = (name: string) => (srcBind.get(name) ? new THREE.Vector3().setFromMatrixPosition(srcBind.get(name)!) : null);
+  // Same similarity transform as rebindToSkeleton: our height, pelvis over pelvis, facing our way.
+  const footS = Math.min(sp('foot_l')?.y ?? 0, sp('foot_r')?.y ?? 0);
+  const footT = Math.min(modelPos(ours.get('foot_l')!).y, modelPos(ours.get('foot_r')!).y);
+  let k = (modelPos(ours.get('Head')!).y - footT) / ((sp('Head')?.y ?? 1) - footS);
+  const chain = CHAIN.filter((n) => srcBind.has(n));
+  const along = (at: (n: string) => THREE.Vector3) => chain.slice(1).reduce((sum, n, i) => sum + at(n).distanceTo(at(chain[i]!)), 0);
+  const chainS = along((n) => sp(n)!);
+  const chainT = along((n) => modelPos(ours.get(n)!));
+  if (((sp('Head')?.y ?? 1) - footS) / chainS < (0.92 * (modelPos(ours.get('Head')!).y - footT)) / chainT) k = chainT / chainS;
+  const pelS = sp('pelvis')!;
+  const pelT = modelPos(ours.get('pelvis')!);
+  const flip = Math.sign(sp('upperarm_l')!.x - pelS.x) !== Math.sign(modelPos(ours.get('upperarm_l')!).x - pelT.x);
+  const T = new THREE.Matrix4()
+    .makeTranslation(pelT.x, footT, pelT.z)
+    .multiply(new THREE.Matrix4().makeRotationY(flip ? Math.PI : 0))
+    .multiply(new THREE.Matrix4().makeScale(k, k, k))
+    .multiply(new THREE.Matrix4().makeTranslation(-pelS.x, -footS, -pelS.z));
+  const want = (name: string) => sp(name)?.applyMatrix4(T) ?? null;
+
+  // Per bone: source joint frame (after T) → our rest frame. Unmapped bones keep the nearest mapped one's.
+  const carry = bones.map((b) => {
+    const from = want(b.name);
+    if (!from) return null;
+    const to = modelPos(b);
+    const child = AIM[b.name];
+    const fc = child ? want(child) : null;
+    const tc = child && ours.get(child) ? modelPos(ours.get(child)!) : null;
+    const m = new THREE.Matrix4().makeTranslation(-from.x, -from.y, -from.z);
+    if (fc && tc) {
+      const ds = fc.clone().sub(from);
+      const dt = tc.clone().sub(to);
+      if (ds.lengthSq() > 1e-10 && dt.lengthSq() > 1e-10) {
+        const q = new THREE.Quaternion().setFromUnitVectors(ds.clone().normalize(), dt.clone().normalize());
+        m.premultiply(new THREE.Matrix4().makeRotationFromQuaternion(q));
+        // Stretch along the bone only: a longer or shorter limb, the same girth.
+        const s = dt.length() / ds.length();
+        const a = dt.normalize();
+        const S = new THREE.Matrix4().set(
+          1 + (s - 1) * a.x * a.x, (s - 1) * a.x * a.y, (s - 1) * a.x * a.z, 0,
+          (s - 1) * a.y * a.x, 1 + (s - 1) * a.y * a.y, (s - 1) * a.y * a.z, 0,
+          (s - 1) * a.z * a.x, (s - 1) * a.z * a.y, 1 + (s - 1) * a.z * a.z, 0,
+          0, 0, 0, 1,
+        );
+        m.premultiply(S);
+      }
+    }
+    return m.premultiply(new THREE.Matrix4().makeTranslation(to.x, to.y, to.z));
+  });
+  const parentOf = new Map(bones.map((b) => [b, b.parent as THREE.Object3D | null]));
+  const carryOf = (i: number): THREE.Matrix4 => {
+    let b: THREE.Object3D | null = bones[i]!;
+    while (b) {
+      const j = bones.indexOf(b as THREE.Bone);
+      if (j >= 0 && carry[j]) return carry[j]!;
+      b = parentOf.get(b as THREE.Bone) ?? null;
+    }
+    return new THREE.Matrix4();
+  };
+  const inverses = bones.map((b) => new THREE.Matrix4().multiplyMatrices(toModel, b.matrixWorld).invert());
+
+  const out: THREE.SkinnedMesh[] = [];
+  for (const sm of skinned) {
+    const lut = sm.skeleton.bones.map((b) => {
+      let o: THREE.Object3D | null = b;
+      while (o) {
+        const name = MAP[clean(o.name)];
+        const idx = name ? bones.findIndex((x) => x.name === name) : -1;
+        if (idx >= 0) return idx;
+        o = o.parent;
+      }
+      return bones.findIndex((x) => x.name === 'pelvis');
+    });
+    let perMesh = geoCache.get(sm.geometry);
+    if (!perMesh) geoCache.set(sm.geometry, (perMesh = new Map()));
+    const key = `fit|${cacheKey}`;
+    let g = perMesh.get(key);
+    if (!g) {
+      g = sm.geometry.clone();
+      const si = g.attributes.skinIndex!;
+      const sw = g.attributes.skinWeight!;
+      const pos = g.attributes.position!;
+      const nor = g.attributes.normal;
+      const bm = sm.skeleton.boneMatrices!;
+      const pre = new THREE.Matrix4().multiplyMatrices(T, sm.matrixWorld).multiply(sm.bindMatrixInverse);
+      // Source skinning (as drawn, then T), followed by the carry of the joint each weight maps to.
+      const C = sm.skeleton.bones.map((_, i) =>
+        carryOf(lut[i]!).clone().multiply(new THREE.Matrix4().fromArray(bm, i * 16).premultiply(pre).multiply(sm.bindMatrix)),
+      );
+      const P = new Float32Array(pos.count * 3);
+      const N = nor ? new Float32Array(pos.count * 3) : null;
+      const acc = new THREE.Matrix4();
+      const v = new THREE.Vector3();
+      const nm = new THREE.Matrix3();
+      for (let i = 0; i < pos.count; i++) {
+        acc.elements.fill(0);
+        let wsum = 0;
+        for (let c = 0; c < 4; c++) {
+          const w = sw.getComponent(i, c);
+          if (!w) continue;
+          wsum += w;
+          const e = C[si.getComponent(i, c)]!.elements;
+          for (let kk = 0; kk < 16; kk++) acc.elements[kk]! += e[kk]! * w;
+        }
+        if (wsum > 0 && Math.abs(wsum - 1) > 1e-3) for (let kk = 0; kk < 16; kk++) acc.elements[kk]! /= wsum;
+        v.fromBufferAttribute(pos, i).applyMatrix4(acc).toArray(P, i * 3);
+        if (N && nor) v.fromBufferAttribute(nor, i).applyMatrix3(nm.getNormalMatrix(acc)).normalize().toArray(N, i * 3);
+      }
+      g.setAttribute('position', new THREE.BufferAttribute(P, 3));
+      if (N) g.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+      const remapped = new Uint16Array(si.count * 4);
+      for (let i = 0; i < si.count; i++) for (let c = 0; c < 4; c++) remapped[i * 4 + c] = lut[si.getComponent(i, c)]!;
+      g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(remapped, 4));
+      // The clone kept the source's bounds (its own units): measure the fitted garment.
+      g.computeBoundingBox();
+      g.computeBoundingSphere();
+      perMesh.set(key, g);
+    }
+    const mats = Array.isArray(sm.material) ? sm.material.map(materialFor) : materialFor(sm.material);
+    const mesh = new THREE.SkinnedMesh(g, mats);
+    mesh.name = meshNames.get(sm) ?? sm.name;
+    mesh.frustumCulled = false;
+    model.add(mesh);
+    mesh.bind(new THREE.Skeleton(bones, inverses), new THREE.Matrix4());
+    out.push(mesh);
+  }
+  return out;
+}
+
+/** glTF mesh names of a loaded model's nodes (three.js names nodes after the node, which is often Object_N). */
+export function gltfMeshNames(gltf: { scene: THREE.Object3D; parser: { associations: Map<unknown, { meshes?: number }>; json: { meshes?: { name?: string }[] } } }): Map<THREE.Object3D, string> {
+  const out = new Map<THREE.Object3D, string>();
+  gltf.scene.traverse((o) => {
+    const i = gltf.parser.associations.get(o)?.meshes;
+    if (i !== undefined) out.set(o, String(gltf.parser.json.meshes?.[i]?.name ?? o.name));
+  });
+  return out;
 }

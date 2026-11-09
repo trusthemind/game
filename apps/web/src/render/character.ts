@@ -1,17 +1,18 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { Rng, getDef, type Actor, type Corpse, type Equipment, type ItemInstance } from '@ashfall/engine';
-import type { AssetLibrary } from './assets';
+import { CLOTHING_SLOTS, Rng, getDef, type Actor, type ClothingSlot, type Corpse, type Equipment, type ItemInstance } from '@ashfall/engine';
+import { bodySettled, loadBodies, type AssetLibrary } from './assets';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
 import { faceTexture, type FaceSpec } from './facePainter';
 import { buildGun, gunKey } from './gunsmith';
 import { armorModel, BACKPACK_TINT, hatModel, helmetModel, rigModel, slingModel } from './gear3d';
 import { bakeRigid } from './bakeRigid';
+import { CLOTH_KIT, DEFAULT_OUTFITS, type KitPiece } from './clothKit';
 import { HEAVY_MELEE, meleeModel, REVERSE_GRIP } from './melee3d';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import { itemModel } from './thumbnails';
 import { attachSkinned, cloneHuman, type HumanParts } from './human';
-import { rebindToSkeleton } from './rebind';
+import { fitToRest, gltfMeshNames, rebindToSkeleton } from './rebind';
 import { ease, newPalm, palmFrame, reachPalm, type Arm } from './armIK';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,7 +62,13 @@ export interface Appearance {
   /** A rigged character model (models/bodies/<id>.glb) instead of the modelled body + outfit: it brings its
    * own face, clothes and kit, and is rebound onto our skeleton so every animation and attachment works. */
   body?: string;
+  /** Dressed from their kit: the hat / top / trousers / boots items they wear (see wearClothes). */
+  clothed?: boolean;
+  /** Clothes: real garments from rigged models (see clothKit.ts), fitted to this body. Unset: an outfit picked
+   * for the look (kitFor). */
+  kit?: Worn[];
 }
+export type Worn = KitPiece & { slot: ClothingSlot; id: string };
 
 export const SKIN_TONES = [0xf1c8a8, 0xe3b08e, 0xc99069, 0x9a6544, 0x6b4430];
 export const HAIR_COLORS = [0x1c1612, 0x3a281b, 0x5b3d25, 0x7c3b21, 0xb08a52, 0x8c8a86, 0xd8cfb8];
@@ -72,7 +79,9 @@ const DRAB_TOPS = [0x4f553a, 0x5a4632, 0x55595b, 0x2b3346, 0x6b5b45, 0x3d4a3a, 0
 const DRAB_PANTS = [0x3a4558, 0x2e3324, 0x45403a, 0x2b2b2e, 0x524634];
 
 /** Deterministic look per actor so the same bot looks the same every frame / reload. */
-export function lookFor(seed: number, archetype: string, npcId?: string, bossId?: string): Appearance {
+/** `armored`: whether they go in wearing body armour (see ARMORED_BODIES). */
+export function lookFor(seed: number, archetype: string, npcId?: string, bossId?: string, armored = true): Appearance {
+  const kit = (ids: string[]) => (armored ? ids : ids.filter((id) => !ARMORED_BODIES.has(id)));
   if (npcId && NPC_LOOKS[npcId]) return NPC_LOOKS[npcId]!;
   if (bossId && BOSS_LOOKS[bossId]) return BOSS_LOOKS[bossId]!;
   const rng = new Rng(seed * 7919 + archetype.length);
@@ -192,11 +201,13 @@ export function lookFor(seed: number, archetype: string, npcId?: string, bossId?
         // Guards (a boss's own men) wear the heavy kit; raiders anything military.
         body:
           archetype === 'guard'
-            ? rng.pick(sex === 'f' ? ['fem_ops', 'fem_police'] : ['swat', 'swat_mc', 'pmc_heavy', 'rus_a'])
+            ? rng.pick(kit(sex === 'f' ? ['fem_ops', 'fem_police'] : ['swat', 'swat_mc', 'pmc_heavy', 'rus_a']))
             : rng.pick(
-                sex === 'f'
-                  ? ['fem_w2', 'fem_ops', 'fem_jacket']
-                  : ['pmc_a', 'fsb', 'pmc_heavy', 'swat_mc', 'ukr_a', 'ukr_b', 'rus_a'],
+                kit(
+                  sex === 'f'
+                    ? ['fem_w2', 'fem_ops', 'fem_jacket']
+                    : ['pmc_a', 'fsb', 'pmc_heavy', 'swat_mc', 'ukr_a', 'ukr_b', 'rus_a'],
+                ),
               ),
       };
     case 'boss':
@@ -217,9 +228,31 @@ export function lookFor(seed: number, archetype: string, npcId?: string, bossId?
       // Some scavengers wear a whole rigged model: women more often, there are more civilian ones of those.
       const c: Appearance = { ...base, ...civ() };
       if (archetype === 'scav' && rng.chance(sex === 'f' ? 0.6 : 0.3))
-        c.body = rng.pick(sex === 'f' ? ['fem_jacket', 'fem_leather', 'fem_police', 'fem_w2'] : ['ukr_b', 'rus_a', 'pmc_a']);
+        c.body = rng.pick(kit(sex === 'f' ? ['fem_jacket', 'fem_leather', 'fem_police', 'fem_w2'] : ['ukr_b', 'rus_a', 'pmc_a']));
       return c;
     }
+  }
+}
+
+/** Per rigged body: see CharacterView.torsoPad. */
+const TORSO_PAD = new Map<string, number>();
+
+/**
+ * Kit a rigged body comes modelled with, matched on "<body> <glTF mesh> <material>". Armour, helmets, goggles and
+ * pouches are items: they show only when worn, drawn by syncGear, so the model's own are always hidden (the
+ * soldiers' "Hats" are helmets). A cap comes off under a helmet.
+ */
+const SF_KIT = /helmet|headgear|night_vis|plate|armors|pouch|puches|^(ukr_a|ukr_b|rus_a) hats_/i;
+const SF_HAT = / (hats|cap)_/i;
+/**
+ * Bodies whose armour is part of the jacket (one mesh, one texture), so it can't come off: only someone actually
+ * wearing a carrier gets one of these.
+ */
+export const ARMORED_BODIES = new Set(['ukr_a', 'ukr_b', 'rus_a', 'fem_ops', 'swat_mc']);
+function kitVisibility(meshes: THREE.SkinnedMesh[], helmet: boolean): void {
+  for (const m of meshes) {
+    const part = String(m.userData.part ?? '');
+    m.visible = !SF_KIT.test(part) && !(helmet && SF_HAT.test(part));
   }
 }
 
@@ -241,8 +274,92 @@ export function playerAppearance(look: {
     gloves: 0x2b2722,
     eyes: 0x4a3020,
     age: 1,
-    body: look.sex === 'f' ? 'fem_jacket' : 'pmc_a',
+    clothed: true,
   };
+}
+
+/** Nothing in a slot: the body's own painted base layer in these colours (a vest, plain trousers, shoes). */
+const BARE = { top: 0x5a5a52, pants: 0x3a3a38, boots: 0x2a2420 } as const;
+
+const worn = (id: string): Worn | null => {
+  const piece = CLOTH_KIT[id];
+  const slot = getDef(id).clothing?.slot;
+  return piece && slot ? { ...piece, slot, id } : null;
+};
+
+/** The look someone's clothes give them: the hat / top / trousers / boots items they wear (see clothKit.ts). */
+export function wearClothes(look: Appearance, eq: Equipment | null): Appearance {
+  const kit = CLOTHING_SLOTS.map((s) => eq?.slots[s]).flatMap((it) => (it ? (worn(it.def) ?? []) : []));
+  const color = (slot: ClothingSlot, bare: number) => {
+    const it = eq?.slots[slot];
+    return it ? (getDef(it.def).clothing?.color ?? bare) : bare;
+  };
+  const top = kit.find((k) => k.slot === 'top');
+  return {
+    ...look,
+    body: undefined,
+    clothed: true,
+    kit,
+    top: color('top', BARE.top),
+    // The painted body's forearms: skin under short sleeves (or none), cloth under long ones (hidden anyway).
+    topStyle: !top || top.short ? 'tee' : 'jacket',
+    topPattern: 'plain',
+    pants: color('pants', BARE.pants),
+    boots: color('boots', BARE.boots),
+    hat: null,
+  };
+}
+
+/** Unset kit (an outfit picked for the look) differs from an empty one (nothing worn). */
+const clothesKey = (a: Appearance) => (a.kit ? a.kit.map((k) => k.id).join('|') : '*');
+
+/** What a look wears: its kit, or for a look not dressed from items, an outfit picked by its colours. */
+export function kitFor(look: Appearance): Worn[] {
+  if (look.kit) return look.kit;
+  const h = Math.abs((look.top * 31 + look.pants * 17 + look.skin) | 0);
+  return DEFAULT_OUTFITS[h % DEFAULT_OUTFITS.length]!.flatMap((id) => worn(id) ?? []);
+}
+
+/** Fog-of-war uniforms that switch it off: clothing pictures are drawn outside the world. */
+const NO_FOW: WorldUniforms = (() => {
+  const t = new THREE.DataTexture(new Uint8Array([255, 255, 0, 255]), 1, 1);
+  t.needsUpdate = true;
+  return { uFow: { value: t }, uMapSize: { value: new THREE.Vector2(1, 1) }, uPlayer: { value: new THREE.Vector3(0, -100, 0) }, uFowOn: { value: 0 } };
+})();
+
+let iconBody: HumanParts | null = null;
+/**
+ * A clothing item on its own, for its picture: the real garment fitted to the male body, in the rest pose (arms
+ * out). Null until the model it comes from has loaded (see clothingSource).
+ */
+export function clothingModel(lib: AssetLibrary, defId: string): THREE.Object3D | null {
+  const w = worn(defId);
+  const g = w && lib.bodies.get(w.body);
+  if (!w || !g) return null;
+  iconBody ??= cloneHuman(lib, 'm');
+  if (!iconBody) return null;
+  iconBody.model.updateMatrixWorld(true);
+  const re = new RegExp(w.part, 'i');
+  const out = new THREE.Group();
+  for (const m of fitToRest(g.scene, gltfMeshNames(g as never), g.animations[0], iconBody.model, iconBody.body.skeleton.bones, (mt) => worldMat(mt as THREE.MeshStandardMaterial, NO_FOW, null), (n) => re.test(n), `${w.body}|${w.part}|icon`)) {
+    m.parent?.remove(m);
+    out.add(new THREE.Mesh(m.geometry, m.material));
+  }
+  return out;
+}
+
+/** The rigged model a clothing item's garment comes from. */
+export const clothingSource = (defId: string): string | null => CLOTH_KIT[defId]?.body ?? null;
+
+/** Every rigged model a look needs loaded: its whole body, or the ones its clothes come from. */
+export function lookBodies(look: Appearance): string[] {
+  if (look.body) return [look.body];
+  return [...new Set(kitFor(look).map((k) => k.body))];
+}
+
+/** Someone wearing clothes from their kit is drawn in them (and in our own body, not a rigged model). */
+export function actorLook(look: Appearance, eq: Equipment | null): Appearance {
+  return look.clothed || CLOTHING_SLOTS.some((s) => eq?.slots[s]) ? wearClothes(look, eq) : look;
 }
 
 const BOSS_LOOKS: Record<string, Appearance> = {
@@ -653,7 +770,7 @@ function humanBodyMaterial(
   dead = false,
   clothed = false,
 ): THREE.MeshStandardMaterial {
-  const key = `${src.uuid}|${JSON.stringify(a)}|${dead}|${clothed}`;
+  const key = `${src.uuid}|${JSON.stringify(a)}|${dead}|${clothed}|${clothed ? kitFor(a).map((k) => k.id).join('|') : ''}`;
   let m = humanMatCache.get(key);
   if (m) return m;
   m = src.clone();
@@ -666,8 +783,11 @@ function humanBodyMaterial(
   tint.b /= TEX_SKIN.b;
   if (dead) tint.multiplyScalar(0.7);
   const skinMask = [1, a.gloves === null ? 1 : 0, 0, a.topStyle === 'tee' ? 1 : 0, 0, 0, 0];
-  // Under real clothes only the head and neck of the body are drawn; the outfit brings its own arms and hands.
-  const hide = clothed ? [0, 1, 1, 1, 1, 1, 1] : [0, 0, 0, 0, 0, 0, 0];
+  // Under real clothes (clothKit) the body isn't drawn: what it would show is inside them. Head, neck and hands
+  // always show, forearms under short sleeves, and any part with no garment on it (the painted base layer).
+  const on = (slot: ClothingSlot) => clothed && kitFor(a).some((k) => k.slot === slot);
+  const top = kitFor(a).find((k) => k.slot === 'top');
+  const hide = [0, 0, on('top') ? 1 : 0, on('top') && !top?.short ? 1 : 0, on('pants') ? 1 : 0, on('boots') ? 1 : 0, 0];
   patchWorldMaterial(m, u, {
     pre: (shader) => {
       shader.uniforms.uHide = { value: hide };
@@ -708,208 +828,7 @@ function humanBodyMaterial(
   return m;
 }
 
-/**
- * Clothing from the outfit pack, re-dyed per character: the texture's shading and stitching stay, its hue
- * mostly gives way to the character's palette. Skin parts (bare forearms, hands) take the skin tone.
- */
-function outfitMaterial(
-  src: THREE.MeshStandardMaterial,
-  color: number,
-  skin: boolean,
-  u: WorldUniforms,
-  dead = false,
-  pattern: Pattern = 'plain',
-  accent = 0x202020,
-  /** Bind-space units → metres (the model's height scale), so prints have a real-world size. */
-  k = 1,
-): THREE.MeshStandardMaterial {
-  const key = `${src.uuid}|outfit|${color}|${skin}|${dead}|${pattern}|${accent}|${k.toFixed(4)}`;
-  let m = humanMatCache.get(key);
-  if (m) return m;
-  m = src.clone();
-  m.roughness = skin ? 0.7 : pattern === 'tracksuit' ? 0.6 : 0.88;
-  m.metalness = 0;
-  const tint = new THREE.Color(color).multiplyScalar(dead ? 0.7 : 1);
-  const acc = new THREE.Color(accent).multiplyScalar(dead ? 0.7 : 1);
-  patchWorldMaterial(m, u, {
-    pre: (shader) => {
-      shader.uniforms.uDye = { value: tint };
-      shader.uniforms.uDye2 = { value: acc };
-      shader.uniforms.uDyeMix = { value: skin ? 1.0 : 0.82 };
-      shader.uniforms.uPattern = { value: skin ? 0 : PATTERN_ID[pattern] };
-      shader.uniforms.uBindK = { value: k };
-      shader.vertexShader = shader.vertexShader
-        .replace(
-          '#include <common>',
-          '#include <common>\nuniform float uBindK;\nattribute vec3 aBind;\nattribute vec3 aBindN;\nvarying vec3 vClothPos;\nvarying vec3 vClothNrm;',
-        )
-        // Prints live in the skeleton's bind space (metres), shared by every outfit piece: the raw
-        // attribute is quantized per mesh, so using it directly stretched each piece differently (see bindSpace).
-        .replace(
-          '#include <begin_vertex>',
-          `#include <begin_vertex>
-          #ifdef USE_SKINNING
-            vClothPos = aBind * uBindK;
-            vClothNrm = normalize(aBindN);
-          #else
-            vClothPos = aBind * uBindK;
-            vClothNrm = normalize(aBindN);
-          #endif`,
-        );
-      shader.fragmentShader = shader.fragmentShader
-        .replace(
-          '#include <common>',
-          `#include <common>
-          uniform vec3 uDye;
-          uniform vec3 uDye2;
-          uniform float uDyeMix;
-          uniform int uPattern;
-          varying vec3 vClothPos;
-          varying vec3 vClothNrm;
-          float h3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
-          float vn(vec3 p) {
-            vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
-            return mix(mix(mix(h3(i), h3(i + vec3(1,0,0)), f.x), mix(h3(i + vec3(0,1,0)), h3(i + vec3(1,1,0)), f.x), f.y),
-                       mix(mix(h3(i + vec3(0,0,1)), h3(i + vec3(1,0,1)), f.x), mix(h3(i + vec3(0,1,1)), h3(i + vec3(1,1,1)), f.x), f.y), f.z);
-          }
-          float fbm(vec3 p) { return vn(p) * 0.6 + vn(p * 2.1) * 0.3 + vn(p * 4.3) * 0.1; }
-          // Box-filtered square wave (duty d): stripes fade to their average instead of shimmering into moiré.
-          float sqI(float t, float d) { return floor(t) * d + max(fract(t) - (1.0 - d), 0.0); }
-          float stripe(float x, float d) {
-            float w = max(fwidth(x), 1e-4);
-            return (sqI(x + 0.5 * w, d) - sqI(x - 0.5 * w, d)) / w;
-          }
-          // Returns the cloth colour for the active print; 'base' is the dyed texture shading.
-          vec3 clothPrint(vec3 base, float shade) {
-            vec3 p = vClothPos * 1.0;
-            // Hands (gloves) stay plain: arms lie along X in the bind pose.
-            if (abs(p.x) > 0.6) return base;
-            if (uPattern == 1) { // woodland camo: four blotch colours
-              float a = fbm(p * 7.0); float b = fbm(p * 7.0 + 19.3);
-              vec3 c = uDye;
-              if (a > 0.55) c = uDye2;
-              if (b > 0.62) c = vec3(0.17, 0.15, 0.11);
-              if (a < 0.32) c = mix(uDye, vec3(0.55, 0.5, 0.36), 0.55);
-              return c * shade;
-            }
-            if (uPattern == 2) { // flora: vertical green/brown brush strokes
-              float s = fbm(vec3(p.x * 18.0, p.y * 2.5, p.z * 18.0));
-              vec3 c = s > 0.6 ? uDye2 : s < 0.38 ? mix(uDye, vec3(0.45, 0.36, 0.22), 0.6) : uDye;
-              return c * shade;
-            }
-            if (uPattern == 3) { // digital: pixelated blobs
-              vec3 q = floor(p * 55.0) / 55.0;
-              float a = fbm(q * 9.0);
-              vec3 c = a > 0.58 ? uDye2 : a < 0.36 ? mix(uDye, vec3(0.6, 0.58, 0.48), 0.5) : uDye;
-              return c * shade;
-            }
-            if (uPattern == 4) { // telnyashka: horizontal stripes
-              // Around the body on the torso, around the arm on the sleeves (arms lie along X in the bind pose).
-              float coord = abs(p.x) > 0.21 ? abs(p.x) : p.y;
-              float s = stripe(coord * 36.0, 0.42);
-              if (p.y < 0.92) s = 1.0;
-              return mix(uDye2, uDye, s) * shade;
-            }
-            if (uPattern == 5) { // flannel plaid
-              float x = stripe(p.x * 14.0 + p.z * 14.0, 0.28);
-              float y = stripe(p.y * 14.0, 0.28);
-              float t = stripe(p.x * 42.0 + p.z * 42.0, 0.07) + stripe(p.y * 42.0, 0.07);
-              vec3 c = mix(uDye, uDye2, max(x, y) * 0.65);
-              return mix(c, vec3(0.85), min(t, 1.0) * 0.12) * shade;
-            }
-            if (uPattern == 6) { // tracksuit: two stripes down the outer sides
-              float side = smoothstep(0.78, 0.92, abs(vClothNrm.x));
-              float bands = stripe(p.z * 60.0 + p.y * 2.0, 0.5);
-              return mix(uDye, uDye2, side * bands) * shade;
-            }
-            if (uPattern == 7) { // denim: twill noise
-              float tw = vn(vec3((p.x + p.y) * 160.0, (p.x - p.y) * 18.0, p.z * 160.0));
-              return uDye * (0.88 + tw * 0.22) * shade;
-            }
-            return base;
-          }`,
-        )
-        .replace(
-          '#include <map_fragment>',
-          `#include <map_fragment>
-          float l = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
-          vec3 dyed = uDye * (0.45 + 1.5 * l);
-          vec3 cloth = clothPrint(min(dyed, vec3(1.0)), 0.45 + 1.5 * l);
-          diffuseColor.rgb = mix(diffuseColor.rgb, min(cloth, vec3(1.0)), uDyeMix);`,
-        );
-    },
-    key: 'outfit',
-  });
-  humanMatCache.set(key, m);
-  return m;
-}
 
-/** Which outfit pieces to wear and what colour each takes. Null = no outfit (painted body only). */
-function outfitPieces(
-  lib: AssetLibrary,
-  a: Appearance,
-): { src: THREE.SkinnedMesh; color: number; pattern: Pattern }[] | null {
-  const kind = a.topStyle === 'tee' ? 'peasant' : 'ranger';
-  const top = lib.outfits.get(`${a.sex}_${kind}`);
-  if (!top?.length) return null;
-  const legs = lib.outfits.get(`${a.sex}_${a.legs ?? kind}`) ?? top;
-  const feet = lib.outfits.get(`${a.sex}_${a.feet ?? kind}`) ?? top;
-  const out: { src: THREE.SkinnedMesh; color: number; pattern: Pattern }[] = [];
-  const pick = (list: THREE.SkinnedMesh[], re: RegExp) => list.filter((m) => re.test(m.name));
-  for (const src of [...pick(top, /Body|Arms|Hood/), ...pick(legs, /Legs|Belt/), ...pick(feet, /Feet/)]) {
-    const n = src.name;
-    // Fantasy extras that don't belong in a post-Soviet town.
-    if (/Pauldron|Bracer/.test(n)) continue;
-    if (/Hood/.test(n) && a.topStyle !== 'hoodie') continue;
-    if (/Belt/.test(n)) {
-      out.push({ src, color: 0x3a2c20, pattern: 'plain' });
-      continue;
-    }
-    const isLegs = /Legs/.test(n);
-    const color = isLegs ? a.pants : /Feet/.test(n) ? a.boots : /Hood/.test(n) ? shadeHex(a.top, 0.85) : a.top;
-    const pattern = isLegs ? (a.pantsPattern ?? 'plain') : /Feet/.test(n) ? 'plain' : (a.topPattern ?? 'plain');
-    out.push({ src, color, pattern });
-  }
-  return out;
-}
-
-const bindDone = new WeakSet<THREE.BufferGeometry>();
-/**
- * Adds aBind/aBindN: each vertex in the skeleton's rest-pose space. The packs' meshes are quantized and the
- * de-quantization lives in the inverse bind matrices, so rest bone world × bone inverse recovers it.
- */
-function bindSpace(src: THREE.SkinnedMesh): void {
-  const geo = src.geometry;
-  if (bindDone.has(geo)) return;
-  bindDone.add(geo);
-  const bone = src.skeleton.bones[0]!;
-  bone.updateWorldMatrix(true, false);
-  const d = new THREE.Matrix4()
-    .multiplyMatrices(bone.matrixWorld, src.skeleton.boneInverses[0]!)
-    .multiply(src.bindMatrix);
-  const nm = new THREE.Matrix3().getNormalMatrix(d);
-  const pos = geo.attributes.position!;
-  const nor = geo.attributes.normal;
-  const b = new Float32Array(pos.count * 3);
-  const bn = new Float32Array(pos.count * 3);
-  const v = new THREE.Vector3();
-  for (let i = 0; i < pos.count; i++) {
-    v.fromBufferAttribute(pos, i)
-      .applyMatrix4(d)
-      .toArray(b, i * 3);
-    if (nor)
-      v.fromBufferAttribute(nor, i)
-        .applyMatrix3(nm)
-        .normalize()
-        .toArray(bn, i * 3);
-  }
-  geo.setAttribute('aBind', new THREE.BufferAttribute(b, 3));
-  geo.setAttribute('aBindN', new THREE.BufferAttribute(bn, 3));
-}
-
-function shadeHex(c: number, k: number): number {
-  return new THREE.Color(c).multiplyScalar(k).getHex();
-}
 
 function hairMaterial(src: THREE.MeshStandardMaterial, color: number, u: WorldUniforms): THREE.MeshStandardMaterial {
   const key = `${src.uuid}|hair|${color}`;
@@ -1214,6 +1133,10 @@ export class CharacterView {
   private human: HumanParts | null = null;
   /** Wearing a rigged model's own clothes and face (no hair, hats or outfit pieces of ours). */
   private sfBody = false;
+  /** That model's own meshes (see SF_KIT: its helmet, plates and pouches only show as items we draw). */
+  private sfMeshes: THREE.SkinnedMesh[] = [];
+  /** How much bulkier that model's torso is than the body armour shells are cut from (metres): see torsoPad. */
+  private shellPad = 0;
   /** A rebound body's lift onto its soles (soleLift), scaled each frame by the pelvis height. */
   private stand: { lift: number; hip: number; pelvis: THREE.Bone } | null = null;
   /** Calling in an extraction on the radio (standing still in the zone while its timer runs). */
@@ -1223,9 +1146,9 @@ export class CharacterView {
 
   constructor(
     private lib: AssetLibrary,
-    readonly look: Appearance,
+    public look: Appearance,
     private u: WorldUniforms,
-    shadows: boolean,
+    private shadows: boolean,
   ) {
     // Modelled humans (faces, eyes, real hair) when the pack is present; the mannequin otherwise.
     const human = cloneHuman(lib, look.sex);
@@ -1251,7 +1174,8 @@ export class CharacterView {
     const sfBody = human && look.body ? (lib.bodies.get(look.body) ?? null) : null;
     let rebound: THREE.SkinnedMesh[] = [];
     this.sfBody = !!sfBody;
-    const outfit = human && !sfBody ? outfitPieces(lib, look) : null;
+    // Our own bodies wear real clothes (clothKit); a rigged model wears its own.
+    const outfit = human && !sfBody;
     for (const m of skinnedMeshes) {
       m.material = human
         ? humanBodyMaterial(human.body.material as THREE.MeshStandardMaterial, look, u, false, !!outfit)
@@ -1270,34 +1194,21 @@ export class CharacterView {
       }
       const bindK = heightScale(src, look.sex === 'f' ? 1.66 : 1.8);
       this.model.scale.setScalar(bindK);
-      for (const piece of outfit ?? []) {
-        bindSpace(piece.src);
-        const mats = Array.isArray(piece.src.material) ? piece.src.material : [piece.src.material];
-        const dressed = mats.map((mt) => {
-          const skin = /Regular/.test(mt.name);
-          return outfitMaterial(
-            mt as THREE.MeshStandardMaterial,
-            skin ? (look.gloves ?? look.skin) : piece.color,
-            skin,
-            u,
-            false,
-            piece.pattern,
-            look.accent,
-            bindK,
-          );
-        });
-        const worn = attachSkinned(
-          piece.src,
-          human.body,
-          dressed.length === 1 ? dressed[0] : (dressed as unknown as THREE.Material),
-        );
-        worn.castShadow = shadows;
-        this.outfitMeshes.push(worn);
-      }
+      if (outfit) this.wearKit(kitFor(look));
       if (sfBody) {
         for (const m of [human.body, human.eyes, human.brows]) if (m) m.visible = false;
         ({ meshes: rebound } = rebindToSkeleton(sfBody.scene, sfBody.animations[0], this.model, human.body.skeleton.bones, (m) => worldMat(m as THREE.MeshStandardMaterial, u, null), `${look.body}|${look.sex}`));
         for (const m of rebound) m.castShadow = shadows;
+        // Name each piece by its glTF mesh too: the nodes are just Object_N, and some exports share one material
+        // between a hat, a mask and gloves.
+        const meshName = new Map<string, string>();
+        sfBody.scene.traverse((o) => {
+          const i = sfBody.parser.associations.get(o)?.meshes;
+          if (i !== undefined) meshName.set(o.name, String(sfBody.parser.json.meshes[i]?.name ?? ''));
+        });
+        for (const m of rebound) m.userData.part = `${look.body} ${meshName.get(m.name) ?? ''} ${m.userData.part ?? ''}`;
+        this.sfMeshes = rebound;
+        kitVisibility(rebound, false);
       }
     } else this.model.scale.setScalar(CHAR_SCALE);
     this.root.add(this.model);
@@ -1312,6 +1223,7 @@ export class CharacterView {
     this.setLower('Idle_Loop', 1, 'full');
     const pelvis = this.skinned.skeleton.getBoneByName('pelvis');
     if (rebound.length && pelvis) this.stand = { ...this.soleLift(`${look.body}|${look.sex}`, rebound, pelvis), pelvis };
+    if (rebound.length && human) this.shellPad = this.torsoPad(`${look.body}|${look.sex}`, human.body, rebound);
   }
 
   /**
@@ -1333,6 +1245,57 @@ export class CharacterView {
     return s;
   }
 
+  /**
+   * A rigged model's jacket and webbing stand out further than the bare body that armour shells are cut from, so
+   * a carrier cut to the body would sit inside them. Compare the two torsos (waist to chest, all round, only
+   * vertices that follow the spine, so arms held in front don't count) and return the difference. Once per body.
+   */
+  private torsoPad(key: string, body: THREE.SkinnedMesh, worn: THREE.SkinnedMesh[]): number {
+    const hit = TORSO_PAD.get(key);
+    if (hit !== undefined) return hit;
+    this.mixer.update(0);
+    this.root.updateMatrixWorld(true);
+    const sk = body.skeleton;
+    const at = (n: string) => new THREE.Vector3().setFromMatrixPosition(sk.getBoneByName(n)?.matrixWorld ?? new THREE.Matrix4());
+    const s2 = at('spine_02');
+    const s3 = at('spine_03');
+    const neck = at('neck_01');
+    // Waist to chest: everything a carrier covers.
+    const y0 = at('spine_01').y;
+    const y1 = s3.y + (neck.y - s3.y) * 0.3;
+    const torso = new Set(sk.bones.map((b, i) => (/^spine_0[123]$/.test(b.name) ? i : -1)).filter((i) => i >= 0));
+    // Furthest reach from the spine in 16 directions round the chest.
+    const reach = (meshes: THREE.SkinnedMesh[]) => {
+      const r = new Float32Array(16);
+      const v = new THREE.Vector3();
+      for (const m of meshes) {
+        if (!m.visible && m !== body) continue;
+        const si = m.geometry.attributes.skinIndex!;
+        const sw = m.geometry.attributes.skinWeight!;
+        for (let i = 0, n = m.geometry.attributes.position!.count; i < n; i++) {
+          let best = 0;
+          for (let c = 1; c < 4; c++) if (sw.getComponent(i, c) > sw.getComponent(i, best)) best = c;
+          if (!torso.has(si.getComponent(i, best))) continue;
+          m.getVertexPosition(i, v).applyMatrix4(m.matrixWorld);
+          if (v.y < y0 || v.y > y1) continue;
+          const dx = v.x - s2.x;
+          const dz = v.z - s2.z;
+          const a = Math.floor(((Math.atan2(dz, dx) / (2 * Math.PI) + 1) % 1) * 16);
+          r[a] = Math.max(r[a]!, Math.hypot(dx, dz));
+        }
+      }
+      return r;
+    };
+    const bare = reach([body]);
+    const dressed = reach(worn);
+    // Ignore the two or three furthest directions: an open collar or a pocket flap shouldn't decide it.
+    const diff = Array.from(dressed, (d, i) => d - bare[i]!).sort((a, b) => a - b);
+    const k = this.model.scale.y;
+    const pad = Math.min(0.12, Math.max(0, diff[13]!) / k);
+    TORSO_PAD.set(key, pad);
+    return pad;
+  }
+
   private bone(re: RegExp): string {
     return this.skinned.skeleton.bones.find((b) => re.test(b.name))?.name ?? '';
   }
@@ -1344,14 +1307,8 @@ export class CharacterView {
     if (this.sfBody) return;
     if (this.human) {
       const clothed = this.outfitMeshes.length > 0;
-      const hooded = clothed && a.topStyle === 'hoodie';
-      const style = HAIR_MODEL[a.sex][a.hair];
+      this.buildHair();
       const hm = hairMaterialFor(this.lib, a.zombie ? 0x3a3530 : a.hairColor, this.u);
-      if (style && !hooded && this.lib.hair.get(style)) {
-        const h = attachSkinned(this.lib.hair.get(style)!, this.human.body, hm);
-        h.castShadow = shadows;
-        this.hairMeshes.push(h);
-      }
       if (a.beard && a.sex === 'm' && this.lib.hair.get('Hair_Beard'))
         attachSkinned(this.lib.hair.get('Hair_Beard')!, this.human.body, hm);
       if (!clothed && (a.topStyle === 'hoodie' || a.topStyle === 'coat')) this.addCollar(rig, a);
@@ -1365,6 +1322,66 @@ export class CharacterView {
     }
     for (const m of earParts(rig.boxes.head, a, this.u)) attachToBone(this.skinned, head, m);
     if (a.topStyle === 'hoodie' || a.topStyle === 'coat') this.addCollar(rig, a);
+  }
+
+  /** Real clothes from rigged models (see fitToRest), on our own body: it shows only its head and hands. */
+  private wearKit(kit: Worn[]): void {
+    const human = this.human!;
+    for (const w of kit) {
+      const { body, part } = w;
+      const g = this.lib.bodies.get(body);
+      if (!g) continue;
+      const re = new RegExp(part, 'i');
+      const meshes = fitToRest(
+        g.scene,
+        gltfMeshNames(g as never),
+        g.animations[0],
+        this.model,
+        human.body.skeleton.bones,
+        (m) => worldMat(m as THREE.MeshStandardMaterial, this.u, null),
+        (n) => re.test(n),
+        `${body}|${part}|${this.look.sex}`,
+      );
+      for (const m of meshes) {
+        m.castShadow = this.shadows;
+        m.userData.worn = w;
+        this.outfitMeshes.push(m);
+      }
+    }
+  }
+
+  /** Hair, unless a raised hood covers it. */
+  private buildHair(): void {
+    const a = this.look;
+    const human = this.human!;
+    const style = HAIR_MODEL[a.sex][a.hair];
+    if (!style || !this.lib.hair.get(style)) return;
+    const hm = hairMaterialFor(this.lib, a.zombie ? 0x3a3530 : a.hairColor, this.u);
+    const h = attachSkinned(this.lib.hair.get(style)!, human.body, hm);
+    h.castShadow = this.shadows;
+    this.hairMeshes.push(h);
+  }
+
+  /**
+   * Change clothes: someone dressed from their kit (look.clothed) put on or took off a piece. The garments, the
+   * hair and the body's mask are rebuilt; a garment whose model hasn't loaded yet goes on once it has.
+   */
+  private redress(eq: Equipment): void {
+    if (!this.look.clothed || !this.human || this.sfBody) return;
+    const next = wearClothes(this.look, eq);
+    if (clothesKey(next) === clothesKey(this.look)) return;
+    const missing = lookBodies(next).filter((b) => !bodySettled(this.lib, b));
+    if (missing.length) {
+      void loadBodies(this.lib, missing).then(() => (this.gearKey = ''));
+      return;
+    }
+    this.look = next;
+    for (const m of [...this.outfitMeshes, ...this.hairMeshes]) m.parent?.remove(m);
+    this.outfitMeshes = [];
+    this.hairMeshes = [];
+    this.wearKit(kitFor(next));
+    this.buildHair();
+    for (const m of this.bodyMeshes) m.material = humanBodyMaterial(this.human.srcMaterial, next, this.u, this.dead, true);
   }
 
   private addCollar(rig: RigInfo, a: Appearance): void {
@@ -1387,9 +1404,10 @@ export class CharacterView {
   syncGear(eq: Equipment, active: 'primary' | 'secondary' | 'melee'): void {
     const s = eq.slots;
     const held = active === 'melee' ? s.melee : s[active];
-    const key = `${s.helmet?.def}|${s.armor?.def}|${s.backpack?.def}|${s.rig?.def}|${gunKey(held)}`;
+    const key = `${s.helmet?.def}|${s.armor?.def}|${s.backpack?.def}|${s.rig?.def}|${s.hat?.def}|${s.top?.def}|${s.pants?.def}|${s.boots?.def}|${gunKey(held)}`;
     if (key === this.gearKey) return;
     this.gearKey = key;
+    this.redress(eq);
     for (const g of this.gearAttachments) g.parent?.remove(g);
     this.gearAttachments = [];
     const rig = this.rig;
@@ -1433,12 +1451,20 @@ export class CharacterView {
     const cc = chest.getCenter(new THREE.Vector3());
     const cs = chest.getSize(new THREE.Vector3());
 
-    for (const m of this.outfitMeshes) if (/Hood/.test(m.name)) m.visible = !s.helmet;
-    // No hat over a raised hood.
-    const hat =
-      !s.helmet && !this.sfBody && this.look.hat && !this.look.zombie && this.look.topStyle !== 'hoodie' ? this.look.hat : null;
-    // Hats and helmets sit over short hair; long hair stays (it hangs below the rim).
-    for (const h of this.hairMeshes) h.visible = !(s.helmet || (hat && hat !== 'bandana')) || /Long/.test(h.name);
+    kitVisibility(this.sfMeshes, !!s.helmet);
+    // Headwear from the kit: caps come off under a helmet, a balaclava stays on.
+    let capOn = false;
+    let maskOn = false;
+    for (const m of this.outfitMeshes) {
+      const w = m.userData.worn as Worn | undefined;
+      if (w?.slot !== 'hat') continue;
+      m.visible = !s.helmet || !!w.underHelmet;
+      if (w.underHelmet) maskOn = true;
+      else if (m.visible) capOn = true;
+    }
+    const hat = !s.helmet && !this.sfBody && !this.human && this.look.hat && !this.look.zombie ? this.look.hat : null;
+    // Hats and helmets sit over short hair; long hair stays (it hangs below the rim). A balaclava covers it all.
+    for (const h of this.hairMeshes) h.visible = !maskOn && (!(s.helmet || capOn || (hat && hat !== 'bandana')) || /Long/.test(h.name));
     if (hat) {
       // A bandana is a band round the forehead; the rest cover the crown.
       const brow = hc.y + hs.y * (hat === 'cap' ? 0.1 : hat === 'bandana' ? 0.2 : 0.06);
@@ -1470,7 +1496,7 @@ export class CharacterView {
     const wear = (id: string, spec: ArmorSpec | undefined): boolean => {
       const body = this.human?.body;
       if (!spec || !body) return false;
-      const parts = shellParts(body, id, spec);
+      const parts = shellParts(body, id, spec, this.shellPad);
       for (const { shell, color } of parts)
         for (const geo of [shell.geometry, shell.rim]) {
           const m = new THREE.SkinnedMesh(geo, shellMat(spec, color, shell.frame.k, this.u));

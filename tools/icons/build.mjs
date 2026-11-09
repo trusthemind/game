@@ -42,6 +42,14 @@ export const ICONS = {
   tac_light: 'flashlight', 'cat:mod': 'machine-gun-magazine',
   // fallbacks for guns/melee when no 3D thumbnail is ready yet
   'cat:weapon': 'pistol-gun', 'cat:melee': 'bowie-knife', 'cat:med': 'first-aid-kit', 'cat:food': 'meal', 'cat:drink': 'water-bottle',
+  // clothing
+  c_beanie: 'winter-hat', c_watchcap: 'winter-hat', c_cap: 'billed-cap', c_fieldcap: 'billed-cap', c_ushanka: 'ushanka', c_ushanka_grey: 'ushanka',
+  c_bandana: 'bandana', c_tee: 't-shirt', c_tee_olive: 't-shirt', c_telnyashka: 't-shirt', c_flannel: 'shirt', c_flannel_green: 'shirt',
+  c_hoodie: 'hoodie', c_hoodie_black: 'hoodie', c_track_top: 'sleeveless-jacket', c_track_top_black: 'sleeveless-jacket', c_work_jacket: 'moncler-jacket',
+  c_leather: 'moncler-jacket', c_denim_jacket: 'moncler-jacket', c_telogreika: 'moncler-jacket', c_parka: 'moncler-jacket', c_gorka: 'moncler-jacket',
+  c_flora_jacket: 'moncler-jacket', c_woodland_jacket: 'moncler-jacket', c_emr_jacket: 'moncler-jacket',
+  c_sneakers: 'converse-shoe', c_sneakers_black: 'converse-shoe', c_kirza: 'leather-boot', c_combat_boots: 'boots', c_work_boots: 'walking-boot',
+  'cat:clothing': 'trousers',
   'cat:valuable': 'gems', 'cat:junk': 'cog', 'cat:money': 'money-stack', 'cat:armor': 'kevlar-vest', 'cat:helmet': 'helmet',
 };
 

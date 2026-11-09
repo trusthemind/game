@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import type { Actor, Equipment } from '@ashfall/engine';
+import { getDef, type Actor, type Equipment } from '@ashfall/engine';
 import { bodySettled, loadAssets, loadBodies } from '../../render/assets';
-import { CharacterView, playerAppearance } from '../../render/character';
+import { actorLook, CharacterView, lookBodies, playerAppearance } from '../../render/character';
 import type { WorldUniforms } from '../../render/patches';
 import { useProfile } from '../../state/profileStore';
+import { useHoverItem } from '../inventory/components';
 
 /**
  * Your survivor in 3D, wearing exactly what's in the loadout slots. Turns slowly on its own; drag to spin.
@@ -61,10 +62,10 @@ export function CharacterPreview() {
         const p = useProfile.getState().profile;
         if (!p) return;
         const key = JSON.stringify(p.look);
-        const look = playerAppearance(p.look);
-        if (key !== lookKey && !bodySettled(lib, look.body)) {
-          // Keep showing the old look until the new body has loaded.
-          void loadBodies(lib, [look.body]).then(() => !disposed && sync());
+        const look = actorLook(playerAppearance(p.look), p.equipment);
+        if (key !== lookKey && !lookBodies(look).every((b) => bodySettled(lib, b))) {
+          // Keep showing the old look until the models its clothes come from have loaded.
+          void loadBodies(lib, lookBodies(look)).then(() => !disposed && sync());
         } else if (key !== lookKey) {
           if (view) {
             scene.remove(view.root);
@@ -74,12 +75,16 @@ export function CharacterPreview() {
           scene.add(view.root);
           lookKey = key;
         }
-        actor.eq = p.equipment;
+        // Pointing at a piece of clothing tries it on: the preview wears it instead of what's in that slot.
+        const hover = useHoverItem.getState().item;
+        const slot = hover ? getDef(hover.def).clothing?.slot : undefined;
+        actor.eq = slot && p.equipment.slots[slot] !== hover ? { ...p.equipment, slots: { ...p.equipment.slots, [slot]: hover } } : p.equipment;
         const s = p.equipment.slots;
         actor.active = s.primary ? 'primary' : s.secondary ? 'secondary' : 'melee';
       };
       sync();
       const unsub = useProfile.subscribe(sync);
+      const unsubHover = useHoverItem.subscribe(sync);
 
       // Drag to turn; otherwise a slow idle turn.
       let dragging = false;
@@ -128,6 +133,7 @@ export function CharacterPreview() {
       cleanup = () => {
         cancelAnimationFrame(raf);
         unsub();
+        unsubHover();
         ro.disconnect();
         canvas.removeEventListener('pointerdown', down);
         canvas.removeEventListener('pointermove', move);

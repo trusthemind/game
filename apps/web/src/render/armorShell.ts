@@ -112,9 +112,10 @@ export interface Shell {
 const shellCache = new WeakMap<THREE.BufferGeometry, Map<string, Shell>>();
 
 /** Cut a shell out of `body`'s torso. Skin attributes are kept, so the result can be skinned to the same skeleton. */
-export function buildShell(body: THREE.SkinnedMesh, key: string, cut: Cut): Shell {
+export function buildShell(body: THREE.SkinnedMesh, key: string, cut: Cut, pad = 0): Shell {
   let byKey = shellCache.get(body.geometry);
   if (!byKey) shellCache.set(body.geometry, (byKey = new Map()));
+  key = `${key}@${pad.toFixed(3)}`;
   const hit = byKey.get(key);
   if (hit) return hit;
 
@@ -190,7 +191,7 @@ export function buildShell(body: THREE.SkinnedMesh, key: string, cut: Cut): Shel
     const nn = new THREE.Vector3(normals[j * 3]!, normals[j * 3 + 1]!, normals[j * 3 + 2]!).normalize();
     tmp.fromBufferAttribute(pos, i);
     const e = Math.max(0, extra[i]!);
-    const o = (cut.offset + e) * k;
+    const o = (cut.offset + pad + e) * k;
     outer.set([tmp.x + nn.x * o, tmp.y + nn.y * o, tmp.z + nn.z * o], j * 3);
     const o2 = Math.max(0.002 * k, o - cut.thick * k);
     inner.set([tmp.x + nn.x * o2, tmp.y + nn.y * o2, tmp.z + nn.z * o2], j * 3);
@@ -826,10 +827,13 @@ export function shellShader(
     );
 }
 
-/** The shell plus its raised layers (plate pockets), each with its own colour. */
-export function shellParts(body: THREE.SkinnedMesh, id: string, spec: ArmorSpec): { shell: Shell; color: number }[] {
-  const out = [{ shell: buildShell(body, id, spec.cut), color: spec.color }];
+/**
+ * The shell plus its raised layers (plate pockets), each with its own colour. `pad` (metres) stands it further
+ * off: a rigged model's clothes are bulkier than the body the shell is cut from (see CharacterView.shellPad).
+ */
+export function shellParts(body: THREE.SkinnedMesh, id: string, spec: ArmorSpec, pad = 0): { shell: Shell; color: number }[] {
+  const out = [{ shell: buildShell(body, id, spec.cut, pad), color: spec.color }];
   for (const l of spec.layers ?? [])
-    out.push({ shell: buildShell(body, `${id}:${l.key}`, l.cut), color: l.color ?? spec.color });
+    out.push({ shell: buildShell(body, `${id}:${l.key}`, l.cut, pad), color: l.color ?? spec.color });
   return out;
 }

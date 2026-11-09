@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { loadAssets, loadBodies } from '../../render/assets';
-import { lookFor, renderPortrait, type Appearance } from '../../render/character';
+import { lookBodies, lookFor, renderPortrait, type Appearance } from '../../render/character';
 
 /** 3D-rendered head shot of an NPC (or any appearance), cached as a data URL. */
 export function usePortrait(npcId: string | null, look?: Appearance): string | null {
@@ -11,7 +11,7 @@ export function usePortrait(npcId: string | null, look?: Appearance): string | n
       .then(async (lib) => {
         const a = look ?? (npcId ? lookFor(0, 'npc', npcId) : null);
         if (!a) return;
-        await loadBodies(lib, [a.body]);
+        await loadBodies(lib, lookBodies(a));
         if (alive) setUrl(renderPortrait(lib, a));
       })
       .catch(() => {});

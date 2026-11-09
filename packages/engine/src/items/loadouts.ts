@@ -151,6 +151,62 @@ export function generateLoadout(archetype: BotArchetype, rng: Rng, tier = 0): Eq
   for (let i = 0; i < meds; i++) putAnywhere(eq, rollItem(pickDef(rng, kit.meds)!, rng, tier));
   const extras = rng.int(kit.extraCount[0], kit.extraCount[1]);
   for (let i = 0; i < extras; i++) putAnywhere(eq, rollItem(pickDef(rng, kit.extras)!, rng, tier));
+  // Last, so the rest of a loadout rolls exactly as before clothes existed.
+  if (archetype === 'scav') dressScav(eq, rng);
+  return eq;
+}
+
+/**
+ * Scavs wear what's to hand: a few looks a crowd of them mixes (town clothes, a survivor's, half a uniform, a
+ * leather jacket). All of it is loot on their body. Raiders, guards and bosses wear their unit's kit instead.
+ */
+export function dressScav(eq: Equipment, rng: Rng): void {
+  const pick = (ids: string[]) => rng.pick(ids);
+  const style = pickDef(rng, [['town', 4], ['survivor', 2], ['army', 2], ['bomber', 1], ['cop', 0.6]])!;
+  let hat: string | null = null;
+  let top: string;
+  let pants: string;
+  let boots: string;
+  switch (style) {
+    case 'survivor':
+      top = 'c_survivor_top';
+      pants = pick(['c_kneepad_pants', 'c_ripped_jeans', 'c_work_pants']);
+      boots = pick(['c_survivor_boots', 'c_tall_boots', 'c_kirza']);
+      if (rng.chance(0.3)) hat = 'c_balaclava';
+      break;
+    case 'army':
+      top = pick(['c_smock', 'c_acu_shirt', 'c_knit']);
+      pants = pick(['c_flora_pants', 'c_desert_pants', 'c_acu_pants', 'c_trousers']);
+      boots = pick(['c_kirza', 'c_combat_boots', 'c_desert_boots']);
+      hat = pickDef(rng, [[null, 3], ['c_green_cap', 2], ['c_balaclava_tan', 1], ['c_patrol_cap', 0.3]]);
+      break;
+    case 'bomber':
+      top = 'c_bomber';
+      pants = pick(['c_trousers', 'c_ripped_jeans', 'c_work_pants']);
+      boots = pick(['c_shoes', 'c_sneakers', 'c_kirza']);
+      break;
+    case 'cop':
+      top = 'c_police_shirt';
+      pants = rng.chance(0.7) ? 'c_police_pants' : 'c_trousers';
+      boots = pick(['c_police_shoes', 'c_shoes']);
+      break;
+    default:
+      top = pick(['c_knit', 'c_survivor_top', 'c_knit']);
+      pants = pick(['c_trousers', 'c_work_pants', 'c_ripped_jeans']);
+      boots = pick(['c_shoes', 'c_sneakers', 'c_tall_boots', 'c_kirza']);
+      hat = pickDef(rng, [[null, 4], ['c_green_cap', 1.5], ['c_balaclava', 1]]);
+  }
+  eq.slots.top = createItem(top, { fir: true });
+  eq.slots.pants = createItem(pants, { fir: true });
+  eq.slots.boots = createItem(boots, { fir: true });
+  if (hat) eq.slots.hat = createItem(hat, { fir: true });
+}
+
+/** Plain clothes for a fresh survivor (and the free kit when broke). */
+export function starterClothes(eq: Equipment): Equipment {
+  eq.slots.top = createItem('c_knit');
+  eq.slots.pants = createItem('c_trousers');
+  eq.slots.boots = createItem('c_shoes');
   return eq;
 }
 
@@ -168,5 +224,5 @@ export function starterKit(): Equipment {
   addItem(eq.pockets, createItem('water'));
   addItem(eq.slots.rig.grid!, createItem('splint'));
   addItem(eq.slots.rig.grid!, createItem('analgin'));
-  return eq;
+  return starterClothes(eq);
 }

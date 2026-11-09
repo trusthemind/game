@@ -16,7 +16,8 @@ export type Category =
   | 'valuable'
   | 'junk'
   | 'money'
-  | 'key';
+  | 'key'
+  | 'clothing';
 
 export type Caliber = '9x18' | '9x19' | '12g' | '5.45' | '5.56' | '7.62x39' | '7.62x54';
 
@@ -171,6 +172,19 @@ export interface ArmorStats {
   slow: number;
 }
 
+/** Where a piece of clothing is worn. */
+export type ClothingSlot = 'hat' | 'top' | 'pants' | 'boots';
+
+/**
+ * Clothes are worn, not armour: no protection, they're how you (and the scavs you loot) look. Each piece is a real
+ * garment cut from a licensed character model (see CLOTH_KIT in the web renderer); `color` is its main colour, for
+ * places that only draw a swatch.
+ */
+export interface ClothingStats {
+  slot: ClothingSlot;
+  color: number;
+}
+
 export interface ItemDef {
   id: string;
   name: string;
@@ -191,6 +205,7 @@ export interface ItemDef {
   mod?: ModStats;
   med?: MedEffect;
   food?: { energy: number; hydration: number; useTime: number };
+  clothing?: ClothingStats;
 }
 
 // ── Guns built from parts ──────────────────────────────────
@@ -635,6 +650,37 @@ const defs: ItemDef[] = [
   { id: 'ssh68', name: 'SSh-68 steel helmet', short: 'SSh-68', category: 'helmet', w: 2, h: 2, weight: 1.5, value: 9000, rarity: 1, armor: { armorClass: 2, durability: 30, slow: 0.01 } },
   { id: 'zsh', name: 'ZSh-1-2M helmet', short: 'ZSh', category: 'helmet', w: 2, h: 2, weight: 3.2, value: 45000, rarity: 3, armor: { armorClass: 4, durability: 40, slow: 0.02 } },
   { id: 'altyn', name: 'Altyn assault helmet', short: 'ALTYN', category: 'helmet', w: 2, h: 2, weight: 4.0, value: 140000, rarity: 5, armor: { armorClass: 5, durability: 55, slow: 0.03 } },
+
+  // ── Clothing: worn in the hat / top / trousers / boots slots, no protection ──
+  { id: 'c_green_cap', name: 'Green cap', short: 'CAP', category: 'clothing', w: 1, h: 1, weight: 0.12, value: 3500, rarity: 1, clothing: { slot: 'hat', color: 0x3d4a3a } },
+  { id: 'c_patrol_cap', name: 'Patrol cap with headset', short: 'PATROL', category: 'clothing', w: 2, h: 1, weight: 0.5, value: 14000, rarity: 2, clothing: { slot: 'hat', color: 0x6b6b5a } },
+  { id: 'c_balaclava', name: 'Balaclava', short: 'BALAC', category: 'clothing', w: 1, h: 1, weight: 0.1, value: 2500, rarity: 1, clothing: { slot: 'hat', color: 0x2a2d22 } },
+  { id: 'c_balaclava_tan', name: 'Tan balaclava', short: 'BALAC', category: 'clothing', w: 1, h: 1, weight: 0.1, value: 3000, rarity: 1, clothing: { slot: 'hat', color: 0x6b5b45 } },
+  { id: 'c_bomber', name: 'Leather bomber jacket', short: 'BOMBER', category: 'clothing', w: 2, h: 3, weight: 1.8, value: 18000, rarity: 2, clothing: { slot: 'top', color: 0x3a2a20 } },
+  { id: 'c_knit', name: 'Knit vest and sweater', short: 'KNIT', category: 'clothing', w: 2, h: 2, weight: 0.8, value: 6000, rarity: 1, clothing: { slot: 'top', color: 0x2a2a2a } },
+  { id: 'c_survivor_top', name: 'Survivor top and scarf', short: 'SURVIV', category: 'clothing', w: 2, h: 2, weight: 0.6, value: 9000, rarity: 1, clothing: { slot: 'top', color: 0x1e1e1e } },
+  { id: 'c_police_shirt', name: 'Police shirt', short: 'POLICE', category: 'clothing', w: 2, h: 2, weight: 0.4, value: 7000, rarity: 1, clothing: { slot: 'top', color: 0x1d2c4a } },
+  { id: 'c_smock', name: 'Flora field smock', short: 'SMOCK', category: 'clothing', w: 2, h: 3, weight: 1.3, value: 22000, rarity: 2, clothing: { slot: 'top', color: 0x55603e } },
+  { id: 'c_acu_shirt', name: 'ACU field shirt', short: 'ACU', category: 'clothing', w: 2, h: 2, weight: 0.7, value: 16000, rarity: 2, clothing: { slot: 'top', color: 0x7a7a6a } },
+  { id: 'c_kitel', name: 'Officer tunic', short: 'KITEL', category: 'clothing', w: 2, h: 3, weight: 1.2, value: 26000, rarity: 3, clothing: { slot: 'top', color: 0x4a4a3a } },
+  { id: 'c_trousers', name: 'Brown trousers', short: 'TROUS', category: 'clothing', w: 2, h: 2, weight: 0.7, value: 3500, rarity: 1, clothing: { slot: 'pants', color: 0x4a3b2b } },
+  { id: 'c_work_pants', name: 'Work trousers', short: 'WORK', category: 'clothing', w: 2, h: 2, weight: 0.8, value: 4000, rarity: 1, clothing: { slot: 'pants', color: 0x2b2b2e } },
+  { id: 'c_ripped_jeans', name: 'Ripped jeans', short: 'JEANS', category: 'clothing', w: 2, h: 2, weight: 0.8, value: 5500, rarity: 1, clothing: { slot: 'pants', color: 0x1e1e22 } },
+  { id: 'c_police_pants', name: 'Police trousers', short: 'POLICE', category: 'clothing', w: 2, h: 2, weight: 0.6, value: 6000, rarity: 1, clothing: { slot: 'pants', color: 0x1d2c4a } },
+  { id: 'c_kneepad_pants', name: 'Camo trousers with kneepads', short: 'KNEEPAD', category: 'clothing', w: 2, h: 2, weight: 1.1, value: 14000, rarity: 2, clothing: { slot: 'pants', color: 0x5b5a3e } },
+  { id: 'c_flora_pants', name: 'Flora trousers', short: 'FLORA', category: 'clothing', w: 2, h: 2, weight: 0.9, value: 14000, rarity: 2, clothing: { slot: 'pants', color: 0x55603e } },
+  { id: 'c_desert_pants', name: 'Desert camo trousers', short: 'DESERT', category: 'clothing', w: 2, h: 2, weight: 0.9, value: 13000, rarity: 2, clothing: { slot: 'pants', color: 0xb8ae90 } },
+  { id: 'c_acu_pants', name: 'ACU trousers', short: 'ACU', category: 'clothing', w: 2, h: 2, weight: 0.9, value: 15000, rarity: 2, clothing: { slot: 'pants', color: 0x7a7a6a } },
+  { id: 'c_officer_pants', name: 'Officer trousers', short: 'OFFICR', category: 'clothing', w: 2, h: 2, weight: 0.8, value: 17000, rarity: 3, clothing: { slot: 'pants', color: 0x3a3a30 } },
+  { id: 'c_shoes', name: 'Leather shoes', short: 'SHOES', category: 'clothing', w: 2, h: 1, weight: 0.9, value: 4000, rarity: 1, clothing: { slot: 'boots', color: 0x5a4632 } },
+  { id: 'c_sneakers', name: 'Worn trainers', short: 'TRAIN', category: 'clothing', w: 2, h: 1, weight: 0.7, value: 3500, rarity: 1, clothing: { slot: 'boots', color: 0x2a2420 } },
+  { id: 'c_tall_boots', name: 'Tall work boots', short: 'BOOTS', category: 'clothing', w: 2, h: 2, weight: 1.7, value: 6000, rarity: 1, clothing: { slot: 'boots', color: 0x1e1e1e } },
+  { id: 'c_police_shoes', name: 'Police shoes', short: 'SHOES', category: 'clothing', w: 2, h: 1, weight: 0.9, value: 5000, rarity: 1, clothing: { slot: 'boots', color: 0x1a1a1a } },
+  { id: 'c_kirza', name: 'Kirza boots', short: 'KIRZA', category: 'clothing', w: 2, h: 2, weight: 1.8, value: 7000, rarity: 1, clothing: { slot: 'boots', color: 0x1e1e1e } },
+  { id: 'c_combat_boots', name: 'Combat boots', short: 'BOOTS', category: 'clothing', w: 2, h: 2, weight: 1.5, value: 15000, rarity: 2, clothing: { slot: 'boots', color: 0x6b5b45 } },
+  { id: 'c_desert_boots', name: 'Desert boots', short: 'DESERT', category: 'clothing', w: 2, h: 2, weight: 1.4, value: 14000, rarity: 2, clothing: { slot: 'boots', color: 0x8a7a5a } },
+  { id: 'c_survivor_boots', name: 'Survivor boots', short: 'BOOTS', category: 'clothing', w: 2, h: 2, weight: 1.5, value: 11000, rarity: 2, clothing: { slot: 'boots', color: 0x2a2420 } },
+  { id: 'c_officer_boots', name: 'Officer boots', short: 'OFFICR', category: 'clothing', w: 2, h: 2, weight: 1.6, value: 18000, rarity: 3, clothing: { slot: 'boots', color: 0x1a1816 } },
 
   // ── Rigs & backpacks ─────────────────────────────────────
   { id: 'r_scav', name: 'Scav vest', short: 'VEST', category: 'rig', w: 2, h: 2, weight: 0.4, value: 6000, rarity: 1, grid: { w: 4, h: 1 } },

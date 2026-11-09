@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Color } from 'three';
 import { getDef, type ItemInstance } from '@ashfall/engine';
 import { getThumb, onThumbsChanged, thumbKey } from '../../render/thumbnails';
 import { ICON_BODY, ICON_FOR } from './gameIcons';
@@ -20,6 +21,7 @@ const CAT_TINT: Record<string, string> = {
   mod: '#b7c7d6',
   weapon: '#d7dad2',
   melee: '#d7dad2',
+  clothing: '#c9c4b6',
 };
 
 /** Picture for an item: 3D-rendered thumbnail for guns/melee, a game-icons glyph for everything else. */
@@ -36,7 +38,9 @@ export function ItemArt({ item, w, h }: { item: ItemInstance; w: number; h: numb
   const name = ICON_FOR[item.def] ?? ICON_FOR[`cat:${d.category}`] ?? 'cog';
   const body = ICON_BODY[name];
   const s = Math.min(w, h) * 0.66;
+  // Clothes are drawn in their own colour (lifted a little, so black stays readable on the dark grid).
+  const tint = d.clothing ? `#${new Color(d.clothing.color).lerp(new Color(0xffffff), 0.25).getHexString()}` : (CAT_TINT[d.category] ?? '#ccc');
   return (
-    <svg className="item-svg" width={s} height={s} viewBox="0 0 512 512" aria-hidden="true" style={{ color: CAT_TINT[d.category] ?? '#ccc' }} dangerouslySetInnerHTML={{ __html: body ?? '' }} />
+    <svg className="item-svg" width={s} height={s} viewBox="0 0 512 512" aria-hidden="true" style={{ color: tint }} dangerouslySetInnerHTML={{ __html: body ?? '' }} />
   );
 }
