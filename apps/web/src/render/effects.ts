@@ -93,6 +93,11 @@ export class Effects {
     });
   }
 
+  /** No rain down in the bunker: the drops follow the camera wherever it goes. */
+  showRain(on: boolean): void {
+    if (this.rain) this.rain.visible = on;
+  }
+
   enableRain(on: boolean): void {
     if (!on || this.rain) return;
     this.rainPos = new Float32Array(this.RAIN * 6);

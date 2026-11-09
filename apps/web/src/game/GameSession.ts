@@ -254,7 +254,9 @@ export class GameSession {
   }
 
   private frame(now: number): void {
-    const dt = Math.min(0.1, (now - this.last) / 1000);
+    // A rAF timestamp can be older than the performance.now() taken in start() (a frame queued while the tab
+    // was in the background): never step backwards, or the raid sits frozen until it pays the time back.
+    const dt = Math.max(0, Math.min(0.1, (now - this.last) / 1000));
     this.last = now;
     const ui = useRaidUi.getState();
     const raid = this.raid;

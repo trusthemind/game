@@ -596,6 +596,9 @@ export class GameRenderer {
     // the torch at full night strength.
     const under = p.pos.y >= this.raid.map.surfaceH;
     this.sun.intensity = under ? L.sun * 0.06 : L.sun;
+    this.effects.showRain(!under);
+    // And no daylight haze: the sky's fog colour would turn the bunker milky grey.
+    (this.scene.fog as THREE.FogExp2).color.setHex(under ? LIGHTING.night.fog : L.fog);
     this.hemi.intensity = under ? 0.22 : L.hemi;
     this.playerGlow.intensity = under ? 3 : this.raid.timeOfDay === 'day' ? 0 : 2.2;
     this.flashlight.intensity = torch ? (under ? LIGHTING.night.flashlight : L.flashlight) : 0;

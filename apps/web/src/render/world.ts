@@ -87,6 +87,14 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
   const inBase = (x: number, y: number) => map.sites.some((st) => x >= st.x && y >= st.y && x < st.x + st.w && y < st.y + st.h);
   const square = map.places.find((p) => p.name === 'Central Square');
   const onSquare = (x: number, y: number) => !!square && Math.abs(x + 0.5 - square.x) <= square.r && Math.abs(y + 0.5 - square.y) <= square.r;
+  // Bare earth sprinkled tile by tile through the grass reads as a chequerboard of hard brown squares: a dirt
+  // tile with fewer than three dirt neighbours is drawn as the ground round it. Paths and yards stay earth.
+  const lonelyDirt = (x: number, y: number) => {
+    let n = 0;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && map.inBounds(x + dx, y + dy) && map.get(x + dx, y + dy) === Tile.Dirt) n++;
+    return n < 3;
+  };
   const floorBuckets = new Map<TexKind, number[]>();
   for (let y = 0; y < map.height; y++)
     for (let x = 0; x < map.width; x++) {
@@ -99,7 +107,8 @@ export function buildWorld(map: GameMap, u: WorldUniforms, shadows: boolean, lib
       if (map.isIndoors(x, y) && (kind === 'concrete' || t === Tile.Window)) {
         const b = map.buildings[map.buildingAt[map.idx(x, y)]! - 1];
         kind = b && (b.kind === 'house' || b.kind === 'shop') ? 'wood' : 'concrete';
-      } else if ((t === Tile.Grass || t === Tile.Tree) && map.districtOf(x, y) === 'forest') kind = 'moss';
+      } else if ((t === Tile.Grass || t === Tile.Tree || (t === Tile.Dirt && lonelyDirt(x, y))) && map.districtOf(x, y) === 'forest') kind = 'moss';
+      else if (t === Tile.Dirt && lonelyDirt(x, y)) kind = 'grass';
       else if (t === Tile.Concrete && !map.isIndoors(x, y)) {
         // The army base's yard is laid in slabs; a square in cobbles.
         if (inBase(x, y)) kind = 'pad';

@@ -32,7 +32,7 @@ float ashBayer(vec2 p) {
 export interface PatchOptions {
   fow?: boolean;
   /** wall: x-ray between player and camera; canopy: a small hole over the player; tall: high set pieces (cranes,
-   * ships' upper works) thin out for ~10 m round the player above head height. */
+   * ships' upper works) thin out above head height within ~10 m on the camera's side of the player. */
   occlude?: 'wall' | 'canopy' | 'tall';
   /** Extra shader edits applied before the fog/occlusion injection (e.g. character palettes). */
   pre?: (shader: THREE.WebGLProgramParametersWithUniforms) => void;
@@ -63,7 +63,9 @@ export function patchWorldMaterial<T extends THREE.Material>(mat: T, u: WorldUni
           ? /* glsl */ `float dz = vFowPos.z - uPlayer.z;
              float occ = (vFowPos.y > 0.55 && dz > 0.15 && dz < 5.0) ? (1.0 - smoothstep(1.6, 3.4, abs(vFowPos.x - uPlayer.x))) * (1.0 - smoothstep(3.5, 5.0, dz)) : 0.0;`
           : occ === 'tall'
-            ? /* glsl */ `float occ = vFowPos.y > 2.5 ? 1.0 - smoothstep(6.0, 10.0, length(vFowPos.xz - uPlayer.xz)) : 0.0;`
+            ? // Only what stands on the camera's side of you (or over you) can hide you: the camera looks north, so
+              // a lighthouse or a crane a few metres north of you stays solid.
+              /* glsl */ `float occ = vFowPos.y > 2.5 ? (1.0 - smoothstep(6.0, 10.0, length(vFowPos.xz - uPlayer.xz))) * smoothstep(-1.0, 0.5, vFowPos.z - uPlayer.z) : 0.0;`
             : /* glsl */ `float occ = 1.0 - smoothstep(2.0, 3.6, length(vFowPos.xz - uPlayer.xz - vec2(0.0, 0.8)));`;
       frag = frag.replace(
         'void main() {',
