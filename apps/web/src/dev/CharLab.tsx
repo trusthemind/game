@@ -14,6 +14,7 @@ import {
 } from '@ashfall/engine';
 import { BODY_IDS, bodySex, CLOTH_SOURCES, loadAssets, loadBodies } from '../render/assets';
 import { buildGun } from '../render/gunsmith';
+import { GEAR_MODEL, wornGear } from '../render/gearModels';
 import { assembleGun, loadWeaponParts } from '../render/weaponAssembly';
 import { attachSkinned, cloneHuman } from '../render/human';
 import { CharacterView, lookFor, renderPortrait, type Appearance } from '../render/character';
@@ -157,6 +158,30 @@ export function CharLab() {
       cam.lookAt(0, 1.0, 0);
       (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
     }
+    if (view === 'armor') {
+      // Every real helmet and vest (gearModels.ts) on someone dressed from items; the last two on rigged bodies.
+      cast.length = 0;
+      const kits: string[][] = [
+        ['paca:armor', 'ssh36:helmet'],
+        ['6b23:armor', 'ssh68:helmet'],
+        ['zsh:helmet', 'r_alpha:rig'],
+        ['trooper:armor', 'h_fast:helmet'],
+        ['pc_tan:armor', 'h_fast_headset:helmet'],
+        ['gzhel:armor', 'altyn:helmet'],
+        ['slick6:armor', 'r_mbss:rig'],
+        ['r_mbss:rig', 'h_kevlar:helmet'],
+      ];
+      const clothes = [['c_knit', 'c_trousers', 'c_shoes'], ['c_smock', 'c_flora_pants', 'c_kirza'], ['c_bomber', 'c_work_pants', 'c_tall_boots'], ['c_acu_shirt', 'c_acu_pants', 'c_combat_boots']];
+      kits.forEach((kit, i) => {
+        const base = lookFor(i + 60, 'scav');
+        const worn = clothes[i % clothes.length]!.map((id) => `${id}:${getDef(id).clothing!.slot}`);
+        cast.push({ look: { ...base, sex: i === 2 ? 'f' : 'm', body: undefined, hat: null, clothed: true }, eq: [...worn, ...kit], active: 'melee', speed: 0 });
+      });
+      cast.push({ look: { ...lookFor(3, 'raider'), body: 'rus_a', sex: 'm' }, eq: ['trooper:armor', 'h_fast:helmet'], active: 'melee', speed: 0 });
+      cam.position.set(0, 1.5, 9);
+      cam.lookAt(0, 1.0, 0);
+      (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
+    }
     if (view === 'gestures') {
       // Reloads and treatment by hand, looping: AK, pistol, pump gun; dressing an arm, a leg, splint, injector.
       cast.length = 0;
@@ -295,6 +320,38 @@ export function CharLab() {
     const mixers: THREE.AnimationMixer[] = [];
     loadAssets().then(async (lib) => {
       await loadBodies(lib, [...BODY_IDS, ...CLOTH_SOURCES]);
+      if (view === 'gearlab') {
+        // Raw armour / helmet models from gear.glb, each scaled into a 0.6 m box, as exported (to check which way
+        // they face): +X is right, +Z towards the camera. `&ids=altyn,fast` picks some.
+        cast.length = 0;
+        const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
+        const only = q.get('ids');
+        // `&items=1`: every item's model as it's worn (turned, one piece of a pack), front should face the camera.
+        const items = q.get('items');
+        const ids = items ? Object.keys(GEAR_MODEL) : only ? only.split(',') : [...lib.gear.keys()];
+        (window as unknown as { __gearIds: string[] }).__gearIds = ids;
+        ids.forEach((id, i) => {
+          const src = items ? wornGear(lib, id) : lib.gear.get(id);
+          if (!src) return;
+          const o = items ? src : src.clone(true);
+          const wrap = new THREE.Group();
+          wrap.add(o);
+          const b = new THREE.Box3().setFromObject(o);
+          const sz = b.getSize(new THREE.Vector3());
+          const k = 0.6 / Math.max(sz.x, sz.y, sz.z);
+          o.position.sub(b.getCenter(new THREE.Vector3()));
+          wrap.scale.setScalar(k);
+          wrap.position.set((i - (ids.length - 1) / 2) * 0.8, 0.5, 0);
+          scene.add(wrap);
+          const ax = new THREE.AxesHelper(0.45);
+          ax.position.copy(wrap.position);
+          scene.add(ax);
+        });
+        cam.position.set(0, 1.4, Math.max(3, ids.length * 0.75));
+        cam.lookAt(0, 0.5, 0);
+        scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+        (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
+      }
       if (view === 'humans') {
         cast.length = 0;
         const styles = [...lib.hair.keys()].filter((k) => k.startsWith('Hair_'));
@@ -472,7 +529,9 @@ export function CharLab() {
       view === 'raw' ||
       view === 'kit' ||
       view === 'clothes' ||
-      view === 'wear'
+      view === 'wear' ||
+      view === 'gearlab' ||
+      view === 'armor'
         ? []
         : ['lena', 'mykola', 'vera']) {
         const img = document.createElement('img');

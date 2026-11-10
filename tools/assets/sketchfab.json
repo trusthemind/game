@@ -623,5 +623,55 @@
   "uid": "81d98feb6e36492a89dd839c80229c50",
   "slug": "cl_balaclava",
   "use": "clothing: balaclava"
+ },
+ {
+  "uid": "c3cf2fdf55b94b248d39063d11507230",
+  "slug": "ar_altyn",
+  "use": "armour: Altyn helmet"
+ },
+ {
+  "uid": "5b6edd49ca5b41a09656dee69e4d9f4b",
+  "slug": "ar_6b43",
+  "use": "armour: 6B43 vest"
+ },
+ {
+  "uid": "3b51e6329dbb4b0aa14e43f12eb6c42a",
+  "slug": "ar_plate_carrier",
+  "use": "armour: plate carrier"
+ },
+ {
+  "uid": "4033cea4197b45aa861103741096f2bf",
+  "slug": "ar_ssh40",
+  "use": "armour: Soviet steel helmet"
+ },
+ {
+  "uid": "caa34a90e85540dcbe454eb7d378aeda",
+  "slug": "ar_ssh36",
+  "use": "armour: SSh-36 helmet"
+ },
+ {
+  "uid": "c80875fc588344448e92eefed460540e",
+  "slug": "ar_fast",
+  "use": "armour: FAST helmet"
+ },
+ {
+  "uid": "3bef9733977142599dc2275cf889fcef",
+  "slug": "ar_wz2005",
+  "use": "armour: PASGT-style helmet"
+ },
+ {
+  "uid": "1cd10867c8ff49d8a95f1d3fd3dd2983",
+  "slug": "ar_6b45",
+  "use": "armour: 6B45 vest"
+ },
+ {
+  "uid": "82adf376164f4d99a4e0b2949930e2ad",
+  "slug": "ar_helmet_headset",
+  "use": "armour: tactical helmet with headset"
+ },
+ {
+  "uid": "7c41d35e505c4057abe60f89537408bd",
+  "slug": "ar_vest_pack",
+  "use": "armour: vest, armour, holster pack"
  }
 ]

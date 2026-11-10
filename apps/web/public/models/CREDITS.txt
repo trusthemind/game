@@ -145,3 +145,17 @@ pmc_heavy, fem_police):
                    https://sketchfab.com/3d-models/soldier-fully-rigged-character-d5ee1b51099741d2b5e4010f4f781263
   cl_alan.glb    — "Alan Survivor(rigged)" by RRB STUDIOS
                    https://sketchfab.com/3d-models/alan-survivorrigged-cca25ef7b9794d49b909022ed8e81f15
+
+Worn armour and helmets in gear.glb — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Decimated, textures
+resized to WebP, meshopt-compressed (tools/assets/vehicles.mjs gear); scaled and fitted to the head or skinned to the
+torso at load (apps/web/src/render/gearModels.ts, character.ts):
+    vest_danly (item pc_tan) — "Low Poly Game Ready Armor Vest" by DanlyVostok (https://sketchfab.com/3d-models/low-poly-game-ready-armor-vest-90c084b9a56441b1afcfa9293b6fe4af)
+    altyn — "Low-Poly Altyn Helmet" by notcplkerry (https://sketchfab.com/3d-models/low-poly-altyn-helmet-c3cf2fdf55b94b248d39063d11507230)
+    v_6b43 (not worn yet: a plate for the insert system) — "6Б43 - 6B43 Armor Plate Russian Ratnik (Ратник)" by HKM4 (https://sketchfab.com/3d-models/643-6b43-armor-plate-russian-ratnik-5b6edd49ca5b41a09656dee69e4d9f4b)
+    plate_carrier (trooper) — "Tactical Plate Carrier Vest - Game Ready" by Exactly (https://sketchfab.com/3d-models/tactical-plate-carrier-vest-game-ready-3b51e6329dbb4b0aa14e43f12eb6c42a)
+    ssh40 (ssh68) — "Russian Soviet Helmet" by Connor S. Nielsen (https://sketchfab.com/3d-models/russian-soviet-helmet-4033cea4197b45aa861103741096f2bf)
+    ssh36 — "СШ-36 Советский  шлем (SSh-36) Soviet helmet" by Vladislav Horiainov (https://sketchfab.com/3d-models/36-ssh-36-soviet-helmet-caa34a90e85540dcbe454eb7d378aeda)
+    fast (h_fast) — "FAST Helmet" by FailureToComply (https://sketchfab.com/3d-models/fast-helmet-c80875fc588344448e92eefed460540e)
+    wz2005 (h_kevlar) — "Hełm wz. 2005 (Helmet model 2005)" by Armored Wave (https://sketchfab.com/3d-models/hem-wz-2005-helmet-model-2005-3bef9733977142599dc2275cf889fcef)
+    helmet_headset (h_fast_headset) — "Tactical Helmet with Headset (Game-Ready)" by Exactly (https://sketchfab.com/3d-models/tactical-helmet-with-headset-game-ready-82adf376164f4d99a4e0b2949930e2ad)
+    vest_pack (paca, 6b23, gzhel, slick6, r_mbss) — "Vest Armor Holster LowPoly GameReady Pack" by 00amza (https://sketchfab.com/3d-models/vest-armor-holster-lowpoly-gameready-pack-7c41d35e505c4057abe60f89537408bd)

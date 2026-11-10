@@ -4,6 +4,7 @@ import { bodySettled, getAssets, loadAssets, loadBodies, type AssetLibrary } fro
 import { buildGun, gunKey, MOD_MODEL } from './gunsmith';
 import { loadWeaponParts, weaponParts } from './weaponAssembly';
 import { meleeModel } from './melee3d';
+import { wornGear } from './gearModels';
 import { clothingModel, clothingSource } from './character';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import {
@@ -183,11 +184,11 @@ export function itemModel(lib: AssetLibrary, item: ItemInstance): { obj: THREE.O
       return side(w);
     }
     case 'helmet':
-      return front(helmetModel(id));
+      return front(wornGear(lib, id) ?? helmetModel(id));
     case 'armor':
-      return front(shellModel(lib, id, ARMOR_SPECS[id]) ?? armorModel(id));
+      return front(wornGear(lib, id) ?? shellModel(lib, id, ARMOR_SPECS[id]) ?? armorModel(id));
     case 'rig':
-      return front(shellModel(lib, id, RIG_SPECS[id]) ?? rigModel(id));
+      return front(wornGear(lib, id) ?? shellModel(lib, id, RIG_SPECS[id]) ?? rigModel(id));
     case 'backpack': {
       if (id === 'b_sling') return front(slingModel());
       const bp = lib.props.get('backpack');

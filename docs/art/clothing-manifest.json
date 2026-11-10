@@ -900,6 +900,396 @@
     "technical_checks_passed": true,
     "approved_by": "delegated by Fedir, 2026-11-09"
    }
+  },
+  {
+   "id": "altyn",
+   "role": "armour / helmet / rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "notcplkerry",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Low-Poly Altyn Helmet\" by notcplkerry, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "ssh68",
+   "role": "armour / helmet / rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "Connor S. Nielsen",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Russian Soviet Helmet\" by Connor S. Nielsen, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "ssh36",
+   "role": "armour / helmet / rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "Vladislav Horiainov",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"SSh-36 Soviet helmet\" by Vladislav Horiainov, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "h_kevlar",
+   "role": "armour / helmet / rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "Armored Wave",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"He\u0142m wz. 2005\" by Armored Wave, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "h_fast",
+   "role": "armour / helmet / rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "FailureToComply",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"FAST Helmet\" by FailureToComply, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "h_fast_headset",
+   "role": "armour / helmet / rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "Exactly",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Tactical Helmet with Headset (Game-Ready)\" by Exactly, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "paca",
+   "role": "armour / helmet / rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "00amza",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Vest Armor Holster LowPoly GameReady Pack\" by 00amza, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "6b23",
+   "role": "armour / helmet / rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "00amza",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Vest Armor Holster LowPoly GameReady Pack\" by 00amza, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "gzhel",
+   "role": "armour / helmet / rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "00amza",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Vest Armor Holster LowPoly GameReady Pack\" by 00amza, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "slick6",
+   "role": "armour / helmet / rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "00amza",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Vest Armor Holster LowPoly GameReady Pack\" by 00amza, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "r_mbss",
+   "role": "armour / helmet / rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "00amza",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Vest Armor Holster LowPoly GameReady Pack\" by 00amza, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "trooper",
+   "role": "armour / helmet / rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "Exactly",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Tactical Plate Carrier Vest - Game Ready\" by Exactly, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "pc_tan",
+   "role": "armour / helmet / rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "approved",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "DanlyVostok",
+    "created_at": "2026-11-09",
+    "license": "CC BY 4.0",
+    "attribution": "\"Low Poly Game Ready Armor Vest\" by DanlyVostok, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "delegated by Fedir, 2026-11-09"
+   }
   }
  ]
 }

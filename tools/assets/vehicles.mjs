@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Sketchfab vehicles and furniture (CC BY, see tools/assets/sketchfab.json) → apps/web/public/models/
- * vehicles.glb and furniture_sf.glb.
+ * vehicles.glb, furniture_sf.glb and gear.glb (worn armour and helmets).
  *
  *   ASSET_SRC=/path/to/packs node tools/assets/vehicles.mjs [vehicles|furniture]
  *
@@ -14,9 +14,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Document, NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { dedup, mergeDocuments, meshopt, prune, quantize, reorder, textureCompress, weld } from '@gltf-transform/functions';
+import { dedup, mergeDocuments, meshopt, metalRough, prune, quantize, reorder, simplify, textureCompress, weld } from '@gltf-transform/functions';
 import sharp from 'sharp';
-import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
+import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const SRC = process.env.ASSET_SRC;
@@ -71,10 +71,29 @@ const PACKS = {
       bookshelf_soviet: 'furn_bookshelf_soviet',
     },
   },
+  // Body armour and helmets worn on characters (render/gearModels.ts fits them to the head / chest at load).
+  gear: {
+    size: 512,
+    // Some are sculpt-density: halve them (helmets stay round at 40 px tall).
+    simplify: 0.55,
+    models: {
+      altyn: 'ar_altyn',
+      ssh40: 'ar_ssh40',
+      ssh36: 'ar_ssh36',
+      fast: 'ar_fast',
+      wz2005: 'ar_wz2005',
+      helmet_headset: 'ar_helmet_headset',
+      v_6b43: 'ar_6b43',
+      plate_carrier: 'ar_plate_carrier',
+      vest_danly: 'cloth_armor_vest',
+      vest_pack: 'ar_vest_pack',
+    },
+  },
 };
 const want = process.argv[2];
 
 await MeshoptEncoder.ready;
+await MeshoptSimplifier.ready;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
 for (const [name, pack] of Object.entries(PACKS)) {
   if (want && !name.startsWith(want)) continue;
@@ -105,9 +124,12 @@ for (const [name, pack] of Object.entries(PACKS)) {
   }
   doc.getRoot().setDefaultScene(scene);
   await doc.transform(
+    // Some exports use the spec-gloss extension, which three.js no longer reads (they'd come out white).
+    metalRough(),
     dedup(),
     prune(),
     weld(),
+    ...(pack.simplify ? [simplify({ simplifier: MeshoptSimplifier, ratio: pack.simplify, error: 0.003 })] : []),
     textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [pack.size, pack.size], quality: 82 }),
     reorder({ encoder: MeshoptEncoder }),
     quantize({ quantizeNormal: 10, quantizePosition: 14 }),

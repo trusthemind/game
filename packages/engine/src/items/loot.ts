@@ -31,7 +31,7 @@ const SMALL_VAL: Table = [['chain', 6], ['rolex', 2], ['cpu', 2], ['flash', 2], 
 
 export const CONTAINERS: Record<ContainerKind, ContainerSpec> = {
   wardrobe: { label: 'Wardrobe', grid: [4, 4], rolls: [0, 3], searchTime: 0.7,
-    table: [...CLOTHES.map(([id, w]) => [id, w * 0.6] as const), ['b_sling', 4], ['b_daypack', 2], ['r_scav', 4], ['bat', 1.2], ['knife', 1.5], ['hatchet', 0.8], ['paca', 1.5], ['ssh68', 2], ['roubles', 4], ['chain', 2], ['water', 1]] },
+    table: [...CLOTHES.map(([id, w]) => [id, w * 0.6] as const), ['b_sling', 4], ['b_daypack', 2], ['r_scav', 4], ['bat', 1.2], ['knife', 1.5], ['hatchet', 0.8], ['paca', 1.5], ['ssh68', 2], ['ssh36', 2], ['h_kevlar', 0.6], ['roubles', 4], ['chain', 2], ['water', 1]] },
   fridge: { label: 'Fridge', grid: [3, 4], rolls: [1, 4], searchTime: 0.5, table: FOOD },
 
   drawer: { label: 'Drawer', grid: [4, 2], rolls: [0, 3], searchTime: 0.55,
@@ -48,10 +48,10 @@ export const CONTAINERS: Record<ContainerKind, ContainerSpec> = {
   modbox: { label: 'Gun parts box', grid: [4, 3], rolls: [1, 3], searchTime: 0.8, table: MODS },
   airdrop: { label: 'Airdrop crate', grid: [6, 5], rolls: [5, 8], searchTime: 0.55,
     table: [['hk416', 1], ['sv98', 0.8], ['rpk16', 1], ['vector', 1], ['aug', 1.2], ['m4a1', 1.5], ['a_556m995', 2], ['a_545bs', 2], ['a_54r7n1', 1.5], ['a_762bp', 2],
-      ['gzhel', 1.2], ['slick6', 0.5], ['altyn', 0.6], ['grizzly', 2], ['surv12', 1.2], ['ifak', 2.5], ['stim', 1.5], ['cms', 1.5], ['mre', 2], ['water', 2],
+      ['gzhel', 1.2], ['pc_tan', 1.2], ['slick6', 0.5], ['altyn', 0.6], ['h_fast_headset', 0.8], ['grizzly', 2], ['surv12', 1.2], ['ifak', 2.5], ['stim', 1.5], ['cms', 1.5], ['mre', 2], ['water', 2],
       ['scope_4x', 1.5], ['scope_8x', 0.6], ['sup_556', 1], ['sup_545', 1], ['mag_stanag60', 0.8], ['mag_rpk95', 0.6], ['intel', 1.2], ['ledx', 0.4], ['gpu', 0.6], ['sc_beta', 0.15]] },
   helicrate: { label: 'Helicopter cargo', grid: [5, 4], rolls: [3, 6], searchTime: 0.75,
-    table: [['ak74m', 1.5], ['m4a1', 1.2], ['hk416', 0.4], ['svd', 0.6], ['a_545bs', 2], ['a_556m855', 2.5], ['a_54r', 2], ['trooper', 1.5], ['gzhel', 0.6], ['zsh', 1.5],
+    table: [['ak74m', 1.5], ['m4a1', 1.2], ['hk416', 0.4], ['svd', 0.6], ['a_545bs', 2], ['a_556m855', 2.5], ['a_54r', 2], ['trooper', 1.5], ['gzhel', 0.6], ['zsh', 1.5], ['h_fast', 1.2], ['h_kevlar', 1.5],
       ['ifak', 2.5], ['salewa', 2], ['esmarch', 2], ['splint', 1.5], ['holo', 1.2], ['fgrip', 1.5], ['stock_tac', 1.2], ['intel', 1], ['flash', 1.5], ['cpu', 1.2], ['sc_beta', 0.08]] },
   ammocrate: { label: 'Ammo crate', grid: [5, 3], rolls: [2, 4], searchTime: 0.8,
     table: [['a_9x18', 4], ['a_9x19', 4], ['a_12buck', 4], ['a_545ps', 5], ['a_762ps', 4], ['a_556m855', 3], ['a_54r', 2],
