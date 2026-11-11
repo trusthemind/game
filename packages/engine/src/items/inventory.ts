@@ -59,6 +59,8 @@ export function createItem(defId: string, opts: Partial<Omit<ItemInstance, 'def'
   const def = getDef(defId);
   const item: ItemInstance = { uid: newUid(), def: defId, stack: 1, ...opts };
   if (def.armor && item.dur === undefined) item.dur = def.armor.durability;
+  // A plate carrier leaves the factory with its plate in.
+  if (def.armor?.plate && !opts.mods) item.mods = { plate: createItem(def.armor.plate, opts.fir ? { fir: true } : {}) };
   if (def.grid && !item.grid) item.grid = createGrid(def.grid.w, def.grid.h);
   if (def.category === 'secure' && item.grid) item.grid.secure = true;
   if (def.weapon && item.ammo === undefined) item.ammo = 0;
@@ -82,6 +84,8 @@ function presetParts(preset: Preset): Partial<Record<string, ItemInstance>> {
 /** Weight and value of a def's factory parts: a gun's def lists the complete gun, its receiver is the rest. */
 const presetTotals = new Map<string, { weight: number; value: number }>();
 function factoryParts(d: ItemDef): { weight: number; value: number } {
+  // A carrier's listed weight and price include its factory plate.
+  if (d.armor?.plate) return { weight: getDef(d.armor.plate).weight, value: getDef(d.armor.plate).value };
   const preset = d.weapon?.preset ?? d.mod?.preset;
   if (!preset || !d.weapon) return { weight: 0, value: 0 };
   let t = presetTotals.get(d.id);
@@ -483,4 +487,26 @@ export function allItems(eq: Equipment, out: ItemInstance[] = []): ItemInstance[
   }
   walkGrid(eq.pockets);
   return out;
+}
+
+// ── Plate carriers ────────────────────────────────────────────
+
+/** Whether this armour takes a plate. */
+export const takesPlate = (item: ItemInstance) => !!getDef(item.def).armor?.plate;
+/** The plate in a carrier, if any. */
+export const plateOf = (item: ItemInstance | null | undefined): ItemInstance | null => item?.mods?.plate ?? null;
+
+/** Put a plate into a carrier. Returns the plate that was in it (or null), or false when it doesn't go there. */
+export function insertPlate(carrier: ItemInstance, plate: ItemInstance): ItemInstance | null | false {
+  if (!takesPlate(carrier) || getDef(plate.def).category !== 'plate') return false;
+  const old = plateOf(carrier);
+  carrier.mods = { ...carrier.mods, plate };
+  return old;
+}
+
+/** Take the plate out of a carrier. */
+export function removePlate(carrier: ItemInstance): ItemInstance | null {
+  const old = plateOf(carrier);
+  if (old && carrier.mods) delete carrier.mods.plate;
+  return old;
 }

@@ -1,5 +1,5 @@
 import { useContext, type ReactNode } from 'react';
-import { equipmentValue, equipmentWeight } from '@ashfall/engine';
+import { equipmentValue, equipmentWeight, getDef, plateOf, takesPlate } from '@ashfall/engine';
 import { EquipSlot, InvContext, ItemGrid } from './components';
 
 /** Tarkov-style character panel: equipment slots on the left, carried containers on the right. */
@@ -7,6 +7,8 @@ export function GearPanel({ owner, cell = 48, title, compact = false, preview }:
   const ctx = useContext(InvContext)!;
   const eq = ctx.host.resolver.equipment(owner);
   if (!eq) return null;
+  const carrier = eq.slots.armor;
+  const plate = plateOf(carrier);
   return (
     <div className="gear-panel">
       {title && (
@@ -23,6 +25,12 @@ export function GearPanel({ owner, cell = 48, title, compact = false, preview }:
             <EquipSlot owner={owner} slot="helmet" w={2} h={2} cell={cell} />
             <EquipSlot owner={owner} slot="armor" w={3} h={3} cell={cell} />
           </div>
+          {carrier && takesPlate(carrier) && (
+            <div className={`plate-readout ${plate ? '' : 'empty'}`}>
+              <span>Plate</span>
+              <b>{plate ? `${getDef(plate.def).short} · ${Math.round(plate.dur ?? 0)}/${getDef(plate.def).armor!.durability}` : 'Empty'}</b>
+            </div>
+          )}
           <EquipSlot owner={owner} slot="primary" w={5} h={2} cell={cell} />
           <div className="row">
             <EquipSlot owner={owner} slot="secondary" w={3} h={1.5} cell={cell} />

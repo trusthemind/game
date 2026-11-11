@@ -10,7 +10,7 @@ import { applyRaidToTasks, type TaskState } from './tasks';
 import { newHideout, type HideoutState } from './hideout';
 import { companionLevel, companionRaidXp, companionState, gearTierFor, upgradeCompanionGear, type CompanionState } from './companions';
 
-export const PROFILE_VERSION = 9;
+export const PROFILE_VERSION = 10;
 
 export interface ProfileStats {
   raids: number;
@@ -203,6 +203,25 @@ export function migrateProfile(raw: unknown): Profile {
     for (const eq of Object.values(out.companionEq ?? {})) slots(eq);
     starterClothes(out.equipment);
     out.version = 9;
+  }
+  if (out.version < 10) {
+    // v9 → v10: plate carriers hold a plate. Ones from before get their factory plate, as worn as they were.
+    const visit = (o: unknown): void => {
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) return o.forEach(visit);
+      const it = o as Partial<ItemInstance>;
+      const armor = typeof it.def === 'string' && typeof it.uid === 'string' ? ITEMS[it.def]?.armor : undefined;
+      if (armor?.plate && !it.mods?.plate) {
+        const plate = createItem(armor.plate);
+        const worn = Math.min(1, (it.dur ?? armor.durability) / armor.durability);
+        plate.dur = Math.round(getDef(armor.plate).armor!.durability * worn);
+        it.mods = { ...it.mods, plate };
+        it.dur = Math.min(it.dur ?? armor.durability, armor.durability);
+      }
+      for (const v of Object.values(o)) visit(v);
+    };
+    visit(out);
+    out.version = 10;
   }
   dropUnknownItems(out);
   out.companions ??= {};

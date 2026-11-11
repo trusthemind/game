@@ -194,7 +194,7 @@ function sampleItem(id: string): ItemInstance {
   return it;
 }
 
-const CATS: (Category | 'all')[] = ['all', 'weapon', 'melee', 'ammo', 'armor', 'helmet', 'mod', 'rig', 'backpack', 'clothing', 'med', 'food', 'drink'];
+const CATS: (Category | 'all')[] = ['all', 'weapon', 'melee', 'ammo', 'armor', 'plate', 'helmet', 'mod', 'rig', 'backpack', 'clothing', 'med', 'food', 'drink'];
 
 function TraderTab() {
   const profile = useProfile((s) => s.profile)!;

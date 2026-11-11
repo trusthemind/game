@@ -1,6 +1,6 @@
 import type { Rng } from '../core/rng';
-import type { ArmorStats, MeleeStats } from '../items/defs';
-import type { ItemInstance } from '../items/inventory';
+import { ARMOR_MATERIALS, armorMaterial, armorZones, type ArmorStats, type MeleeStats } from '../items/defs';
+import { plateOf, type ItemInstance } from '../items/inventory';
 import { getDef } from '../items/defs';
 import type { HitZone } from './types';
 
@@ -35,6 +35,11 @@ export function penetrationChance(penetration: number, armor: ArmorStats, durabi
   return Math.min(0.97, Math.max(0.03, 0.5 + diff / 18));
 }
 
+/** Durability spent by a hit after taking the material into account. 0.5 was the original neutral wear rate. */
+export function armorWear(baseDamage: number, armorItem: ItemInstance): number {
+  return baseDamage * (ARMOR_MATERIALS[armorMaterial(getDef(armorItem.def))].wear / 0.5);
+}
+
 export function resolveBulletHit(
   rng: Rng,
   baseDamage: number,
@@ -51,7 +56,8 @@ export function resolveBulletHit(
   }
   const chance = penetrationChance(pen, armor, armorItem.dur ?? 0);
   const penetrated = rng.next() < chance;
-  const armorDamage = (dmg * (penetrated ? 0.45 : 0.6) * Math.max(0.4, 1 - pen / 100 + 0.3)) / 2;
+  // What it's made of decides how fast it goes: aramid shrugs hits off, ceramic cracks (0.5 = the old flat rate).
+  const armorDamage = armorWear((dmg * (penetrated ? 0.45 : 0.6) * Math.max(0.4, 1 - pen / 100 + 0.3)) / 2, armorItem);
   return {
     damage: penetrated ? dmg * (0.75 + 0.25 * chance) : dmg * 0.22,
     penetrated,
@@ -69,12 +75,16 @@ export function resolveMeleeHit(stats: MeleeStats, zone: HitZone, armorItem: Ite
   // Blades skate off plates, blunt force carries through.
   const absorbed = Math.min(0.9, armor.armorClass * 0.14 * ((armorItem.dur ?? 0) / armor.durability));
   const damage = raw * (stats.armorBypass + (1 - stats.armorBypass) * (1 - absorbed));
-  return { damage, penetrated: false, armorDamage: raw * 0.2, bleedChance: stats.bleedChance * (1 - absorbed) };
+  return { damage, penetrated: false, armorDamage: armorWear(raw * 0.2, armorItem), bleedChance: stats.bleedChance * (1 - absorbed) };
 }
 
 export function armorFor(zone: HitZone, slots: { helmet: ItemInstance | null; armor: ItemInstance | null }): ItemInstance | null {
-  if (zone === 'head') return slots.helmet;
-  if (zone === 'thorax' || zone === 'stomach') return slots.armor;
+  // Each piece covers the parts it says it does (a plate carrier leaves the stomach open, heavy armour has
+  // shoulder guards); the vest first, so a helmet with a neck guard never shadows it.
+  // A plate in a carrier takes the hit first, where it covers and while it holds; then the carrier's soft armour.
+  const plate = plateOf(slots.armor);
+  if (plate && (plate.dur ?? 0) > 0 && armorZones(getDef(plate.def)).includes(zone)) return plate;
+  for (const it of [slots.armor, slots.helmet]) if (it && armorZones(getDef(it.def)).includes(zone)) return it;
   return null;
 }
 

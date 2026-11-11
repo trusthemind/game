@@ -106,6 +106,7 @@ export const ICON_FOR: Record<string, string> = {
  "cat:junk": "cog",
  "cat:money": "money-stack",
  "cat:armor": "kevlar-vest",
+ "cat:plate": "armor-vest",
  "cat:helmet": "helmet"
 };
 /** SVG inner markup on a 512×512 viewBox. */

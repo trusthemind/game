@@ -17,7 +17,8 @@ export type Category =
   | 'junk'
   | 'money'
   | 'key'
-  | 'clothing';
+  | 'clothing'
+  | 'plate';
 
 export type Caliber = '9x18' | '9x19' | '12g' | '5.45' | '5.56' | '7.62x39' | '7.62x54';
 
@@ -165,12 +166,37 @@ export interface AmmoStats {
   damageMul: number;
 }
 
+/** What armour is made of: how fast hits wear it down (`wear`: 0.5 is the baseline, lower lasts longer). */
+export type ArmorMaterial = 'aramid' | 'uhmwpe' | 'titanium' | 'steel' | 'ceramic';
+export const ARMOR_MATERIALS: Record<ArmorMaterial, { name: string; wear: number; note: string }> = {
+  aramid: { name: 'Aramid', wear: 0.25, note: 'soft, wears very slowly' },
+  uhmwpe: { name: 'Polyethylene', wear: 0.45, note: 'light, wears slowly' },
+  titanium: { name: 'Titanium', wear: 0.55, note: 'holds up well' },
+  steel: { name: 'Steel', wear: 0.7, note: 'heavy, wears fast' },
+  ceramic: { name: 'Ceramic', wear: 0.85, note: 'stops a lot, shatters fast' },
+};
+/** Body parts armour can cover (the same names as the health model's parts). */
+export type ArmorZone = 'head' | 'thorax' | 'stomach' | 'leftArm' | 'rightArm' | 'leftLeg' | 'rightLeg';
+
 export interface ArmorStats {
   armorClass: number;
   durability: number;
   /** Movement multiplier penalty, e.g. 0.06 = 6% slower. */
   slow: number;
+  /** Parts it covers. Unset: a helmet covers the head, a vest the thorax and stomach. */
+  zones?: ArmorZone[];
+  /** Unset: steel. */
+  material?: ArmorMaterial;
+  /** A plate carrier: takes an armour plate (see plates.ts), and leaves the factory with this one in. Its own
+   * class is only the soft carrier's; the plate does the stopping over the chest. */
+  plate?: string;
 }
+
+/** The parts an armour item covers. */
+export function armorZones(def: ItemDef): readonly ArmorZone[] {
+  return def.armor?.zones ?? (def.category === 'helmet' ? ['head'] : def.armor ? ['thorax', 'stomach'] : []);
+}
+export const armorMaterial = (def: ItemDef): ArmorMaterial => def.armor?.material ?? 'steel';
 
 /** Where a piece of clothing is worn. */
 export type ClothingSlot = 'hat' | 'top' | 'pants' | 'boots';
@@ -642,19 +668,24 @@ const defs: ItemDef[] = [
   { id: 'a_54r7n1', name: '7.62x54R 7N1', short: '7N1', category: 'ammo', w: 1, h: 1, weight: 0.022, value: 1200, rarity: 5, stackMax: 40, ammo: { caliber: '7.62x54', penetration: 52, damageMul: 1.05 } },
 
   // ── Armor & helmets ──────────────────────────────────────
-  { id: 'paca', name: 'PACA soft armor', short: 'PACA', category: 'armor', w: 3, h: 3, weight: 3.5, value: 22000, rarity: 1, armor: { armorClass: 2, durability: 50, slow: 0.02 } },
-  { id: '6b23', name: '6B23-1 body armor', short: '6B23', category: 'armor', w: 3, h: 3, weight: 7.5, value: 48000, rarity: 2, armor: { armorClass: 3, durability: 55, slow: 0.04 } },
-  { id: 'trooper', name: 'Trooper plate carrier', short: 'TROOPER', category: 'armor', w: 3, h: 3, weight: 8.4, value: 96000, rarity: 3, armor: { armorClass: 4, durability: 60, slow: 0.05 } },
-  { id: 'gzhel', name: 'Gzhel-K armor', short: 'GZHEL', category: 'armor', w: 3, h: 3, weight: 9.5, value: 170000, rarity: 4, armor: { armorClass: 5, durability: 65, slow: 0.06 } },
-  { id: 'slick6', name: 'Slick-6 plate carrier', short: 'SLICK', category: 'armor', w: 3, h: 3, weight: 10.0, value: 310000, rarity: 5, armor: { armorClass: 6, durability: 80, slow: 0.07 } },
-  { id: 'pc_tan', name: 'Tan plate carrier with pouches', short: 'PC TAN', category: 'armor', w: 3, h: 3, weight: 9.0, value: 125000, rarity: 4, armor: { armorClass: 5, durability: 55, slow: 0.055 } },
-  { id: 'ssh36', name: 'SSh-36 steel helmet', short: 'SSh-36', category: 'helmet', w: 2, h: 2, weight: 1.3, value: 6000, rarity: 1, armor: { armorClass: 1, durability: 28, slow: 0.01 } },
-  { id: 'h_kevlar', name: 'Kevlar helmet with goggles', short: 'KEVLAR', category: 'helmet', w: 2, h: 2, weight: 1.6, value: 26000, rarity: 2, armor: { armorClass: 3, durability: 34, slow: 0.012 } },
-  { id: 'h_fast', name: 'FAST ballistic helmet', short: 'FAST', category: 'helmet', w: 2, h: 2, weight: 1.4, value: 62000, rarity: 3, armor: { armorClass: 4, durability: 36, slow: 0.012 } },
-  { id: 'h_fast_headset', name: 'FAST helmet with headset', short: 'FAST HS', category: 'helmet', w: 2, h: 2, weight: 1.9, value: 98000, rarity: 4, armor: { armorClass: 4, durability: 42, slow: 0.015 } },
-  { id: 'ssh68', name: 'SSh-68 steel helmet', short: 'SSh-68', category: 'helmet', w: 2, h: 2, weight: 1.5, value: 9000, rarity: 1, armor: { armorClass: 2, durability: 30, slow: 0.01 } },
-  { id: 'zsh', name: 'ZSh-1-2M helmet', short: 'ZSh', category: 'helmet', w: 2, h: 2, weight: 3.2, value: 45000, rarity: 3, armor: { armorClass: 4, durability: 40, slow: 0.02 } },
-  { id: 'altyn', name: 'Altyn assault helmet', short: 'ALTYN', category: 'helmet', w: 2, h: 2, weight: 4.0, value: 140000, rarity: 5, armor: { armorClass: 5, durability: 55, slow: 0.03 } },
+  { id: 'paca', name: 'PACA soft armor', short: 'PACA', category: 'armor', w: 3, h: 3, weight: 3.5, value: 22000, rarity: 1, armor: { armorClass: 2, durability: 50, slow: 0.02, zones: ['thorax', 'stomach'], material: 'aramid' } },
+  { id: '6b23', name: '6B23-1 body armor', short: '6B23', category: 'armor', w: 3, h: 3, weight: 7.5, value: 48000, rarity: 2, armor: { armorClass: 3, durability: 55, slow: 0.04, zones: ['thorax', 'stomach'], material: 'steel' } },
+  { id: 'trooper', name: 'Trooper plate carrier', short: 'TROOPER', category: 'armor', w: 3, h: 3, weight: 8.4, value: 96000, rarity: 3, armor: { armorClass: 2, durability: 40, slow: 0.02, zones: ['thorax'], material: 'aramid', plate: 'pl_ceramic4' } },
+  { id: 'gzhel', name: 'Gzhel-K armor', short: 'GZHEL', category: 'armor', w: 3, h: 3, weight: 9.5, value: 170000, rarity: 4, armor: { armorClass: 5, durability: 65, slow: 0.06, zones: ['thorax', 'stomach', 'leftArm', 'rightArm'], material: 'ceramic' } },
+  { id: 'slick6', name: 'Slick-6 plate carrier', short: 'SLICK', category: 'armor', w: 3, h: 3, weight: 10.0, value: 310000, rarity: 5, armor: { armorClass: 3, durability: 50, slow: 0.03, zones: ['thorax', 'stomach'], material: 'aramid', plate: 'pl_ceramic6' } },
+  { id: 'pc_tan', name: 'Tan plate carrier with pouches', short: 'PC TAN', category: 'armor', w: 3, h: 3, weight: 9.0, value: 125000, rarity: 4, armor: { armorClass: 2, durability: 45, slow: 0.025, zones: ['thorax', 'stomach'], material: 'aramid', plate: 'pl_poly5' } },
+  // Armour plates: worn only inside a plate carrier, over the chest. Swap a cracked one for a fresh one.
+  { id: 'pl_steel3', name: 'Steel armour plate', short: 'PLATE 3', category: 'plate', w: 2, h: 2, weight: 6.2, value: 18000, rarity: 1, armor: { armorClass: 3, durability: 45, slow: 0.03, zones: ['thorax'], material: 'steel' } },
+  { id: 'pl_ceramic4', name: '6B43 ceramic plate', short: 'PLATE 4', category: 'plate', w: 2, h: 2, weight: 5.6, value: 60000, rarity: 3, armor: { armorClass: 4, durability: 50, slow: 0.03, zones: ['thorax'], material: 'ceramic' } },
+  { id: 'pl_poly5', name: 'Polyethylene plate', short: 'PLATE 5', category: 'plate', w: 2, h: 2, weight: 4.4, value: 85000, rarity: 4, armor: { armorClass: 5, durability: 55, slow: 0.025, zones: ['thorax'], material: 'uhmwpe' } },
+  { id: 'pl_ceramic6', name: 'Granit ceramic plate', short: 'PLATE 6', category: 'plate', w: 2, h: 2, weight: 6.5, value: 220000, rarity: 5, armor: { armorClass: 6, durability: 65, slow: 0.04, zones: ['thorax'], material: 'ceramic' } },
+  { id: 'ssh36', name: 'SSh-36 steel helmet', short: 'SSh-36', category: 'helmet', w: 2, h: 2, weight: 1.3, value: 6000, rarity: 1, armor: { armorClass: 1, durability: 28, slow: 0.01, zones: ['head'], material: 'steel' } },
+  { id: 'h_kevlar', name: 'Kevlar helmet with goggles', short: 'KEVLAR', category: 'helmet', w: 2, h: 2, weight: 1.6, value: 26000, rarity: 2, armor: { armorClass: 3, durability: 34, slow: 0.012, zones: ['head'], material: 'aramid' } },
+  { id: 'h_fast', name: 'FAST ballistic helmet', short: 'FAST', category: 'helmet', w: 2, h: 2, weight: 1.4, value: 62000, rarity: 3, armor: { armorClass: 4, durability: 36, slow: 0.012, zones: ['head'], material: 'uhmwpe' } },
+  { id: 'h_fast_headset', name: 'FAST helmet with headset', short: 'FAST HS', category: 'helmet', w: 2, h: 2, weight: 1.9, value: 98000, rarity: 4, armor: { armorClass: 4, durability: 42, slow: 0.015, zones: ['head'], material: 'uhmwpe' } },
+  { id: 'ssh68', name: 'SSh-68 steel helmet', short: 'SSh-68', category: 'helmet', w: 2, h: 2, weight: 1.5, value: 9000, rarity: 1, armor: { armorClass: 2, durability: 30, slow: 0.01, zones: ['head'], material: 'steel' } },
+  { id: 'zsh', name: 'ZSh-1-2M helmet', short: 'ZSh', category: 'helmet', w: 2, h: 2, weight: 3.2, value: 45000, rarity: 3, armor: { armorClass: 4, durability: 40, slow: 0.02, zones: ['head'], material: 'titanium' } },
+  { id: 'altyn', name: 'Altyn assault helmet', short: 'ALTYN', category: 'helmet', w: 2, h: 2, weight: 4.0, value: 140000, rarity: 5, armor: { armorClass: 5, durability: 55, slow: 0.03, zones: ['head'], material: 'titanium' } },
 
   // ── Clothing: worn in the hat / top / trousers / boots slots, no protection ──
   { id: 'c_green_cap', name: 'Green cap', short: 'CAP', category: 'clothing', w: 1, h: 1, weight: 0.12, value: 3500, rarity: 1, clothing: { slot: 'hat', color: 0x3d4a3a } },

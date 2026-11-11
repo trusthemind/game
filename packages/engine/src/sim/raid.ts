@@ -795,6 +795,9 @@ export class Raid {
     for (const s of ['armor', 'helmet'] as const) {
       const it = a.eq.slots[s];
       if (it) mul -= getDef(it.def).armor?.slow ?? 0;
+      // A plate weighs its carrier down too.
+      const plate = it?.mods?.plate;
+      if (plate) mul -= getDef(plate.def).armor?.slow ?? 0;
     }
     const held = this.weaponItem(a);
     if (held) mul *= effectiveWeapon(held).ergo;

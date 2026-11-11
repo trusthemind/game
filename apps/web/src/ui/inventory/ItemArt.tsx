@@ -14,6 +14,7 @@ const CAT_TINT: Record<string, string> = {
   money: '#9ad08a',
   junk: '#b9b3a6',
   armor: '#c9cfc4',
+  plate: '#a7b6bd',
   helmet: '#c9cfc4',
   rig: '#c9c09a',
   backpack: '#c9b48a',

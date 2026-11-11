@@ -54,3 +54,57 @@ describe('clothing', () => {
     expect(m.companionEq.lena!.slots.boots).toBeNull();
   });
 });
+
+describe('armour zones and materials', () => {
+  it('each piece covers what it says: a plate carrier leaves the stomach open, heavy armour covers the arms', async () => {
+    const { armorFor } = await import('../src/sim/combat');
+    const slots = (armor: string, helmet = 'ssh68') => ({ armor: createItem(armor), helmet: createItem(helmet) });
+    expect(armorFor('thorax', slots('trooper'))?.def).toBe('pl_ceramic4');
+    expect(armorFor('stomach', slots('trooper'))).toBeNull();
+    expect(armorFor('stomach', slots('paca'))?.def).toBe('paca');
+    expect(armorFor('leftArm', slots('gzhel'))?.def).toBe('gzhel');
+    expect(armorFor('leftArm', slots('paca'))).toBeNull();
+    expect(armorFor('head', slots('paca'))?.def).toBe('ssh68');
+    expect(armorFor('leftLeg', slots('gzhel'))).toBeNull();
+  });
+
+  it('ceramic wears faster than aramid under the same absorbed damage', async () => {
+    const { armorWear } = await import('../src/sim/combat');
+    expect(armorWear(10, createItem('pl_ceramic4'))).toBeGreaterThan(armorWear(10, createItem('paca')) * 2.5);
+    expect(armorWear(10, createItem('6b23'))).toBeGreaterThan(armorWear(10, createItem('pc_tan')));
+  });
+});
+
+describe('plate carriers', () => {
+  it('a carrier comes with its plate; the plate takes chest hits until it breaks', async () => {
+    const { armorFor } = await import('../src/sim/combat');
+    const { plateOf, insertPlate, removePlate, itemWeight } = await import('../src');
+    const pc = createItem('pc_tan');
+    const plate = plateOf(pc)!;
+    expect(plate.def).toBe('pl_poly5');
+    expect(itemWeight(pc)).toBeCloseTo(getDef('pc_tan').weight, 5);
+    const slots = { armor: pc, helmet: null };
+    expect(armorFor('thorax', slots)).toBe(plate);
+    expect(armorFor('stomach', slots)).toBe(pc);
+    plate.dur = 0;
+    expect(armorFor('thorax', slots)).toBe(pc);
+    const fresh = createItem('pl_steel3');
+    expect(insertPlate(pc, fresh)).toBe(plate);
+    expect(armorFor('thorax', slots)).toBe(fresh);
+    expect(removePlate(pc)).toBe(fresh);
+    expect(armorFor('thorax', slots)).toBe(pc);
+    expect(insertPlate(createItem('paca'), fresh)).toBe(false);
+    expect(slotAccepts('armor', getDef('pl_steel3'))).toBe(false);
+  });
+
+  it('a carrier from an old save gets its factory plate, as worn as it was', () => {
+    const p = createProfile() as unknown as { version: number; stash: { items: { item: { def: string; uid: string; stack: number; dur: number }; x: number; y: number }[] } };
+    p.stash.items.push({ item: { def: 'trooper', uid: 'old1', stack: 1, dur: 30 }, x: 0, y: 30 });
+    p.version = 9;
+    const m = migrateProfile(JSON.parse(JSON.stringify(p)));
+    const it = m.stash.items.find((q) => q.item.uid === 'old1')!.item;
+    expect(it.mods?.plate?.def).toBe('pl_ceramic4');
+    expect(it.mods!.plate!.dur).toBe(38);
+    expect(it.dur).toBe(30);
+  });
+});

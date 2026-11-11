@@ -1,13 +1,19 @@
 import {
+  addItem,
   carryGrids,
+  findSpot,
   getDef,
+  insertPlate,
+  plateOf,
   peekSource,
   removeItem,
+  removePlate,
   repair,
   repairCost,
   sellPrice,
   slotAccepts,
   SLOTS,
+  takesPlate,
   moveItem,
   quickMove,
   type Equipment,
@@ -72,6 +78,49 @@ export function makeProfileHost(): InvHost {
       const profile = store.getState().profile!;
       const price = sellPrice(item, profile);
       const out: MenuAction[] = [];
+      // Plates live inside the carrier rather than in a fake equipment slot. Keep a swap in one profile
+      // mutation, so an occupied stash cannot make a plate disappear halfway through the action.
+      if (getDef(item.def).category === 'plate' && src.kind === 'grid') {
+        const carrier = profile.equipment.slots.armor;
+        if (carrier && takesPlate(carrier)) {
+          out.push({
+            label: `Insert into ${getDef(carrier.def).short}`,
+            run: () => {
+              const ok = host.apply((r) => {
+                const s = toSource(r, src);
+                const plate = s && peekSource(s);
+                const current = r.equipment('player')?.slots.armor;
+                if (!s || s.kind !== 'grid' || !plate || !current || !takesPlate(current)) return false;
+                const old = plateOf(current);
+                if (old && !findSpot(s.grid, old)) return false;
+                const pulled = removeFrom(r, src);
+                if (!pulled) return false;
+                const replaced = insertPlate(current, pulled);
+                if (replaced === false) return false;
+                return !replaced || addItem(s.grid, replaced);
+              });
+              useApp.getState().toast(ok ? 'Plate installed' : 'No room to swap that plate', ok ? 'good' : 'bad');
+            },
+          });
+        }
+      }
+      if (takesPlate(item) && plateOf(item)) {
+        out.push({
+          label: 'Remove installed plate',
+          run: () => {
+            const ok = host.apply((r) => {
+              const s = toSource(r, src);
+              const current = s && peekSource(s);
+              const plate = current && plateOf(current);
+              const stash = r.grid('stash');
+              if (!current || !plate || !stash || !findSpot(stash, plate)) return false;
+              removePlate(current);
+              return addItem(stash, plate);
+            });
+            useApp.getState().toast(ok ? 'Plate moved to stash' : 'No room in stash for the plate', ok ? 'good' : 'bad');
+          },
+        });
+      }
       if (src.kind === 'grid' && src.gridId === 'stash') out.push({ label: 'Equip', run: () => host.apply((r) => equipQuick(r, src, r.equipment('player')!)) });
       else out.push({ label: 'Move to stash', run: () => host.apply((r) => quickMove(toSource(r, src)!, [r.grid('stash')!])) });
       const cost = repairCost(item);

@@ -160,15 +160,15 @@ describe('stash sort', () => {
 describe('armour repair', () => {
   it('charges half the value for the share worn away and restores it', () => {
     const p = createProfile();
-    const vest = createItem('trooper');
-    vest.dur = ITEMS.trooper!.armor!.durability / 2;
-    expect(repairCost(vest)).toBe(Math.round(ITEMS.trooper!.value * 0.25));
+    const vest = createItem('6b23');
+    vest.dur = ITEMS['6b23']!.armor!.durability / 2;
+    expect(repairCost(vest)).toBe(Math.round(ITEMS['6b23']!.value * 0.25));
     p.money = 1000;
     expect(repair(p, vest)).toEqual({ ok: false, reason: 'Not enough credits' });
     p.money = 100000;
     expect(repair(p, vest).ok).toBe(true);
-    expect(vest.dur).toBe(ITEMS.trooper!.armor!.durability);
-    expect(p.money).toBe(100000 - Math.round(ITEMS.trooper!.value * 0.25));
+    expect(vest.dur).toBe(ITEMS['6b23']!.armor!.durability);
+    expect(p.money).toBe(100000 - Math.round(ITEMS['6b23']!.value * 0.25));
     expect(repairCost(vest)).toBe(0);
     expect(repairCost(createItem('ak74m'))).toBe(0);
   });

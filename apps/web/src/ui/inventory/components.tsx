@@ -3,11 +3,16 @@ import { createPortal } from 'react-dom';
 import { create } from 'zustand';
 import { useModder, WeaponModder } from './WeaponModder';
 import {
+  ARMOR_MATERIALS,
+  armorMaterial,
+  armorZones,
   footprint,
+  PART_LABEL,
   getDef,
   itemValue,
   itemWeight,
   moveItem,
+  plateOf,
   quickMove,
   RARITY_COLORS,
   type ItemInstance,
@@ -61,7 +66,24 @@ export function itemLines(item: ItemInstance): [string, string][] {
   }
   if (d.melee) lines.push(['Damage', `${d.melee.damage}`], ['Speed', `${(1 / d.melee.cooldown).toFixed(1)}/s`], ['Bleed', `${Math.round(d.melee.bleedChance * 100)}%`], ['Armor bypass', `${Math.round(d.melee.armorBypass * 100)}%`]);
   if (d.ammo) lines.push(['Caliber', d.ammo.caliber], ['Penetration', `${d.ammo.penetration}`], ['Damage', `×${d.ammo.damageMul}`]);
-  if (d.armor) lines.push(['Class', `${d.armor.armorClass}`], ['Durability', `${Math.round(item.dur ?? 0)}/${d.armor.durability}`], ['Speed', `-${Math.round(d.armor.slow * 100)}%`]);
+  if (d.armor) {
+    const mat = ARMOR_MATERIALS[armorMaterial(d)];
+    const zones = armorZones(d);
+    // Both arms read as "Arms": the list stays short.
+    const names = [...new Set(zones.map((z) => (z.endsWith('Arm') ? 'Arms' : z.endsWith('Leg') ? 'Legs' : PART_LABEL[z])))];
+    lines.push(
+      ['Class', `${d.armor.armorClass}`],
+      ['Durability', `${Math.round(item.dur ?? 0)}/${d.armor.durability}`],
+      ['Protects', names.join(', ')],
+      ['Material', `${mat.name} (${mat.note})`],
+      ['Speed', `-${Math.round(d.armor.slow * 100)}%`],
+    );
+    const plate = plateOf(item);
+    if (plate) {
+      const pd = getDef(plate.def);
+      lines.push(['Installed plate', `${pd.short} · ${Math.round(plate.dur ?? 0)}/${pd.armor!.durability}`]);
+    } else if (d.armor.plate) lines.push(['Installed plate', 'Empty']);
+  }
   if (d.grid) lines.push(['Capacity', `${d.grid.w}×${d.grid.h}`]);
   if (d.med) {
     const m = d.med;

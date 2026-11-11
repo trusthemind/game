@@ -26,9 +26,17 @@ export function sellPrice(item: ItemInstance, profile: Profile): number {
  */
 export function repairCost(item: ItemInstance): number {
   const def = getDef(item.def);
-  if (!def.armor || item.dur === undefined || item.dur >= def.armor.durability) return 0;
-  const cost = def.value * 0.5 * (1 - item.dur / def.armor.durability);
-  return Math.max(100, Math.round(Math.min(cost, itemValue(item) * 0.55)));
+  if (!def.armor || item.dur === undefined) return 0;
+  // A carrier is mended together with the plate in it.
+  const plate = item.mods?.plate;
+  const inside = plate ? repairCost(plate) : 0;
+  const own = def.value - (def.armor.plate ? getDef(def.armor.plate).value : 0);
+  const cost = item.dur >= def.armor.durability ? 0 : own * 0.5 * (1 - item.dur / def.armor.durability);
+  const ownRepair = cost ? Math.max(100, Math.round(Math.min(cost, own * 0.55))) : 0;
+  const total = ownRepair + inside;
+  // The whole assembly is sold together. Never ask more to revive the carrier and its fitted plate than
+  // the trader would pay for the damaged assembly at the normal 55% rate.
+  return Math.min(total, Math.round(itemValue(item) * 0.55));
 }
 
 export function repair(profile: Profile, item: ItemInstance): { ok: boolean; reason?: string } {
@@ -37,6 +45,8 @@ export function repair(profile: Profile, item: ItemInstance): { ok: boolean; rea
   if (profile.money < cost) return { ok: false, reason: 'Not enough credits' };
   profile.money -= cost;
   item.dur = getDef(item.def).armor!.durability;
+  const plate = item.mods?.plate;
+  if (plate) plate.dur = getDef(plate.def).armor!.durability;
   return { ok: true };
 }
 
