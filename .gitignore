@@ -6,3 +6,7 @@ playwright-report
 test-results
 *.local
 .DS_Store
+
+# Graphify: local code graph and its config
+graphify-out/
+.graphifyignore
