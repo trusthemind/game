@@ -11,7 +11,8 @@ import { CLOTH_KIT, DEFAULT_OUTFITS, type KitPiece } from './clothKit';
 import { HEAVY_MELEE, meleeModel, REVERSE_GRIP } from './melee3d';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import { itemModel } from './thumbnails';
-import { wornGear } from './gearModels';
+import { GEAR_MODEL, wornGear } from './gearModels';
+import { fitHelmet, fitVest, helmetLiner, measureBody, withLayer, type BodyFit, type TorsoField } from './gearFit';
 import { attachSkinned, cloneHuman, type HumanParts } from './human';
 import { fitToRest, gltfMeshNames, rebindToSkeleton } from './rebind';
 import { ease, newPalm, palmFrame, reachPalm, type Arm } from './armIK';
@@ -237,6 +238,13 @@ export function lookFor(seed: number, archetype: string, npcId?: string, bossId?
 
 /** Per rigged body: see CharacterView.torsoPad. */
 const TORSO_PAD = new Map<string, number>();
+/** Per body as dressed (sex, rigged body, clothes): its measured torso and head (gearFit.ts). */
+const BODY_FIT = new Map<string, BodyFit | null>();
+/** Helmet liners (padding under every helmet), per colour. */
+const LINER_FIT = new Map<string, THREE.BufferGeometry>();
+const LINER_MAT = new Map<number, THREE.MeshStandardMaterial>();
+/** Vests and rigs already wrapped onto a body: per measured body, item and what is under it. */
+const VEST_FIT = new Map<string, { geos: THREE.BufferGeometry[]; over: TorsoField }>();
 
 /**
  * Kit a rigged body comes modelled with, matched on "<body> <glTF mesh> <material>". Armour, helmets, goggles and
@@ -351,82 +359,6 @@ export function clothingModel(lib: AssetLibrary, defId: string): THREE.Object3D 
 
 /** The rigged model a clothing item's garment comes from. */
 export const clothingSource = (defId: string): string | null => CLOTH_KIT[defId]?.body ?? null;
-
-const torsoVerts = new WeakMap<THREE.BufferGeometry, { idx: Uint32Array; pos: Float32Array }>();
-const skinned = new WeakMap<THREE.BufferGeometry, Map<string, THREE.BufferGeometry[]>>();
-/**
- * Skin a rigid model (already placed on the body, in the body mesh's own space) to the body's skeleton: every
- * vertex takes the bone weights of the nearest torso vertex of the body (spine, pelvis, collarbones: never an
- * arm, or a vest's sides would follow the elbows). `key` caches the result per body mesh.
- */
-function skinToTorso(placed: THREE.Object3D, body: THREE.SkinnedMesh, key: string): THREE.SkinnedMesh[] {
-  const bg = body.geometry;
-  let tv = torsoVerts.get(bg);
-  if (!tv) {
-    const si = bg.attributes.skinIndex!;
-    const sw = bg.attributes.skinWeight!;
-    const bp = bg.attributes.position!;
-    const ok = body.skeleton.bones.map((b) => /^(pelvis|spine_0[123]|clavicle_[lr])/.test(b.name));
-    const idx: number[] = [];
-    for (let i = 0; i < bp.count; i++) {
-      let best = 0;
-      for (let c = 1; c < 4; c++) if (sw.getComponent(i, c) > sw.getComponent(i, best)) best = c;
-      if (ok[si.getComponent(i, best)]) idx.push(i);
-    }
-    const pos = new Float32Array(idx.length * 3);
-    const v = new THREE.Vector3();
-    idx.forEach((i, j) => v.fromBufferAttribute(bp, i).toArray(pos, j * 3));
-    torsoVerts.set(bg, (tv = { idx: Uint32Array.from(idx), pos }));
-  }
-  placed.updateMatrixWorld(true);
-  const meshes: THREE.Mesh[] = [];
-  placed.traverse((o) => (o as THREE.Mesh).isMesh && meshes.push(o as THREE.Mesh));
-  let byKey = skinned.get(bg);
-  if (!byKey) skinned.set(bg, (byKey = new Map()));
-  let geos = byKey.get(key);
-  if (!geos) {
-    const si = bg.attributes.skinIndex!;
-    const sw = bg.attributes.skinWeight!;
-    const v = new THREE.Vector3();
-    geos = meshes.map((m) => {
-      const g = m.geometry.clone().applyMatrix4(m.matrixWorld);
-      const p = g.attributes.position!;
-      const I = new Uint16Array(p.count * 4);
-      const W = new Float32Array(p.count * 4);
-      for (let i = 0; i < p.count; i++) {
-        v.fromBufferAttribute(p, i);
-        let near = 0;
-        let d = Infinity;
-        for (let j = 0; j < tv!.idx.length; j++) {
-          const dx = tv!.pos[j * 3]! - v.x;
-          const dy = tv!.pos[j * 3 + 1]! - v.y;
-          const dz = tv!.pos[j * 3 + 2]! - v.z;
-          const dd = dx * dx + dy * dy + dz * dz;
-          if (dd < d) {
-            d = dd;
-            near = j;
-          }
-        }
-        const src = tv!.idx[near]!;
-        for (let c = 0; c < 4; c++) {
-          I[i * 4 + c] = si.getComponent(src, c);
-          W[i * 4 + c] = sw.getComponent(src, c);
-        }
-      }
-      g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(I, 4));
-      g.setAttribute('skinWeight', new THREE.BufferAttribute(W, 4));
-      g.computeBoundingSphere();
-      return g;
-    });
-    byKey.set(key, geos);
-  }
-  return meshes.map((m, i) => {
-    const sm = new THREE.SkinnedMesh(geos![i]!, m.material);
-    sm.bind(body.skeleton, body.bindMatrix);
-    sm.frustumCulled = false;
-    return sm;
-  });
-}
 
 /** Every rigged model a look needs loaded: its whole body, or the ones its clothes come from. */
 export function lookBodies(look: Appearance): string[] {
@@ -1373,6 +1305,33 @@ export class CharacterView {
     return pad;
   }
 
+  /** What this body is and wears, as far as fitting gear to it goes. */
+  private fitKey(): string {
+    return `${this.look.sex}|${this.look.body ?? ''}|${clothesKey(this.look)}|${this.outfitMeshes.length}`;
+  }
+
+  /** This body measured as it is dressed (gearFit.ts), once per body and set of clothes; null for the mannequin. */
+  private bodyFit(): BodyFit | null {
+    const human = this.human;
+    if (!human) return null;
+    const key = this.fitKey();
+    let fit = BODY_FIT.get(key);
+    if (fit === undefined) {
+      const slot = (m: THREE.SkinnedMesh) => (m.userData.worn as Worn | undefined)?.slot;
+      // A rigged body stands in for ours whole, less the kit it's modelled with (that comes off, see SF_KIT).
+      const own = this.sfMeshes.filter((m) => !SF_KIT.test(String(m.userData.part ?? '')) && !SF_HAT.test(String(m.userData.part ?? '')));
+      fit = measureBody(
+        human.body,
+        this.sfBody ? own : this.outfitMeshes.filter((m) => slot(m) !== 'hat'),
+        this.sfBody ? [] : this.outfitMeshes.filter((m) => slot(m) === 'hat' && (m.userData.worn as Worn).underHelmet),
+        human.eyes,
+        !this.sfBody,
+      );
+      BODY_FIT.set(key, fit);
+    }
+    return fit;
+  }
+
   private bone(re: RegExp): string {
     return this.skinned.skeleton.bones.find((b) => re.test(b.name))?.name ?? '';
   }
@@ -1565,7 +1524,7 @@ export class CharacterView {
       return o;
     };
     /** Scale a real model evenly to `width` (its depth to `depth`, within reason) and hang its top at `top`. */
-    const hang = (obj: THREE.Object3D, width: number, depth: number, top: THREE.Vector3) => {
+    const hang = (obj: THREE.Object3D, width: number, depth: number, top: THREE.Vector3, tall = 1) => {
       obj.updateMatrixWorld(true);
       const b = new THREE.Box3().setFromObject(obj);
       const sz = b.getSize(new THREE.Vector3());
@@ -1574,18 +1533,39 @@ export class CharacterView {
       const wrap = new THREE.Group();
       wrap.add(obj);
       obj.position.set(-(b.min.x + b.max.x) / 2, -b.max.y, -(b.min.z + b.max.z) / 2);
-      wrap.scale.set(k, k, kz);
+      wrap.scale.set(k, k * tall, kz);
       wrap.position.copy(top);
       return wrap;
     };
+    const measured = this.bodyFit();
     const realHelmet = s.helmet ? real(s.helmet.def) : null;
-    if (s.helmet && realHelmet) {
-      // Sized by the shell (a chin strap or headset hangs below it), sitting on the crown.
+    if (s.helmet && measured?.head) {
+      // Every helmet has a liner over the scalp (gearFit.ts helmetLiner), so no model's openings show the head.
+      const key = this.fitKey();
+      let lg = LINER_FIT.get(key);
+      if (!lg) LINER_FIT.set(key, (lg = helmetLiner(measured.head, measured.k)));
+      const lc = GEAR_MODEL[s.helmet.def]?.liner ?? 0x1e1f1b;
+      let lm = LINER_MAT.get(lc);
+      if (!lm) LINER_MAT.set(lc, (lm = new THREE.MeshStandardMaterial({ color: lc, roughness: 0.9, metalness: 0, side: THREE.DoubleSide })));
+      const liner = new THREE.Mesh(lg, worldMat(lm, this.u, null));
+      add(/^head$/i, liner);
+    }
+    if (s.helmet && realHelmet && measured?.head) {
+      // Seated on the head as measured: shell round the skull, rim on the brow (gearFit.ts).
+      const spec = GEAR_MODEL[s.helmet.def]!;
+      add(/^head$/i, fitHelmet(realHelmet, measured.head, measured.k, spec));
+    } else if (s.helmet && realHelmet) {
+      // No measured head (the mannequin): sized by the shell, sitting on the crown.
       const frac = (realHelmet.userData.shellFrac as number | undefined) ?? 1;
       const b = new THREE.Box3().setFromObject(realHelmet);
       const depth = hs.z * 1.34;
       const w = (hs.x * 1.36 * (b.max.x - b.min.x)) / Math.max(1e-6, Math.min(b.max.x - b.min.x, (b.max.z - b.min.z) * (hs.x / hs.z)));
       add(/^head$/i, hang(realHelmet, w, depth, new THREE.Vector3(hc.x, head.max.y + hs.y * (0.1 + (1 - frac) * 0.55), hc.z - hs.z * 0.02)));
+    } else if (s.helmet && measured?.head) {
+      // A built helmet (gear3d.ts) seated the same way, by its shell: rim on the brow, a visor or faceplate below.
+      const built = fitHelmet(helmetModel(s.helmet.def), measured.head, measured.k);
+      built.traverse((o) => ((o as THREE.Mesh).isMesh ? ((o as THREE.Mesh).castShadow = true) : undefined));
+      add(/^head$/i, built);
     } else if (s.helmet) {
       const id = s.helmet.def;
       // Rim just above the brow, dome over the crown; the Altyn's faceplate hangs lower.
@@ -1630,23 +1610,39 @@ export class CharacterView {
     const bulk = 1 + this.shellPad * 2.2;
     const realArmor = s.armor ? real(s.armor.def) : null;
     const realRig = s.rig ? real(s.rig.def) : null;
-    // A vest runs from the shoulders to the waist: hung on one bone it would swing off the body whenever the spine
-    // bends, so it takes the torso's own skin weights and bends with it (skinToTorso).
-    const vest = (id: string, obj: THREE.Object3D, width: number, depth: number, topY: number) => {
-      const [fw, fd] = (obj.userData.fit as [number, number] | undefined) ?? [1, 1];
-      width *= fw;
-      depth *= fd;
-      const placed = hang(obj, width, depth, new THREE.Vector3(cc.x, topY, cc.z));
+    // A vest is wrapped onto the body as measured with its clothes on, hangs by its straps and bends with the
+    // spine (gearFit.ts); a rig goes over the armour the same way. Returns the surface with this piece on it.
+    const vest = (id: string, obj: THREE.Object3D, under: TorsoField | null, layer: string): TorsoField | null => {
       const body = this.human?.body;
-      if (!body) return add(/^spine_03$/, placed);
-      for (const m of skinToTorso(placed, body, `${id}|${width.toFixed(3)}|${depth.toFixed(3)}`)) {
+      const spec = GEAR_MODEL[id]!;
+      if (!body || !measured || !under) {
+        // The mannequin: by the chest's box, on one bone.
+        const f = spec.fit ?? {};
+        const over = layer ? 1.08 : 1;
+        add(/^spine_03$/, hang(obj, cs.x * 1.24 * bulk * over * (f.w ?? 1), cs.z * 1.46 * bulk * over * (f.d ?? 1), new THREE.Vector3(cc.x, chest.max.y + cs.y * (0.1 + (f.y ?? 0)), cc.z), f.h ?? 1));
+        return null;
+      }
+      const key = `${this.fitKey()}|${id}|${layer}`;
+      let hit = VEST_FIT.get(key);
+      const mats: (THREE.Material | THREE.Material[])[] = [];
+      obj.traverse((o) => (o as THREE.Mesh).isMesh && mats.push((o as THREE.Mesh).material));
+      if (!hit) {
+        const { geos } = fitVest(obj, measured, under, { fit: spec.fit, anchor: spec.anchor, hem: spec.hem });
+        VEST_FIT.set(key, (hit = { geos, over: withLayer(under, geos) }));
+      }
+      hit.geos.forEach((g, i) => {
+        const m = new THREE.SkinnedMesh(g, mats[i]!);
+        m.bind(body.skeleton, body.bindMatrix);
+        m.frustumCulled = false;
         m.castShadow = true;
         body.parent!.add(m);
         this.gearAttachments.push(m);
-      }
+      });
+      return hit.over;
     };
-    if (realArmor) vest(s.armor!.def, realArmor, cs.x * 1.24 * bulk, cs.z * 1.46 * bulk, chest.max.y + cs.y * 0.1);
-    if (realRig) vest(s.rig!.def, realRig, cs.x * (s.armor ? 1.34 : 1.24) * bulk, cs.z * (s.armor ? 1.66 : 1.46) * bulk, chest.max.y - cs.y * 0.05);
+    let surface = measured?.dressed ?? null;
+    if (realArmor) surface = vest(s.armor!.def, realArmor, surface, '');
+    if (realRig) vest(s.rig!.def, realRig, surface, realArmor ? s.armor!.def : '');
     if (s.armor && !realArmor && !wear(s.armor.def, ARMOR_SPECS[s.armor.def])) {
       const bottom = chest.min.y - cs.y * 0.62;
       add(
@@ -2652,6 +2648,11 @@ export function disposeCharacterCaches(): void {
   for (const m of flatMatCache.values()) m.dispose();
   for (const m of humanMatCache.values()) m.dispose();
   humanMatCache.clear();
+  for (const v of VEST_FIT.values()) for (const g of v.geos) g.dispose();
+  VEST_FIT.clear();
+  for (const g of LINER_FIT.values()) g.dispose();
+  LINER_FIT.clear();
+  BODY_FIT.clear();
   bodyMatCache.clear();
   flatMatCache.clear();
 }

@@ -159,27 +159,23 @@ export function CharLab() {
       (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
     }
     if (view === 'armor') {
-      // Every real helmet and vest (gearModels.ts) on someone dressed from items; the last two on rigged bodies.
+      // Every real helmet and vest (gearModels.ts) on the same body in the same clothes, so the fit of each model
+      // can be compared: `&ids=trooper,paca` picks some, `&sex=f` a woman, `&top=c_bomber` other clothes.
       cast.length = 0;
-      const kits: string[][] = [
-        ['paca:armor', 'ssh36:helmet'],
-        ['6b23:armor', 'ssh68:helmet'],
-        ['zsh:helmet', 'r_alpha:rig'],
-        ['trooper:armor', 'h_fast:helmet'],
-        ['pc_tan:armor', 'h_fast_headset:helmet'],
-        ['gzhel:armor', 'altyn:helmet'],
-        ['slick6:armor', 'r_mbss:rig'],
-        ['r_mbss:rig', 'h_kevlar:helmet'],
-      ];
-      const clothes = [['c_knit', 'c_trousers', 'c_shoes'], ['c_smock', 'c_flora_pants', 'c_kirza'], ['c_bomber', 'c_work_pants', 'c_tall_boots'], ['c_acu_shirt', 'c_acu_pants', 'c_combat_boots']];
-      kits.forEach((kit, i) => {
-        const base = lookFor(i + 60, 'scav');
-        const worn = clothes[i % clothes.length]!.map((id) => `${id}:${getDef(id).clothing!.slot}`);
-        cast.push({ look: { ...base, sex: i === 2 ? 'f' : 'm', body: undefined, hat: null, clothed: true }, eq: [...worn, ...kit], active: 'melee', speed: 0 });
+      const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
+      const ids = (q.get('ids') ?? 'paca,6b23,trooper,pc_tan,gzhel,slick6,r_mbss').split(',');
+      const sex = q.get('sex') === 'f' ? 'f' : 'm';
+      const top = q.get('top') ?? 'c_knit';
+      const bottoms = [top, 'c_trousers', 'c_shoes'];
+      ids.forEach((id, i) => {
+        const base = lookFor(60, 'scav');
+        const slot = getDef(id).category === 'helmet' ? 'helmet' : getDef(id).category === 'rig' ? 'rig' : 'armor';
+        const eq = [...bottoms.map((c) => `${c}:${getDef(c).clothing!.slot}`), `${id}:${slot}`, ...(slot === 'armor' ? ['ssh36:helmet'] : [])];
+        cast.push({ look: { ...base, sex, body: undefined, hat: null, clothed: true }, eq, active: 'melee', speed: 0 });
+        void i;
       });
-      cast.push({ look: { ...lookFor(3, 'raider'), body: 'rus_a', sex: 'm' }, eq: ['trooper:armor', 'h_fast:helmet'], active: 'melee', speed: 0 });
-      cam.position.set(0, 1.5, 9);
-      cam.lookAt(0, 1.0, 0);
+      cam.position.set(0, 1.45, Math.max(3.2, ids.length * 0.7));
+      cam.lookAt(0, 1.1, 0);
       (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
     }
     if (view === 'gestures') {
@@ -490,7 +486,9 @@ export function CharLab() {
                   : view.startsWith('melee')
                     ? 0.85
                     : 1.05
-                : 1.35),
+                : view === 'armor'
+                  ? 0.8
+                  : 1.35),
             y: 0,
           },
           vel: view.startsWith('strafe')
@@ -544,6 +542,27 @@ export function CharLab() {
       }
       (window as unknown as { __labReady?: boolean }).__labReady = true;
       (window as unknown as { __lab: unknown }).__lab = views;
+      // Close-ups for checking gear: `__look(i, 'front'|'back'|'side'|'top', dist, y | boneName, dy)` shows only
+      // the i-th figure, aimed at a height or at a bone.
+      (window as unknown as { __look: unknown }).__look = (i: number, mode: string, dist = 1.5, y: number | string = 1.3, dy = 0) => {
+        views.forEach((l, j) => l.v.root.children.forEach((ch) => (ch.visible = j === i)));
+        const v = views[i]!.v;
+        const at = new THREE.Vector3(v.root.position.x, typeof y === 'number' ? y : 0, v.root.position.z);
+        if (typeof y === 'string') {
+          const re = new RegExp(`^${y}$`, 'i');
+          let bone: THREE.Object3D | undefined;
+          v.root.traverse((o) => {
+            if (!bone && (o as THREE.Bone).isBone && re.test(o.name)) bone = o;
+          });
+          bone?.getWorldPosition(at);
+        }
+        at.y += dy;
+        const d = ({ front: [0, 0.1, 1], back: [0, 0.1, -1], side: [1, 0.15, 0.6], top: [0, 1.73, 1], q: [0.7, 0.6, 0.7] } as Record<string, number[]>)[mode] ?? [0, 0, 1];
+        const n = new THREE.Vector3(d[0], d[1], d[2]).normalize().multiplyScalar(dist);
+        cam.position.copy(at).add(n);
+        cam.lookAt(at);
+        cam.updateMatrixWorld();
+      };
     });
     let last = performance.now();
     const tick = (now: number) => {

@@ -209,6 +209,8 @@ export function itemModel(lib: AssetLibrary, item: ItemInstance): { obj: THREE.O
       return front(miscModel(id));
     case 'secure':
       return front(miscModel(id));
+    case 'plate':
+      return front(wornGear(lib, id));
     case 'clothing':
       return d.clothing?.slot === 'hat' ? front(clothingModel(lib, id)) : flat(clothingModel(lib, id));
     default: {
