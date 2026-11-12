@@ -8,6 +8,7 @@ import { buildGun, gunKey } from './gunsmith';
 import { armorModel, BACKPACK_TINT, hatModel, helmetModel, rigModel, slingModel } from './gear3d';
 import { bakeRigid } from './bakeRigid';
 import { CLOTH_KIT, DEFAULT_OUTFITS, type KitPiece } from './clothKit';
+import { ARMOR_KIT, armorSources, holdToSpine, layerOver, type ArmorKit } from './armorKit';
 import { HEAVY_MELEE, meleeModel, REVERSE_GRIP } from './melee3d';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import { itemModel } from './thumbnails';
@@ -20,6 +21,7 @@ import {
   helmetLiner,
   measureBody,
   withLayer,
+  pressUnder,
   type BodyFit,
   type TorsoField,
 } from './gearFit';
@@ -354,6 +356,8 @@ function strapMat(pack: THREE.Object3D, paint: number | undefined): THREE.MeshSt
 }
 /** Vests and rigs already wrapped onto a body: per measured body, item and what is under it. */
 const VEST_FIT = new Map<string, { geos: THREE.BufferGeometry[]; over: TorsoField }>();
+/** Armour and rigs from the kit (armorKit.ts) laid over a body: per measured body, item and what is under it. */
+const ARMOR_FIT = new Map<string, { geos: THREE.BufferGeometry[]; over: TorsoField }>();
 
 /**
  * Kit a rigged body comes modelled with, matched on "<body> <glTF mesh> <material>". Armour, helmets, goggles and
@@ -466,8 +470,32 @@ export function clothingModel(lib: AssetLibrary, defId: string): THREE.Object3D 
   return out;
 }
 
+/**
+ * Body armour or a rig on its own, for its picture: the soldier's pieces (armorKit.ts) fitted to the male body at
+ * rest. Null when the item has none, or until every model they come from has loaded (see kitSources).
+ */
+export function armorKitModel(lib: AssetLibrary, defId: string): THREE.Object3D | null {
+  const kit = ARMOR_KIT[defId];
+  if (!kit || kit.pieces.some((p) => !lib.bodies.get(p.body))) return null;
+  iconBody ??= cloneHuman(lib, 'm');
+  if (!iconBody) return null;
+  iconBody.model.updateMatrixWorld(true);
+  const out = new THREE.Group();
+  for (const p of kit.pieces) {
+    const g = lib.bodies.get(p.body)!;
+    const re = new RegExp(p.part, 'i');
+    for (const m of fitToRest(g.scene, gltfMeshNames(g as never), g.animations[0], iconBody.model, iconBody.body.skeleton.bones, (mt) => worldMat(mt as THREE.MeshStandardMaterial, NO_FOW, null), (n) => re.test(n), `${p.body}|${p.part}|icon`)) {
+      m.parent?.remove(m);
+      out.add(new THREE.Mesh(m.geometry, m.material));
+    }
+  }
+  return out.children.length ? out : null;
+}
+
 /** The rigged model a clothing item's garment comes from. */
 export const clothingSource = (defId: string): string | null => CLOTH_KIT[defId]?.body ?? null;
+/** Every rigged model an item worn from the kit comes from: a garment's, or an armour's or rig's pieces'. */
+export const kitSources = (defId: string): string[] => (CLOTH_KIT[defId] ? [CLOTH_KIT[defId]!.body] : armorSources(defId));
 
 /** Every rigged model a look needs loaded: its whole body, or the ones its clothes come from. */
 export function lookBodies(look: Appearance): string[] {
@@ -1325,6 +1353,8 @@ export class CharacterView {
   private sfMeshes: THREE.SkinnedMesh[] = [];
   /** How much bulkier that model's torso is than the body armour shells are cut from (metres): see torsoPad. */
   private shellPad = 0;
+  /** Our body's bones as they stand at rest (local transforms), to fit clothes and armour to whatever the pose. */
+  private restPose: [THREE.Vector3, THREE.Quaternion, THREE.Vector3][] = [];
   /** A rebound body's lift onto its soles (soleLift), scaled each frame by the pelvis height. */
   private stand: { lift: number; hip: number; pelvis: THREE.Bone } | null = null;
   /** Calling in an extraction on the radio (standing still in the zone while its timer runs). */
@@ -1341,6 +1371,7 @@ export class CharacterView {
     // Modelled humans (faces, eyes, real hair) when the pack is present; the mannequin otherwise.
     const human = cloneHuman(lib, look.sex);
     this.human = human;
+    if (human) this.restPose = human.body.skeleton.bones.map((b) => [b.position.clone(), b.quaternion.clone(), b.scale.clone()]);
     const src = human
       ? (look.sex === 'f' ? lib.humanF! : lib.humanM!).scene
       : look.sex === 'f' && lib.characterF
@@ -1565,6 +1596,81 @@ export class CharacterView {
     }
   }
 
+  /**
+   * Run `fn` with our skeleton in its rest pose (fitToRest carries pieces onto the bones as they stand, and the
+   * clips may have moved them since), then put the pose back.
+   */
+  private atRest(fn: () => void): void {
+    const bones = this.human?.body.skeleton.bones;
+    if (!bones || !this.restPose.length) return fn();
+    const now = bones.map((b) => [b.position.clone(), b.quaternion.clone(), b.scale.clone()] as const);
+    bones.forEach((b, i) => {
+      const [p, q, sc] = this.restPose[i]!;
+      b.position.copy(p);
+      b.quaternion.copy(q);
+      b.scale.copy(sc);
+    });
+    this.model.updateMatrixWorld(true);
+    try {
+      fn();
+    } finally {
+      bones.forEach((b, i) => {
+        const [p, q, sc] = now[i]!;
+        b.position.copy(p);
+        b.quaternion.copy(q);
+        b.scale.copy(sc);
+      });
+      this.model.updateMatrixWorld(true);
+    }
+  }
+
+  /**
+   * Real body armour or a chest rig (armorKit.ts): the soldier's own vest, plates or pouches carried onto our body
+   * like the clothes, held to the spine, and laid over what is under it (`under`, the dressed torso or that with
+   * armour on) a little clear of it. Returns the surface with it on (for what goes over it: a rig, a pack), or
+   * null when a model it comes from failed to load.
+   */
+  private wearArmor(id: string, kit: ArmorKit, measured: BodyFit, under: TorsoField, layer: string): TorsoField | null {
+    const human = this.human!;
+    const body = human.body;
+    const bones = body.skeleton.bones;
+    const meshes: THREE.SkinnedMesh[] = [];
+    for (const p of kit.pieces) {
+      const g = this.lib.bodies.get(p.body);
+      if (!g) return null;
+      const re = new RegExp(p.part, 'i');
+      this.atRest(() =>
+        meshes.push(
+          ...fitToRest(g.scene, gltfMeshNames(g as never), g.animations[0], this.model, bones, (m) => clothMat(m as THREE.MeshStandardMaterial, this.u), (n) => re.test(n), `${p.body}|${p.part}|${this.look.sex}`),
+        ),
+      );
+    }
+    if (!meshes.length) return null;
+    const key = `${this.fitKey()}|${id}|${layer}`;
+    let hit = ARMOR_FIT.get(key);
+    if (!hit) {
+      // The pieces' rest space → the body's bind space (the same joint, bound twice: see gearFit.ts bindVerts).
+      const j = Math.max(0, bones.findIndex((b) => b.name === 'spine_02'));
+      const sk = meshes[0]!.skeleton;
+      const toBind = new THREE.Matrix4()
+        .copy(body.bindMatrix)
+        .invert()
+        .multiply(new THREE.Matrix4().copy(body.skeleton.boneInverses[j]!).invert())
+        .multiply(sk.boneInverses[j]!)
+        .multiply(meshes[0]!.bindMatrix);
+      const k = measured.k;
+      const geos = meshes.map((m) => layerOver(holdToSpine(m.geometry, bones, kit.caps), toBind, under, (layer ? 0.012 : 0.008) * k, bones, 0.12 * k));
+      const inBind = geos.map((g) => g.clone().applyMatrix4(toBind));
+      ARMOR_FIT.set(key, (hit = { geos, over: withLayer(under, inBind, 0.03 * k) }));
+    }
+    meshes.forEach((m, i) => {
+      m.geometry = hit.geos[i]!;
+      m.castShadow = true;
+      this.gearAttachments.push(m);
+    });
+    return hit.over;
+  }
+
   /** Hair, unless a raised hood covers it. */
   private buildHair(): void {
     const a = this.look;
@@ -1594,7 +1700,7 @@ export class CharacterView {
     for (const m of [...this.outfitMeshes, ...this.hairMeshes]) m.parent?.remove(m);
     this.outfitMeshes = [];
     this.hairMeshes = [];
-    this.wearKit(kitFor(next));
+    this.atRest(() => this.wearKit(kitFor(next)));
     this.buildHair();
     for (const m of this.bodyMeshes) m.material = humanBodyMaterial(this.human.srcMaterial, next, this.u, this.dead, true);
   }
@@ -1680,8 +1786,9 @@ export class CharacterView {
     const hat = !s.helmet && !this.sfBody && !this.human && this.look.hat && !this.look.zombie ? this.look.hat : null;
     // Hats and helmets sit over short hair; long hair stays (it hangs below the rim). A balaclava covers it all.
     for (const h of this.hairMeshes) h.visible = !maskOn && (!(s.helmet || capOn || (hat && hat !== 'bandana')) || /Long/.test(h.name));
-    // Brows and a beard are under it too (they'd poke through the knit).
-    if (this.human)
+    // Brows and a beard are under it too (they'd poke through the knit). Not on a rigged body: our head (and its
+    // brows) stays hidden under it, and showing them again left our brows floating in and out of its face.
+    if (this.human && !this.sfBody)
       this.model.traverse((o) => {
         if ((o as THREE.Mesh).isMesh && /eyebrow|beard/i.test(o.name)) o.visible = !maskOn;
       });
@@ -1792,11 +1899,25 @@ export class CharacterView {
       this.shellPad = tops.length ? this.torsoPad(`kit|${(tops[0]!.userData.worn as Worn).id}|${this.look.sex}`, this.human.body, tops) : 0;
     }
     const bulk = 1 + this.shellPad * 2.2;
-    const realArmor = s.armor ? real(s.armor.def) : null;
-    const realRig = s.rig ? real(s.rig.def) : null;
+    // Armour and rigs on our own bodies are the soldiers' own (armorKit.ts, wearArmor), once the models they come
+    // from have loaded (nothing until then); the models below (gear.glb, gearFit.ts) only when one failed to load.
+    const kitOf = (it: ItemInstance | null | undefined) => (it && this.human && !this.sfBody && measured ? ARMOR_KIT[it.def] : undefined);
+    const kitArmor = kitOf(s.armor);
+    const kitRig = kitOf(s.rig);
+    const waiting = [s.armor, s.rig].flatMap((it) => (it && kitOf(it) ? armorSources(it.def) : [])).filter((b) => !bodySettled(this.lib, b));
+    if (waiting.length) void loadBodies(this.lib, waiting).then(() => (this.gearKey = ''));
+    const kitFailed = (it: ItemInstance | null | undefined) => {
+      const bad = !!it && !!kitOf(it) && !waiting.length && armorSources(it.def).some((b) => !this.lib.bodies.has(b));
+      if (bad) console.warn(`armour kit for ${it!.def} failed to load: falling back to its gear model`);
+      return bad;
+    };
+    const armorFallback = kitFailed(s.armor);
+    const rigFallback = kitFailed(s.rig);
+    const realArmor = s.armor && (!kitArmor || armorFallback) ? real(s.armor.def) : null;
+    const realRig = s.rig && (!kitRig || rigFallback) ? real(s.rig.def) : null;
     // A vest is wrapped onto the body as measured with its clothes on, hangs by its straps and bends with the
     // spine (gearFit.ts); a rig goes over the armour the same way. Returns the surface with this piece on it.
-    const vest = (id: string, obj: THREE.Object3D, under: TorsoField | null, layer: string): TorsoField | null => {
+    const vest = (id: string, obj: THREE.Object3D, under: TorsoField | null, layer: string, press = false): TorsoField | null => {
       const body = this.human?.body;
       const spec = GEAR_MODEL[id]!;
       if (!body || !measured || !under) {
@@ -1806,12 +1927,14 @@ export class CharacterView {
         add(/^spine_03$/, hang(obj, cs.x * 1.24 * bulk * over * (f.w ?? 1), cs.z * 1.46 * bulk * over * (f.d ?? 1), new THREE.Vector3(cc.x, chest.max.y + cs.y * (0.1 + (f.y ?? 0)), cc.z), f.h ?? 1));
         return null;
       }
-      const key = `${this.fitKey()}|${id}|${layer}`;
+      const key = `${this.fitKey()}|${id}|${layer}${press ? '|pressed' : ''}`;
       let hit = VEST_FIT.get(key);
       const mats: (THREE.Material | THREE.Material[])[] = [];
       obj.traverse((o) => (o as THREE.Mesh).isMesh && mats.push((o as THREE.Mesh).material));
       if (!hit) {
-        const { geos } = fitVest(obj, measured, under, { fit: spec.fit, anchor: spec.anchor, hem: spec.hem, arm: spec.arm });
+        let { geos } = fitVest(obj, measured, under, { fit: spec.fit, anchor: spec.anchor, hem: spec.hem, arm: spec.arm });
+        // Under a rig: its pouches pressed in by it (they'd come out through it).
+        if (press) geos = pressUnder(geos, under, 0.03 * measured.k);
         VEST_FIT.set(key, (hit = { geos, over: withLayer(under, geos, 0.03 * measured.k) }));
       }
       hit.geos.forEach((g, i) => {
@@ -1825,9 +1948,11 @@ export class CharacterView {
       return hit.over;
     };
     let surface = measured?.dressed ?? null;
-    if (realArmor) surface = vest(s.armor!.def, realArmor, surface, '');
+    if (realArmor) surface = vest(s.armor!.def, realArmor, surface, '', !!realRig);
+    else if (kitArmor && !waiting.length && measured && surface) surface = this.wearArmor(s.armor!.def, kitArmor, measured, surface, '') ?? surface;
     if (realRig) surface = vest(s.rig!.def, realRig, surface, realArmor ? s.armor!.def : '') ?? surface;
-    if (s.armor && !realArmor && !wear(s.armor.def, ARMOR_SPECS[s.armor.def])) {
+    else if (kitRig && !waiting.length && measured && surface) surface = this.wearArmor(s.rig!.def, kitRig, measured, surface, s.armor?.def ?? '') ?? surface;
+    if (s.armor && !realArmor && !kitArmor && !wear(s.armor.def, ARMOR_SPECS[s.armor.def])) {
       const bottom = chest.min.y - cs.y * 0.62;
       add(
         /^spine_03$/,
@@ -1838,7 +1963,7 @@ export class CharacterView {
         ),
       );
     }
-    if (s.rig && !realRig && !wear(s.rig.def, RIG_SPECS[s.rig.def])) {
+    if (s.rig && !realRig && !kitRig && !wear(s.rig.def, RIG_SPECS[s.rig.def])) {
       const bottom = chest.min.y - cs.y * 0.55;
       add(
         /^spine_03$/,

@@ -134,7 +134,8 @@ meshopt-compressed (tools/assets/weapons.mjs):
 Clothing sources in bodies/cl_*.glb — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Bodies, faces and
 hair removed, clothes decimated and fitted to our own body at load (apps/web/src/render/rebind.ts fitToRest, items in
 apps/web/src/render/clothKit.ts). Some clothing items also come from the bodies above (rus_a, ukr_a, ukr_b, pmc_a,
-pmc_heavy, fem_police):
+pmc_heavy, fem_police), and the body armour and chest rigs from their vests, plate carriers and pouches (swat, fsb,
+pmc_a, pmc_heavy; items in apps/web/src/render/armorKit.ts):
   cl_man.glb     — "Just man" by vrimen
                    https://sketchfab.com/3d-models/just-man-e77a26778dc14b3c8f4838fe6a827dc3
   cl_civ.glb     — ".Fuse Civilian 1" by Leonardo Carvalho

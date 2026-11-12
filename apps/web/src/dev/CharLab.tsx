@@ -124,11 +124,14 @@ export function CharLab() {
       // Each body bare, then in a carrier, helmet and rig: worn kit must replace the model's own, never stack on it.
       // `&ids=pmc_a,fem_jacket` (default: the player's two).
       cast.length = 0;
-      const only = new URLSearchParams(location.hash.split('?')[1] ?? '').get('ids');
+      // `&kit=gzhel:armor,r_scav:rig` other kit (default: trooper, zsh, r_alpha); `&bare=0` leaves the bare ones out.
+      const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
+      const only = q.get('ids');
+      const kit = (q.get('kit') ?? 'trooper:armor,zsh:helmet,r_alpha:rig').split(',').filter(Boolean);
       for (const id of only ? only.split(',') : ['pmc_a', 'fem_jacket']) {
         const look = { ...lookFor(3, 'raider'), body: id || undefined, sex: id ? bodySex(id) : ('m' as const) };
-        cast.push({ look, eq: ['ak74m:primary'], active: 'primary', speed: 0 });
-        cast.push({ look, eq: ['ak74m:primary', 'trooper:armor', 'zsh:helmet', 'r_alpha:rig'], active: 'primary', speed: 0 });
+        if (q.get('bare') !== '0') cast.push({ look, eq: ['ak74m:primary'], active: 'primary', speed: 0 });
+        cast.push({ look, eq: ['ak74m:primary', ...kit], active: 'primary', speed: 0 });
       }
       cam.position.set(0, 1.75, Math.max(4.5, cast.length * 0.9));
       cam.lookAt(0, 1.3, 0);
@@ -161,12 +164,12 @@ export function CharLab() {
       (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
     }
     if (view === 'armor') {
-      // Every real helmet and vest (gearModels.ts) on the same body in the same clothes, so the fit of each model
+      // Every body armour and rig (armorKit.ts) on the same body in the same clothes, so the fit of each piece
       // can be compared: `&ids=trooper,paca` picks some, `&sex=f` a woman, `&top=c_bomber` other clothes,
       // `&gun=ak74m` aiming.
       cast.length = 0;
       const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
-      const ids = (q.get('ids') ?? 'paca,6b23,trooper,pc_tan,gzhel,slick6,r_mbss').split(',');
+      const ids = (q.get('ids') ?? 'paca,6b23,trooper,pc_tan,gzhel,slick6,r_scav,r_mbss,r_alpha,r_bank').split(',');
       const sex = q.get('sex') === 'f' ? 'f' : 'm';
       const top = q.get('top') ?? 'c_knit';
       const bottoms = [top, 'c_trousers', 'c_shoes'];

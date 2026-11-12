@@ -314,7 +314,7 @@ export const GEAR_MODEL: Record<string, GearSpec> = {
   // off the body (`fit.bulk`) so the raid camera, looking down on the chest, sees them as a ledge of pouches.
   r_mbss: { model: 'vest_pack', part: '^Vest_T0', hem: 0.75, tone: 0x777155, toneContrast: 0.9, fit: { bulk: 1.1 } },
   r_scav: { model: 'chest_rig', tone: 0x8c7d5c, toneContrast: 0.9, fit: { bulk: 1.4 } },
-  r_alpha: { model: 'lpc', turn: Math.PI, paint: 0x84905c, shade: true, fit: { bulk: 1.25 } },
+  r_alpha: { model: 'lpc', turn: Math.PI, paint: 0x4b5040, shade: true, hem: 0.25, fit: { bulk: 1.15, size: 0.86 } },
   // As a rig in coyote.
   r_bank: { model: 'combat_vest', tone: 0x7d6e52, toneContrast: 0.8, fit: { w: 0.95, bulk: 1.05 } },
   // Backpacks (outer face, the pockets, to +Z like the vests' fronts: the icon shows it; worn, it faces back)
@@ -439,6 +439,10 @@ export function wornGear(lib: AssetLibrary, itemId: string): THREE.Object3D | nu
               mat.alphaTest = Math.max(mat.alphaTest, 0.5);
             }
             const std = mat as THREE.MeshStandardMaterial;
+            // Some exports carry an absurd index of refraction (the LPC's is 1000): its specular then reflects
+            // nearly everything at every angle, and it reads as a flat, unlit sheet of colour.
+            const phys = mat as THREE.MeshPhysicalMaterial;
+            if (phys.isMeshPhysicalMaterial && !(phys.ior <= 2.333)) phys.ior = 1.5;
             if (spec.tint !== undefined && std.color) std.color.multiply(new THREE.Color(spec.tint));
             if (spec.paint !== undefined && std.color) {
               std.map = null;

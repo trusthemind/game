@@ -6,7 +6,7 @@ import { loadWeaponParts, weaponParts } from './weaponAssembly';
 import { meleeModel } from './melee3d';
 import { offscreenRenderer } from './offscreen';
 import { wornGear } from './gearModels';
-import { clothingModel, clothingSource } from './character';
+import { armorKitModel, clothingModel, kitSources } from './character';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import {
   ammoModel,
@@ -39,16 +39,18 @@ export function thumbKey(item: ItemInstance): string | null {
   if (d.weapon) return `g:${gunKey(item)}`;
   // A gun part with its own model gets a new picture once the parts have loaded.
   if (d.mod && weaponParts()?.has(item.def)) return `i:${item.def}+`;
-  // Clothes are drawn from the model they come from: a new picture once it has loaded.
-  if (d.clothing) {
-    const src = clothingSource(item.def);
+  // Clothes, armour and rigs are drawn from the models they come from: a new picture once those have loaded.
+  const srcs = kitSources(item.def);
+  if (srcs.length) {
     const lib = getAssets();
-    // Settled = loaded or failed for good (then the flat icon stays): asking again would loop.
-    if (src && lib && !bodySettled(lib, src)) {
+    // Settled = loaded or failed for good (then the fallback picture stays): asking again would loop.
+    const waiting = lib ? srcs.filter((b) => !bodySettled(lib, b)) : [];
+    if (lib && waiting.length) {
       // Asked once per model: every icon asks on every render, and each answer redraws them all.
-      if (!clothAsked.has(src)) {
-        clothAsked.add(src);
-        void loadBodies(lib, [src]).then(() => {
+      const ask = waiting.filter((b) => !clothAsked.has(b));
+      if (ask.length) {
+        for (const b of ask) clothAsked.add(b);
+        void loadBodies(lib, ask).then(() => {
           for (const fn of listeners) fn();
         });
       }
@@ -186,9 +188,9 @@ export function itemModel(lib: AssetLibrary, item: ItemInstance): { obj: THREE.O
     case 'helmet':
       return front(wornGear(lib, id) ?? helmetModel(id));
     case 'armor':
-      return front(wornGear(lib, id) ?? shellModel(lib, id, ARMOR_SPECS[id]) ?? armorModel(id));
+      return front(armorKitModel(lib, id) ?? wornGear(lib, id) ?? shellModel(lib, id, ARMOR_SPECS[id]) ?? armorModel(id));
     case 'rig':
-      return front(wornGear(lib, id) ?? shellModel(lib, id, RIG_SPECS[id]) ?? rigModel(id));
+      return front(armorKitModel(lib, id) ?? wornGear(lib, id) ?? shellModel(lib, id, RIG_SPECS[id]) ?? rigModel(id));
     case 'backpack': {
       const real = wornGear(lib, id);
       if (real) return front(real);

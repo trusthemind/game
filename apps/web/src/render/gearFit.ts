@@ -572,6 +572,35 @@ export function subdivideLong(g: THREE.BufferGeometry, max: number): THREE.Buffe
 }
 
 /** The field with fitted gear on top of it: what the next layer (a rig over armour) rests on. */
+/**
+ * Armour under a rig: what stands further off the surface under it than `room` (its pouches, its MOLLE) is pressed in
+ * to that, as the rig over it would press it. The rig rests on the armour capped at the same `room` (withLayer), so
+ * otherwise those pouches came out through it in dark chunks. Copies; the armour on its own keeps its own.
+ */
+export function pressUnder(geos: THREE.BufferGeometry[], f: TorsoField, room: number): THREE.BufferGeometry[] {
+  const yHi = f.y0 + (f.ny - 1) * DY;
+  return geos.map((g0) => {
+    const g = floatPositions(g0.clone());
+    const p = g.attributes.position!;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i);
+      if (y < f.y0 || y > yHi) continue;
+      const x = p.getX(i) - f.x0;
+      const z = p.getZ(i) - f.z0;
+      const th = Math.atan2(z, x);
+      const r = Math.hypot(x, z);
+      const lim = sample(f, f.r, th, y) + room;
+      if (!(lim > room) || r <= lim) continue;
+      p.setXYZ(i, f.x0 + (x * lim) / r, y, f.z0 + (z * lim) / r);
+    }
+    p.needsUpdate = true;
+    g.computeVertexNormals();
+    g.computeBoundingBox();
+    g.computeBoundingSphere();
+    return g;
+  });
+}
+
 export function withLayer(f: TorsoField, geos: THREE.BufferGeometry[], cap = Infinity): TorsoField {
   const out: TorsoField = { ...f, r: f.r.slice() };
   for (const g of geos) raster(out, floatPositions(g).attributes.position!.array as ArrayLike<number>, g.index ? (g.index.array as ArrayLike<number>) : null, null);
@@ -580,6 +609,35 @@ export function withLayer(f: TorsoField, geos: THREE.BufferGeometry[], cap = Inf
   // resting on their tops it stood off the chest like a barrel, its straps looping wide round the shoulders.
   if (Number.isFinite(cap)) for (let i = 0; i < out.r.length; i++) if (f.r[i]! > 0) out.r[i] = Math.min(out.r[i]!, f.r[i]! + cap);
   return out;
+}
+
+/**
+ * The surface with thin things standing off it taken down: a collar's points, an epaulette, a flap, a strap of the
+ * clothes, which a vest's strap would otherwise be lifted onto or pushed out round one vertex at a time (and so
+ * torn into shards). Each cell at most a little over the median of the cells round it (±2 slices, ±3 directions).
+ */
+function despike(f: TorsoField, k: number): TorsoField {
+  const r = f.r.slice();
+  const tol = 0.01 * k;
+  const nb: number[] = [];
+  for (let iy = 0; iy < f.ny; iy++)
+    for (let t = 0; t < NT; t++) {
+      const here = f.r[iy * NT + t]!;
+      if (!(here > 0)) continue;
+      nb.length = 0;
+      for (let dy = -2; dy <= 2; dy++) {
+        const y = iy + dy;
+        if (y < 0 || y >= f.ny) continue;
+        for (let dt = -3; dt <= 3; dt++) {
+          const s = f.r[y * NT + ((t + dt + NT) % NT)]!;
+          if (s > 0) nb.push(s);
+        }
+      }
+      if (nb.length < 8) continue;
+      nb.sort((a, b) => a - b);
+      r[iy * NT + t] = Math.min(here, nb[nb.length >> 1]! + tol);
+    }
+  return { ...f, r };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -597,10 +655,12 @@ interface VestShape {
   yMax: number;
   /** Cavity radius per height band (from the top) and direction. */
   env: Float32Array;
+  /** The same, by the innermost vertex (env leaves the odd stray out). */
+  inner: Float32Array;
   girth: number;
 }
 
-function vestShape(geos: THREE.BufferGeometry[]): VestShape {
+function vestShape(geos: THREE.BufferGeometry[], fine = geos): VestShape {
   let yMin = Infinity;
   let yMax = -Infinity;
   for (const g of geos) {
@@ -611,12 +671,12 @@ function vestShape(geos: THREE.BufferGeometry[]): VestShape {
     }
   }
   const H = yMax - yMin;
-  const pass = (x0: number, z0: number): Float32Array => {
+  const pass = (x0: number, z0: number, q = 0.06, from = geos): Float32Array => {
     const cells: number[][] = Array.from({ length: MB * MS }, () => []);
-    for (const g of geos) {
+    for (const g of from) {
       const p = g.attributes.position!;
       for (let i = 0; i < p.count; i++) {
-        const b = Math.min(MB - 1, Math.floor(((yMax - p.getY(i)) / H) * MB));
+        const b = THREE.MathUtils.clamp(Math.floor(((yMax - p.getY(i)) / H) * MB), 0, MB - 1);
         const x = p.getX(i) - x0;
         const z = p.getZ(i) - z0;
         const s = Math.min(MS - 1, Math.floor((((Math.atan2(z, x) / TAU) % 1) + 1) % 1 * MS));
@@ -628,7 +688,7 @@ function vestShape(geos: THREE.BufferGeometry[]): VestShape {
       if (!c.length) return;
       c.sort((a, b) => a - b);
       // The innermost vertices, bar a stray one.
-      env[i] = c[Math.min(c.length - 1, Math.floor(c.length * 0.06))]!;
+      env[i] = c[Math.min(c.length - 1, Math.floor(c.length * q))]!;
     });
     return env;
   };
@@ -657,28 +717,48 @@ function vestShape(geos: THREE.BufferGeometry[]): VestShape {
     env = pass(x0, z0);
   }
   // Open sides and bare bands: take the cavity from round about, then from above and below.
-  for (let b = 0; b < MB; b++) {
-    const rowv = env.slice(b * MS, b * MS + MS);
-    if (rowv.every((e) => Number.isNaN(e))) continue;
-    for (let s = 0; s < MS; s++) {
-      if (!Number.isNaN(rowv[s]!)) continue;
-      let a = 1;
-      while (Number.isNaN(rowv[(s - a + MS) % MS]!)) a++;
-      let c = 1;
-      while (Number.isNaN(rowv[(s + c) % MS]!)) c++;
-      env[b * MS + s] = (rowv[(s - a + MS) % MS]! * c + rowv[(s + c) % MS]! * a) / (a + c);
+  const fill = (env: Float32Array, low = false): Float32Array => {
+    for (let b = 0; b < MB; b++) {
+      const rowv = env.slice(b * MS, b * MS + MS);
+      if (rowv.every((e) => Number.isNaN(e))) continue;
+      for (let s = 0; s < MS; s++) {
+        if (!Number.isNaN(rowv[s]!)) continue;
+        let a = 1;
+        while (Number.isNaN(rowv[(s - a + MS) % MS]!)) a++;
+        let c = 1;
+        while (Number.isNaN(rowv[(s + c) % MS]!)) c++;
+        env[b * MS + s] = (rowv[(s - a + MS) % MS]! * c + rowv[(s + c) % MS]! * a) / (a + c);
+      }
     }
-  }
-  for (let b = 0; b < MB; b++) {
-    if (!Number.isNaN(env[b * MS]!)) continue;
-    let o = 1;
-    while (o < MB && Number.isNaN(env[Math.min(MB - 1, b + o) * MS]!) && Number.isNaN(env[Math.max(0, b - o) * MS]!)) o++;
-    const from = !Number.isNaN(env[Math.min(MB - 1, b + o) * MS]!) ? Math.min(MB - 1, b + o) : Math.max(0, b - o);
-    for (let s = 0; s < MS; s++) env[b * MS + s] = env[from * MS + s]!;
-  }
-  const sm = env.slice();
-  for (let b = 0; b < MB; b++)
-    for (let s = 0; s < MS; s++) env[b * MS + s] = (sm[b * MS + ((s + MS - 1) % MS)]! + 2 * sm[b * MS + s]! + sm[b * MS + ((s + 1) % MS)]!) / 4;
+    for (let b = 0; b < MB; b++) {
+      if (!Number.isNaN(env[b * MS]!)) continue;
+      let o = 1;
+      while (o < MB && Number.isNaN(env[Math.min(MB - 1, b + o) * MS]!) && Number.isNaN(env[Math.max(0, b - o) * MS]!)) o++;
+      const from = !Number.isNaN(env[Math.min(MB - 1, b + o) * MS]!) ? Math.min(MB - 1, b + o) : Math.max(0, b - o);
+      for (let s = 0; s < MS; s++) env[b * MS + s] = env[from * MS + s]!;
+    }
+    const sm = env.slice();
+    for (let b = 0; b < MB; b++)
+      for (let s = 0; s < MS; s++) {
+        if (!low) {
+          env[b * MS + s] = (sm[b * MS + ((s + MS - 1) % MS)]! + 2 * sm[b * MS + s]! + sm[b * MS + ((s + 1) % MS)]!) / 4;
+          continue;
+        }
+        // The lowest round about (it's read between cells: an average would lift it over what's in them).
+        let m = Infinity;
+        for (let db = -1; db <= 1; db++)
+          for (let ds = -1; ds <= 1; ds++) {
+            const bb = b + db;
+            if (bb >= 0 && bb < MB) m = Math.min(m, sm[bb * MS + ((s + ds + MS) % MS)]!);
+          }
+        env[b * MS + s] = m;
+      }
+    return env;
+  };
+  fill(env);
+  // The innermost of the model in each place (its panels' insides), as it's placed: subdivided, a big flat panel's
+  // middle lies well inside its corners. See `place` in fitVest.
+  const inner = fill(pass(x0, z0, 0, fine), true);
   let girth = 0;
   let n = 0;
   for (let b = Math.floor(MB * 0.45); b < Math.floor(MB * 0.9); b++)
@@ -686,7 +766,7 @@ function vestShape(geos: THREE.BufferGeometry[]): VestShape {
       girth += env[b * MS + s]!;
       n++;
     }
-  return { x0, z0, yMin, yMax, env, girth: girth / n };
+  return { x0, z0, yMin, yMax, env, inner, girth: girth / n };
 }
 
 /**
@@ -723,7 +803,7 @@ function modelArmpit(geos: THREE.BufferGeometry[], sh: VestShape): number {
   return THREE.MathUtils.clamp(y, sh.yMax - H * 0.66, sh.yMax - H * 0.17);
 }
 
-function cavity(sh: VestShape, th: number, y: number): number {
+function cavity(sh: VestShape, th: number, y: number, env = sh.env): number {
   const fb = THREE.MathUtils.clamp(((sh.yMax - y) / (sh.yMax - sh.yMin)) * MB - 0.5, 0, MB - 1);
   const b0 = Math.min(MB - 2, Math.floor(fb));
   const tb = fb - b0;
@@ -732,7 +812,7 @@ function cavity(sh: VestShape, th: number, y: number): number {
   const s0 = Math.floor(fs) % MS;
   const s1 = (s0 + 1) % MS;
   const ts = fs - Math.floor(fs);
-  const at = (b: number) => sh.env[b * MS + s0]! * (1 - ts) + sh.env[b * MS + s1]! * ts;
+  const at = (b: number) => env[b * MS + s0]! * (1 - ts) + env[b * MS + s1]! * ts;
   return at(b0) * (1 - tb) + at(b0 + 1) * tb;
 }
 
@@ -752,6 +832,7 @@ export interface VestOptions {
  */
 export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt: VestOptions = {}): { geos: THREE.BufferGeometry[]; materials: (THREE.Material | THREE.Material[])[]; info: Record<string, number> } {
   obj.updateMatrixWorld(true);
+  under = despike(under, bf.k);
   const meshes: THREE.Mesh[] = [];
   obj.traverse((o) => (o as THREE.Mesh).isMesh && meshes.push(o as THREE.Mesh));
   const all = meshes.map((m) => floatPositions(m.geometry.clone()).applyMatrix4(m.matrixWorld));
@@ -764,7 +845,7 @@ export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt
   const tall = new THREE.Box3();
   for (const g of raw) tall.union((g.computeBoundingBox(), g.boundingBox!));
   const geos = all.map((g, i) => (isCap[i] ? g : subdivideLong(g, (tall.max.y - tall.min.y) / 14)));
-  const sh = vestShape(raw);
+  const sh = vestShape(raw, geos.filter((_, i) => !isCap[i]));
   const f = opt.fit ?? {};
   const k = bf.k;
   const J = bf.joints;
@@ -796,8 +877,9 @@ export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt
   let girthD = 0;
   for (let y = J.spine_02.y; y <= ySide - 0.02 * k; y += DY)
     for (let t = 0; t < NT; t++) girthD += sample(under, under.r, ((t + 0.5) / NT) * TAU, y);
-  const u = ((girthD / n + gap) / sh.girth) * (f.size ?? 1);
-  const s = THREE.MathUtils.clamp(((girth / n) * 1.08 / sh.girth) * (f.size ?? 1), u * 0.9, u * 1.15);
+  let u = ((girthD / n + gap) / sh.girth) * (f.size ?? 1);
+  const sOf = (uu: number) => THREE.MathUtils.clamp(((girth / n) * 1.08 / sh.girth) * (f.size ?? 1), uu * 0.9, uu * 1.15);
+  let s = sOf(u);
   // Its length is the model's own, scaled with it, unless that leaves it ending high on the ribs or low on the
   // hips: then it is stretched (or squashed) towards its hem landmark, a carrier's bottom edge just above the navel.
   const yHem = J.spine_01.y + (J.spine_02.y - J.spine_01.y) * (opt.hem ?? -0.05);
@@ -808,8 +890,17 @@ export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt
   const yArmM = opt.arm !== undefined ? sh.yMax - H * opt.arm : modelArmpit(raw, sh);
   let sy = THREE.MathUtils.clamp(s * (f.h ?? 1), u * 0.87, u * 1.15);
   let syL = sy;
+  // Never below the waist: a model that's long for its width, on a body measured bulky (a thick jacket, a rig over
+  // armour), would otherwise hang past the hips at its shortest. Then it's all smaller (it still wraps the body
+  // round; only its height and what stands off it shrink), never squashed.
+  const yFloor = J.pelvis.y + (J.spine_01.y - J.pelvis.y) * 0.4;
   const toHem = () => {
     if (opt.anchor === 'belt') return;
+    const uMax = (yTop - yFloor) / (H * 0.87);
+    if (u > uMax) {
+      u = uMax;
+      s = sOf(u);
+    }
     // Shoulders to hem in one scale, within 15% of the width's. Only with the armpit given (`arm`, a model whose
     // straps are much longer or shorter than its panels) do the two parts take scales of their own, as bounded.
     sy = THREE.MathUtils.clamp(((yTop - yHem) / H) * (f.h ?? 1), u * 0.87, u * 1.15);
@@ -898,10 +989,19 @@ export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt
     // hug the shoulder instead of flaring out over the arm like a sleeve).
     if (yb > ySide - 0.05 * k && Math.abs(Math.cos(th)) > 0.5) rb = Math.min(rb, sample(under, target, th, Math.min(yb, ySide)) * Math.hypot(w * Math.cos(th), d * Math.sin(th)) + gap + 0.03 * k);
     if (y >= yStrap && opt.anchor !== 'belt') yb += liftAt(dx, dz) * THREE.MathUtils.smoothstep(yb - yf, -0.01 * k, 0.03 * k);
+    const real = sample(under, under.r, th, yb) + skin;
+    // Where it would be inside the body it goes out onto it, but each layer by its own depth over the model's
+    // innermost there (sh.inner): pushed onto the one surface, a panel's inside and outside and the webbing on it
+    // would lie in one another and show through each other in shards. Below the straps; over the shoulders a strap
+    // goes up instead (next).
+    const collar = yb > ySide && rb < neckR * 1.35;
+    const below = 1 - THREE.MathUtils.smoothstep(yb - yf, -0.06 * k, -0.02 * k);
+    const rIn = Math.min(r, cavity(sh, th, y - over / sy, sh.inner));
+    const floor = real + (r - rIn) * s;
+    if (!collar && below > 0 && rb < floor) rb += (floor - rb) * below;
     // Never inside what's under it: out, or for a strap over the shoulder, up.
     // (A soft collar gives way: round the neck the straps go where the model has them.)
-    const real = sample(under, under.r, th, yb) + skin;
-    if (rb < real && !(yb > ySide && rb < neckR * 1.35)) {
+    if (rb < real && !collar) {
       let up = NaN;
       if (yb > yf - 0.03 * k)
         for (let yy = yb + DY / 2; yy < yb + 0.12 * k; yy += DY / 2)
