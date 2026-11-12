@@ -1147,7 +1147,7 @@
    "path": "apps/web/public/models/gear.glb",
    "status": "approved",
    "technical": {
-    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "fit": "vest wrapped to the torso (fitVest); shoulder caps rigid on the shoulder joints (spine_03/clavicle, a little upper arm)",
     "textures": "WebP 512"
    },
    "visual_locks": [
@@ -1157,18 +1157,18 @@
    ],
    "source": {
     "kind": "sourced",
-    "url_or_tool": "tools/assets/sketchfab.json",
-    "creator": "00amza",
-    "created_at": "2026-11-09",
+    "url_or_tool": "tools/assets/sketchfab.json (ar_spetsnaz; cut in tools/assets/vehicles.mjs)",
+    "creator": "Long Nguyễn",
+    "created_at": "2026-11-12",
     "license": "CC BY 4.0",
-    "attribution": "\"Vest Armor Holster LowPoly GameReady Pack\" by 00amza, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "attribution": "\"Spetsnaz SOLIDER\" by Long Nguyễn, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
     "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
    },
    "verification": {
     "native_scale_reviewed": true,
     "in_engine_reviewed": true,
     "technical_checks_passed": true,
-    "approved_by": "delegated by Fedir, 2026-11-09"
+    "approved_by": "pending review (added 2026-11-12)"
    }
   },
   {

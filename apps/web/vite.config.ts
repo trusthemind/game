@@ -3,10 +3,28 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath, URL } from 'node:url';
+import { createHash } from 'node:crypto';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
+
+// Each model's content hash, appended to its URL (assets.ts): /models/ is served with a week's HTTP cache and
+// gear.glb keeps its name across builds, so without it a browser kept wearing last week's gear.
+const MODELS = fileURLToPath(new URL('./public/models', import.meta.url));
+function modelRevisions(dir = MODELS, out: Record<string, string> = {}): Record<string, string> {
+  for (const f of readdirSync(dir)) {
+    const p = join(dir, f);
+    if (statSync(p).isDirectory()) modelRevisions(p, out);
+    else if (f.endsWith('.glb')) out[relative(MODELS, p)] = createHash('md5').update(readFileSync(p)).digest('hex').slice(0, 8);
+  }
+  return out;
+}
 
 export default defineConfig({
   // Which build is running, shown in the menu and the pause screen (Vercel passes the commit).
-  define: { 'import.meta.env.VITE_BUILD': JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'dev') },
+  define: {
+    'import.meta.env.VITE_BUILD': JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'dev'),
+    __MODEL_REV__: JSON.stringify(modelRevisions()),
+  },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
@@ -34,6 +52,8 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
+        // Models are fetched as name.glb?v=<hash>: still the precached copy (whose revision is that same content).
+        ignoreURLParametersMatching: [/^v$/, /^utm_/, /^fbclid$/],
         runtimeCaching: [
           {
             // 3D models: cache-first, survive SW updates (separate cache from the precache manifest).

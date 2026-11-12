@@ -708,5 +708,25 @@
   "uid": "99787b78b1d24e3aa10bc14fe0b33d60",
   "slug": "bp_messenger",
   "use": "backpack: messenger bag (b_sling)"
+ },
+ {
+  "uid": "a1a17b557c464838b9e770d3d5099d54",
+  "slug": "ar_vest_riikonen",
+  "use": "armour: soft vest with shoulder straps (paca)"
+ },
+ {
+  "uid": "5a16b507ea484458aa956a3bc3548412",
+  "slug": "ar_body_armor_cz",
+  "use": "armour: body armour (6b23 candidate)"
+ },
+ {
+  "uid": "df1adf59dbe24c68be1e08d78a9fc0e2",
+  "slug": "ar_tactic_vest",
+  "use": "armour: tactic vest (6b23 candidate)"
+ },
+ {
+  "uid": "ba27cdd5f588444aa70f3d7fe571dbbf",
+  "slug": "ar_spetsnaz",
+  "use": "armour: heavy armour with shoulder pads (gzhel), cut from the Spetsnaz SOLIDER character"
  }
 ]

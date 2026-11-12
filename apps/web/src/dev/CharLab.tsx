@@ -162,7 +162,8 @@ export function CharLab() {
     }
     if (view === 'armor') {
       // Every real helmet and vest (gearModels.ts) on the same body in the same clothes, so the fit of each model
-      // can be compared: `&ids=trooper,paca` picks some, `&sex=f` a woman, `&top=c_bomber` other clothes.
+      // can be compared: `&ids=trooper,paca` picks some, `&sex=f` a woman, `&top=c_bomber` other clothes,
+      // `&gun=ak74m` aiming.
       cast.length = 0;
       const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
       const ids = (q.get('ids') ?? 'paca,6b23,trooper,pc_tan,gzhel,slick6,r_mbss').split(',');
@@ -178,8 +179,10 @@ export function CharLab() {
           const c = getDef(w).category;
           return `${w}:${c === 'helmet' || c === 'rig' || c === 'backpack' ? c : 'armor'}`;
         });
-        const eq = [...bottoms.map((c) => `${c}:${getDef(c).clothing!.slot}`), `${id}:${slot}`, ...more, ...(slot === 'armor' ? ['ssh36:helmet'] : [])];
-        cast.push({ look: { ...base, sex, body: undefined, hat: null, clothed: true }, eq, active: 'melee', speed: 0 });
+        // `&gun=ak74m`: aiming it (arms up: shoulder guards and side panels against the arms).
+        const gun = q.get('gun');
+        const eq = [...bottoms.map((c) => `${c}:${getDef(c).clothing!.slot}`), `${id}:${slot}`, ...more, ...(slot === 'armor' ? ['ssh36:helmet'] : []), ...(gun ? [`${gun}:primary`] : [])];
+        cast.push({ look: { ...base, sex, body: undefined, hat: null, clothed: true }, eq, active: gun ? 'primary' : 'melee', speed: 0 });
         void i;
       });
       cam.position.set(0, 1.45, Math.max(3.2, ids.length * 0.7));

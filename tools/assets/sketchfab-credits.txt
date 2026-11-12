@@ -130,3 +130,7 @@
 "Large Camping BackPack (Free/GameReady)" by Sebastian Webster (https://sketchfab.com/3d-models/large-camping-backpack-freegameready-a7086b50dae84706b81bb3ce14ad9094) — CC BY 4.0 — backpack: large camping pack (b_pilgrim)
 "Low Poly Game Ready Military Tactical Backpack" by DanlyVostok (https://sketchfab.com/3d-models/low-poly-game-ready-military-tactical-backpack-95a4fc7300584384b56ce3add58dbc9f) — CC BY 4.0 — backpack: military tactical (b_attack)
 "messenger bag" by N1008650 (https://sketchfab.com/3d-models/messenger-bag-99787b78b1d24e3aa10bc14fe0b33d60) — CC BY 4.0 — backpack: messenger bag (b_sling)
+"Vest" by Santeri Riikonen (https://sketchfab.com/3d-models/vest-a1a17b557c464838b9e770d3d5099d54) — CC BY 4.0 — armour: soft vest with shoulder straps (paca)
+"Body armor" by count_zero (https://sketchfab.com/3d-models/body-armor-5a16b507ea484458aa956a3bc3548412) — CC BY 4.0 — armour: body armour (6b23 candidate)
+"Tactic vest" by miguel_fernandez159 (https://sketchfab.com/3d-models/tactic-vest-df1adf59dbe24c68be1e08d78a9fc0e2) — CC BY 4.0 — armour: tactic vest (6b23 candidate)
+"Spetsnaz SOLIDER" by Long Nguyễn (https://sketchfab.com/3d-models/spetsnaz-solider-ba27cdd5f588444aa70f3d7fe571dbbf) — CC BY 4.0 — armour: heavy armour with shoulder pads (gzhel), cut from the Spetsnaz SOLIDER character

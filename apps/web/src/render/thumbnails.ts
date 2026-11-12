@@ -4,6 +4,7 @@ import { bodySettled, getAssets, loadAssets, loadBodies, type AssetLibrary } fro
 import { buildGun, gunKey, MOD_MODEL } from './gunsmith';
 import { loadWeaponParts, weaponParts } from './weaponAssembly';
 import { meleeModel } from './melee3d';
+import { offscreenRenderer } from './offscreen';
 import { wornGear } from './gearModels';
 import { clothingModel, clothingSource } from './character';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
@@ -29,7 +30,6 @@ import {
 const cache = new Map<string, string>();
 const queue: { key: string; item: ItemInstance }[] = [];
 const listeners = new Set<() => void>();
-let renderer: THREE.WebGLRenderer | null = null;
 let scheduled = false;
 /** Pixels per inventory cell (2× the on-screen cell so the inspector's big picture stays sharp). */
 const PX = 112;
@@ -257,8 +257,7 @@ function render(lib: AssetLibrary, item: ItemInstance): string | null {
   if (!model) return null;
   const W = d.w * PX;
   const H = d.h * PX;
-  // The browser may drop this context when too many are open; start a fresh one rather than caching blanks.
-  if (!renderer || renderer.getContext().isContextLost()) renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  const renderer = offscreenRenderer();
   renderer.setPixelRatio(1);
   renderer.setSize(W, H, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;

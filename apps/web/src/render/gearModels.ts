@@ -19,7 +19,7 @@ export interface GearSpec {
   /** This model's own fit on the body, over the usual one (every vest has its own bounds: shoulder guards widen
    * them, a front pouch band deepens them, so the vest itself comes out too small or too big). `w`, `d`, `h`:
    * multipliers of width, depth and height; `y`: how far up (+) or down (−) it rides, in chest heights. */
-  fit?: { w?: number; d?: number; h?: number; y?: number; size?: number; gap?: number };
+  fit?: { w?: number; d?: number; h?: number; y?: number; size?: number; gap?: number; bulk?: number; cap?: { x?: number; y?: number; z?: number } };
   /** Helmets: the liner's colour (default dark webbing). The Altyn's shell is open above its faceplate, so its
    * liner takes the shell's paint and the opening reads as shell from above. */
   liner?: number;
@@ -29,6 +29,9 @@ export interface GearSpec {
   /** Vests and rigs: where the bottom edge comes, 0 at spine_01 (about the navel) to 1 at spine_02 (lower ribs);
    * default 0.3. */
   hem?: number;
+  /** Vests and rigs: the model's armpit (top of its side panels) as a share of its height from the top, put just
+   * under the body's shoulder joint; found from the model when not given. */
+  arm?: number;
   /** Vests and rigs: 'shoulders' (default) hangs by its straps, 'belt' sits round the waist. */
   anchor?: 'shoulders' | 'belt';
   /** Multiplies the model's colours (plates: one model, a steel, a ceramic and a polyethylene look). */
@@ -43,6 +46,14 @@ export interface GearSpec {
    * and pockets still drawn). `monoGain`: how bright (default 1.5). */
   mono?: number;
   monoGain?: number;
+  /** Re-tones the texture to this average colour, keeping its own light and dark (seams, MOLLE, pouch flaps)
+   * as a power `toneContrast` (default 0.75: <1 evens it out, >1 sharpens). The models' textures average 15-30% grey: on the dark clothes most
+   * people wear they vanished, and from the raid camera a rig read as nothing at all. */
+  tone?: number;
+  toneContrast?: number;
+  /** With `paint`: shade it by its own relief (no texture to show its pouches): what stands off the body and
+   * faces up lighter, the webbing between darker. */
+  shade?: boolean;
   /** Helmets: drop the loose pieces that stand out sideways past the dome (the SSh-40's chin-strap ends). */
   trim?: boolean;
   /** Helmets: cut away everything below this share of the model's height, from the bottom (the FAST's chin
@@ -195,6 +206,60 @@ function monoMap(tex: THREE.Texture, base: number, gain: number): THREE.Texture 
   return t;
 }
 
+/** The texture re-toned: its mean brightness becomes `base`, its detail (brightness over the mean) raised to the
+ * power `contrast`, and a little of its own hue kept (sRGB). */
+function toneMap(tex: THREE.Texture, base: number, contrast: number, uv?: THREE.BufferAttribute | THREE.InterleavedBufferAttribute): THREE.Texture | null {
+  const img = tex.image as CanvasImageSource & { width: number; height: number };
+  if (!img?.width || typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  c.width = img.width;
+  c.height = img.height;
+  const x = c.getContext('2d');
+  if (!x) return null;
+  x.drawImage(img, 0, 0);
+  const d = x.getImageData(0, 0, c.width, c.height);
+  const lum = (i: number) => 0.3 * d.data[i]! + 0.59 * d.data[i + 1]! + 0.11 * d.data[i + 2]!;
+  // The mean over what the model uses (at its vertices' UVs): an atlas is mostly other things, or empty, and
+  // measured whole it made the used part read as far brighter than the mean (a rig's straps came out white).
+  let mean = 0;
+  let cnt = 0;
+  if (uv)
+    for (let i = 0; i < uv.count; i++) {
+      const u = ((uv.getX(i) % 1) + 1) % 1;
+      const v = ((uv.getY(i) % 1) + 1) % 1;
+      const px = Math.min(c.width - 1, Math.floor(u * c.width));
+      const py = Math.min(c.height - 1, Math.floor((tex.flipY ? 1 - v : v) * c.height));
+      mean += lum((py * c.width + px) * 4);
+      cnt++;
+    }
+  if (!cnt) {
+    for (let i = 0; i < d.data.length; i += 4) mean += lum(i);
+    cnt = d.data.length / 4;
+  }
+  mean = Math.max(1, mean / cnt);
+  const bc = [(base >> 16) & 255, (base >> 8) & 255, base & 255];
+  for (let i = 0; i < d.data.length; i += 4) {
+    const l = lum(i);
+    // A power, not a stretch: the dark cloth of a plate bag comes up to the colour (a linear stretch sank it to
+    // black, and it read as a hole) while seams and webbing still show lighter and darker.
+    const k = Math.min(1.35, Math.pow(Math.max(0.02, l / mean), contrast));
+    for (let j = 0; j < 3; j++) {
+      // Mostly the new colour, a third the texel's own tint (a red stitch, a grey buckle stay so).
+      const own = l > 1 ? (d.data[i + j]! / l) * bc[j]! : bc[j]!;
+      d.data[i + j] = Math.min(255, (bc[j]! * 0.65 + own * 0.35) * k);
+    }
+  }
+  x.putImageData(d, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.flipY = tex.flipY;
+  t.colorSpace = tex.colorSpace;
+  t.wrapS = tex.wrapS;
+  t.wrapT = tex.wrapT;
+  t.channel = tex.channel;
+  t.anisotropy = tex.anisotropy;
+  return t;
+}
+
 /** The texture's detail over a colour: base + gain × texel, per channel (sRGB). */
 function liftMap(tex: THREE.Texture, base: number, gain: number): THREE.Texture | null {
   const img = tex.image as CanvasImageSource & { width: number; height: number };
@@ -231,29 +296,81 @@ export const GEAR_MODEL: Record<string, GearSpec> = {
   // Both FASTs' textures are all but black: lifted onto ranger green, with a liner to match.
   h_fast: { model: 'fast', shell: 0.62, turn: -Math.PI / 2, cutBelow: 0.36, lift: 0x4e4d3c, liftGain: 0.7, liner: 0x5a5944 },
   h_fast_headset: { model: 'helmet_headset', shell: 0.7, turn: -Math.PI / 2, cutBelow: 0.28, lift: 0x36352a, liftGain: 1.0, liner: 0x8a8470 },
-  // Body armour (soft vests come down to the belt, carriers stop above the navel: `hem`)
-  paca: { model: 'vest_pack', part: '^Vest_1_T1', hem: 0, fit: { w: 0.9, d: 0.9, y: -0.02 } },
-  '6b23': { model: 'vest_pack', part: '^Vest_1_T2', hem: 0, fit: { w: 0.97, d: 0.95 } },
-  trooper: { model: 'plate_carrier', fit: { w: 0.96, d: 1.0 } },
-  pc_tan: { model: 'vest_danly', fit: { w: 0.84, d: 1.12, y: 0.02 } },
-  gzhel: { model: 'vest_pack', part: '^Vest_1_Prem', hem: 0, fit: { w: 1.3, d: 1.0 } },
-  slick6: { model: 'vest_pack', part: '^Vest$|^Vest_Vest', fit: { w: 0.94, d: 1.0 } },
+  // Body armour (soft vests come down to the belt, carriers stop above the navel: `hem`). Every texture here
+  // averages 15-30% grey: re-toned (`tone`) to a readable mid colour of its own, detail kept.
+  paca: { model: 'vest_soft', hem: -0.45, tone: 0x4d5046, toneContrast: 0.9, fit: { y: -0.12 } },
+  '6b23': { model: 'body_armor', hem: -0.45, tone: 0x5a5e4c, toneContrast: 0.9 },
+  trooper: { model: 'tactic_vest', hem: -0.1, tone: 0x5c5a4a, toneContrast: 0.95 },
+  pc_tan: { model: 'vest_danly', hem: -0.1, tone: 0x7a6f58, toneContrast: 0.85, fit: { w: 0.94, d: 1.0, bulk: 0.8 } },
+  // Heavy armour with shoulder caps, cut out of a whole soldier (tools/assets/vehicles.mjs `cut`).
+  gzhel: { model: 'heavy_armor', hem: -0.2, tone: 0x4f5444, toneContrast: 0.85, fit: { cap: {} } },
+  slick6: { model: 'vest_pack', part: '^Vest$|^Vest_Vest', hem: -0.1, tone: 0x4a4b47, toneContrast: 0.95, fit: { w: 1.02, d: 1.0 } },
   // Armour plates (a pictured item only: they sit inside a carrier when worn)
   pl_steel3: { model: 'v_6b43', turn: Math.PI / 2, paint: 0x80878d },
   pl_ceramic4: { model: 'v_6b43', turn: Math.PI / 2, paint: 0x59614a },
   pl_poly5: { model: 'v_6b43', turn: Math.PI / 2, paint: 0x33383d },
   pl_ceramic6: { model: 'v_6b43', turn: Math.PI / 2, paint: 0x6c7468 },
-  // Rigs
-  r_mbss: { model: 'vest_pack', part: '^Vest_T0', hem: 0.75 },
-  r_scav: { model: 'chest_rig', lift: 0x3c3b2e, liftGain: 1.0 },
-  r_alpha: { model: 'lpc', turn: Math.PI, paint: 0x7a8058 },
-  r_bank: { model: 'combat_vest', fit: { w: 0.92 } },
+  // Rigs: light colours of their own against the clothes and the armour under them, and pouches stood further
+  // off the body (`fit.bulk`) so the raid camera, looking down on the chest, sees them as a ledge of pouches.
+  r_mbss: { model: 'vest_pack', part: '^Vest_T0', hem: 0.75, tone: 0x777155, toneContrast: 0.9, fit: { bulk: 1.1 } },
+  r_scav: { model: 'chest_rig', tone: 0x8c7d5c, toneContrast: 0.9, fit: { bulk: 1.4 } },
+  r_alpha: { model: 'lpc', turn: Math.PI, paint: 0x84905c, shade: true, fit: { bulk: 1.25 } },
+  // As a rig in coyote.
+  r_bank: { model: 'combat_vest', tone: 0x7d6e52, toneContrast: 0.8, fit: { w: 0.95, bulk: 1.05 } },
   // Backpacks (outer face, the pockets, to +Z like the vests' fronts: the icon shows it; worn, it faces back)
   b_sling: { model: 'bp_messenger', paint: 0x6b6450, dropLoose: true, fit: { size: 0.6 } },
   b_daypack: { model: 'bp_daypack', turn: -Math.PI / 2, mono: 0x6f8296, monoGain: 3 },
   b_pilgrim: { model: 'bp_camping', lift: 0x4c4632, liftGain: 1.1, dropLoose: true, fit: { h: 1.2 } },
   b_attack: { model: 'bp_tactical', dropLoose: true, fit: { h: 1.1 } },
 };
+
+/** Vertex shading by relief for a model with no texture: lighter where it stands off its axis (pouches, plates)
+ * and where it faces up (what the raid camera sees), darker between (the webbing). */
+function shadeRelief(root: THREE.Object3D): void {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const box = new THREE.Box3().setFromObject(root).applyMatrix4(inv);
+  const c = box.getCenter(new THREE.Vector3());
+  const B = 10;
+  const lo = new Float32Array(B).fill(Infinity);
+  const hi = new Float32Array(B).fill(-Infinity);
+  const v = new THREE.Vector3();
+  const meshes: { m: THREE.Mesh; to: THREE.Matrix4 }[] = [];
+  root.traverse((n) => {
+    const m = n as THREE.Mesh;
+    if (m.isMesh) meshes.push({ m, to: new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld) });
+  });
+  const band = (y: number) => Math.min(B - 1, Math.max(0, Math.floor(((y - box.min.y) / Math.max(1e-6, box.max.y - box.min.y)) * B)));
+  for (const { m, to } of meshes) {
+    const p = m.geometry.attributes.position!;
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(to);
+      const b = band(v.y);
+      const r = Math.hypot(v.x - c.x, v.z - c.z);
+      lo[b] = Math.min(lo[b]!, r);
+      hi[b] = Math.max(hi[b]!, r);
+    }
+  }
+  const nm = new THREE.Matrix3();
+  const nv = new THREE.Vector3();
+  for (const { m, to } of meshes) {
+    const g = (m.geometry = m.geometry.clone());
+    const p = g.attributes.position!;
+    const nrm = g.attributes.normal;
+    nm.getNormalMatrix(to);
+    const col = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(to);
+      const b = band(v.y);
+      const t = (Math.hypot(v.x - c.x, v.z - c.z) - lo[b]!) / Math.max(1e-6, hi[b]! - lo[b]!);
+      const up = nrm ? Math.max(0, nv.fromBufferAttribute(nrm, i).applyMatrix3(nm).normalize().y) : 0;
+      const k = 0.78 + 0.32 * THREE.MathUtils.smoothstep(t, 0.15, 0.85) + 0.15 * up;
+      col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = k;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    (m.material as THREE.MeshStandardMaterial).vertexColors = true;
+  }
+}
 
 const made = new Map<string, THREE.Object3D | null>();
 
@@ -268,6 +385,8 @@ export function wornGear(lib: AssetLibrary, itemId: string): THREE.Object3D | nu
   if (proto === undefined) {
     const src = lib.gear.get(spec.model);
     proto = null;
+    // Not silently: without it the wearer gets the old built rig or shell (gear3d.ts / armorShell.ts).
+    if (!src) console.warn(`gear model '${spec.model}' for ${itemId} is not in gear.glb (failed to load or an old copy)`);
     if (src) {
       const o = src.clone(true);
       if (spec.part) {
@@ -336,6 +455,15 @@ export function wornGear(lib: AssetLibrary, itemId: string): THREE.Object3D | nu
                 std.metalness = 0;
               }
             }
+            if (spec.tone !== undefined && std.map) {
+              const t = toneMap(std.map, spec.tone, spec.toneContrast ?? 0.75, m.geometry.attributes.uv);
+              if (t) {
+                std.map = t;
+                std.color.set(0xffffff);
+                std.roughness = 0.85;
+                std.metalness = 0;
+              }
+            }
             if (spec.mono !== undefined && std.map) {
               const t = monoMap(std.map, spec.mono, spec.monoGain ?? 1.5);
               if (t) {
@@ -347,6 +475,7 @@ export function wornGear(lib: AssetLibrary, itemId: string): THREE.Object3D | nu
           }
           m.material = mat;
         });
+        if (spec.shade) shadeRelief(proto);
       }
     }
     made.set(itemId, proto);

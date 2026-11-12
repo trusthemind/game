@@ -11,6 +11,7 @@ import { CLOTH_KIT, DEFAULT_OUTFITS, type KitPiece } from './clothKit';
 import { HEAVY_MELEE, meleeModel, REVERSE_GRIP } from './melee3d';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import { itemModel } from './thumbnails';
+import { offscreenRenderer } from './offscreen';
 import { GEAR_MODEL, wornGear } from './gearModels';
 import {
   fitHelmet,
@@ -1810,8 +1811,8 @@ export class CharacterView {
       const mats: (THREE.Material | THREE.Material[])[] = [];
       obj.traverse((o) => (o as THREE.Mesh).isMesh && mats.push((o as THREE.Mesh).material));
       if (!hit) {
-        const { geos } = fitVest(obj, measured, under, { fit: spec.fit, anchor: spec.anchor, hem: spec.hem });
-        VEST_FIT.set(key, (hit = { geos, over: withLayer(under, geos) }));
+        const { geos } = fitVest(obj, measured, under, { fit: spec.fit, anchor: spec.anchor, hem: spec.hem, arm: spec.arm });
+        VEST_FIT.set(key, (hit = { geos, over: withLayer(under, geos, 0.03 * measured.k) }));
       }
       hit.geos.forEach((g, i) => {
         const m = new THREE.SkinnedMesh(g, mats[i]!);
@@ -2893,20 +2894,20 @@ export function disposeCharacterCaches(): void {
 // Portraits for dialogue / survivor cards
 // ─────────────────────────────────────────────────────────────────────────────
 
-let portraitRenderer: THREE.WebGLRenderer | null = null;
 const portraitCache = new Map<string, string>();
 
 export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256): string {
   const key = JSON.stringify(look) + size;
   const hit = portraitCache.get(key);
   if (hit) return hit;
-  if (!portraitRenderer || portraitRenderer.getContext().isContextLost())
-    portraitRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-  const r = portraitRenderer;
-  r.setSize(size, size, false);
+  // Shared with the item pictures (offscreen.ts), so everything they change is set here too.
+  const r = offscreenRenderer();
   r.setPixelRatio(1);
+  r.setSize(size, size, false);
   r.outputColorSpace = THREE.SRGBColorSpace;
   r.toneMapping = THREE.ACESFilmicToneMapping;
+  r.toneMappingExposure = 1;
+  r.setClearColor(0x000000, 0);
   const scene = new THREE.Scene();
   const u: WorldUniforms = {
     uFow: { value: new THREE.DataTexture(new Uint8Array([255, 255, 0, 255]), 1, 1) },

@@ -44,6 +44,9 @@ export interface BodyFit {
   joints: Record<'pelvis' | 'spine_01' | 'spine_02' | 'spine_03' | 'neck' | 'head' | 'shoulder', THREE.Vector3>;
   /** Bone indices of the spine chain in the body's skeleton, pelvis first. */
   spine: number[];
+  /** Bone indices of each side's clavicle and upper arm, the side of `joints.shoulder` (upperarm_l) first
+   * (-1 when missing). */
+  shoulders?: { clav: number[]; arm: number[]; pts?: Float32Array };
   /** The body alone, and with its clothes on. */
   bare: TorsoField;
   dressed: TorsoField;
@@ -61,6 +64,11 @@ export interface FitHandles {
   y?: number;
   size?: number;
   gap?: number;
+  /** Vests and rigs: how far what stands off the cavity (pouches, plates) stands off, times its own. */
+  bulk?: number;
+  /** Vests with shoulder caps (meshes named `cap…`): nudges, in body units (k), from where they're seated (on top of
+   * the dressed shoulder, outer edge just past the sleeve): `x` outwards, `y` up, `z` forwards. */
+  cap?: { x?: number; y?: number; z?: number };
 }
 
 interface Verts {
@@ -425,14 +433,152 @@ export function measureBody(
     bw: new Float32Array(sbw),
     arms: bones.flatMap((_, i) => (arm[i] ? [i] : [])),
   };
-  return { k, joints: { pelvis, spine_01: s1, spine_02: s2, spine_03: s3, neck, head, shoulder }, spine, bare, dressed, head: headFit, skin };
+  const bi = (re: RegExp) => bones.findIndex((b) => re.test(b.name));
+  // The shoulders as dressed (body when it shows, and the clothes): what a vest's shoulder caps must sit on.
+  const shoulderBone = bones.map((b) => /^(clavicle|upperarm)_[lr]$/i.test(b.name) || TORSO.test(b.name));
+  const jx = Math.abs(shoulder.x - pelvis.x);
+  const sp2: number[] = [];
+  for (const v of bareBody ? [own, ...worn] : worn)
+    for (let i = 0; i < v.bone.length; i++) {
+      const y = v.pos[i * 3 + 1]!;
+      if (!shoulderBone[v.bone[i]!] || y < shoulder.y - 0.16 * k || y > neck.y + 0.04 * k) continue;
+      if (Math.abs(v.pos[i * 3]! - pelvis.x) < jx * 0.45) continue;
+      sp2.push(v.pos[i * 3]!, y, v.pos[i * 3 + 2]!);
+    }
+  const shoulders = { clav: [bi(/^clavicle_l$/i), bi(/^clavicle_r$/i)], arm: [bi(/^upperarm_l$/i), bi(/^upperarm_r$/i)], pts: new Float32Array(sp2) };
+  return { k, joints: { pelvis, spine_01: s1, spine_02: s2, spine_03: s3, neck, head, shoulder }, spine, shoulders, bare, dressed, head: headFit, skin };
+}
+
+/**
+ * Positions as plain floats. gear.glb is meshopt-quantized (KHR_mesh_quantization): its positions are normalized
+ * int16, so a fitted vertex written back is clamped to ±1 of the model's units and the raw array holds integers
+ * (a rig over armour read the armour as 12 km wide and burst into spikes round the player).
+ */
+export function floatPositions(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  const p = g.attributes.position!;
+  if (p.array instanceof Float32Array && !p.normalized && !(p as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute) return g;
+  const a = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    a[i * 3] = p.getX(i);
+    a[i * 3 + 1] = p.getY(i);
+    a[i * 3 + 2] = p.getZ(i);
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(a, 3));
+  return g;
+}
+
+/**
+ * Splits every edge longer than `max` (all attributes interpolated, normals renormalised) until none is. The wrap
+ * bends a model round the body, but a triangle stays flat between its corners: a large one cut its chord into the
+ * chest (the sweater showed through the 6B23 as dark flecks), and of two layers a few mm apart, tessellated
+ * differently (a pouch flap and its lining), the coarse one sagged through the fine one (dark holes in the pc_tan's
+ * flaps). An edge is split by its length alone, so neighbours split it alike and no cracks open. Groups are kept.
+ */
+export function subdivideLong(g: THREE.BufferGeometry, max: number): THREE.BufferGeometry {
+  const pos = g.attributes.position!;
+  const names = Object.keys(g.attributes);
+  const data: Record<string, number[]> = {};
+  const size: Record<string, number> = {};
+  for (const n of names) {
+    const a = g.attributes[n]!;
+    size[n] = a.itemSize;
+    const arr: number[] = [];
+    for (let i = 0; i < a.count; i++) for (let c = 0; c < a.itemSize; c++) arr.push(a.getComponent(i, c));
+    data[n] = arr;
+  }
+  let count = pos.count;
+  let idx: number[] = g.index ? Array.from(g.index.array as ArrayLike<number>) : Array.from({ length: count }, (_, i) => i);
+  let groups = g.groups.length ? g.groups.map((q) => ({ ...q })) : [{ start: 0, count: idx.length, materialIndex: 0 }];
+  const P = data.position!;
+  const len = (a: number, b: number) => Math.hypot(P[a * 3]! - P[b * 3]!, P[a * 3 + 1]! - P[b * 3 + 1]!, P[a * 3 + 2]! - P[b * 3 + 2]!);
+  const mid = new Map<string, number>();
+  const midOf = (a: number, b: number): number => {
+    const key = a < b ? `${a},${b}` : `${b},${a}`;
+    let m = mid.get(key);
+    if (m !== undefined) return m;
+    m = count++;
+    for (const n of names) {
+      const s = size[n]!;
+      const d = data[n]!;
+      for (let c = 0; c < s; c++) d.push((d[a * s + c]! + d[b * s + c]!) / 2);
+      if (n === 'normal') {
+        const o = m * 3;
+        const l = Math.hypot(d[o]!, d[o + 1]!, d[o + 2]!) || 1;
+        for (let c = 0; c < 3; c++) d[o + c] = d[o + c]! / l;
+      }
+    }
+    mid.set(key, m);
+    return m;
+  };
+  for (let pass = 0; pass < 8; pass++) {
+    let split = false;
+    const out: number[] = [];
+    const ng: typeof groups = [];
+    for (const grp of groups) {
+      const start = out.length;
+      for (let t = grp.start; t < grp.start + grp.count; t += 3) {
+        const v = [idx[t]!, idx[t + 1]!, idx[t + 2]!];
+        const long = [len(v[0]!, v[1]!) > max, len(v[1]!, v[2]!) > max, len(v[2]!, v[0]!) > max];
+        const nl = long.filter(Boolean).length;
+        if (!nl) {
+          out.push(v[0]!, v[1]!, v[2]!);
+          continue;
+        }
+        split = true;
+        if (nl === 3) {
+          const ab = midOf(v[0]!, v[1]!);
+          const bc = midOf(v[1]!, v[2]!);
+          const ca = midOf(v[2]!, v[0]!);
+          out.push(v[0]!, ab, ca, ab, v[1]!, bc, ca, bc, v[2]!, ab, bc, ca);
+          continue;
+        }
+        // Rotate so the (first) long edge is a→b.
+        let r = long.indexOf(true);
+        if (nl === 2 && long[(r + 2) % 3]) r = (r + 2) % 3;
+        const a = v[r]!;
+        const b = v[(r + 1) % 3]!;
+        const c = v[(r + 2) % 3]!;
+        const ab = midOf(a, b);
+        if (nl === 1) {
+          out.push(a, ab, c, ab, b, c);
+        } else {
+          // a→b and b→c long.
+          const bc = midOf(b, c);
+          out.push(a, ab, c, ab, b, bc, ab, bc, c);
+        }
+      }
+      ng.push({ start, count: out.length - start, materialIndex: grp.materialIndex });
+    }
+    idx = out;
+    groups = ng;
+    if (!split) break;
+  }
+  const o = new THREE.BufferGeometry();
+  for (const n of names) {
+    const a = g.attributes[n]!;
+    const s = size[n]!;
+    const d = data[n]!;
+    const norm = a.normalized;
+    // Plain floats unless a normalised integer type (colours, skin weights) must stay so.
+    const Ctor = (a.array as unknown as { constructor: new (n: number) => Float32Array }).constructor;
+    const arr = norm ? new Ctor(d.length) : new Float32Array(d.length);
+    const at = new THREE.BufferAttribute(arr, s, norm);
+    for (let i = 0; i < count; i++) for (let c = 0; c < s; c++) at.setComponent(i, c, d[i * s + c]!);
+    o.setAttribute(n, at);
+  }
+  o.setIndex(idx);
+  if (g.groups.length) for (const q of groups) o.addGroup(q.start, q.count, q.materialIndex);
+  return o;
 }
 
 /** The field with fitted gear on top of it: what the next layer (a rig over armour) rests on. */
-export function withLayer(f: TorsoField, geos: THREE.BufferGeometry[]): TorsoField {
+export function withLayer(f: TorsoField, geos: THREE.BufferGeometry[], cap = Infinity): TorsoField {
   const out: TorsoField = { ...f, r: f.r.slice() };
-  for (const g of geos) raster(out, g.attributes.position!.array as ArrayLike<number>, g.index ? (g.index.array as ArrayLike<number>) : null, null);
+  for (const g of geos) raster(out, floatPositions(g).attributes.position!.array as ArrayLike<number>, g.index ? (g.index.array as ArrayLike<number>) : null, null);
   finish(out);
+  // `cap`: at most this much over what was under it. A rig goes over a carrier's shell and presses its pouches in;
+  // resting on their tops it stood off the chest like a barrel, its straps looping wide round the shoulders.
+  if (Number.isFinite(cap)) for (let i = 0; i < out.r.length; i++) if (f.r[i]! > 0) out.r[i] = Math.min(out.r[i]!, f.r[i]! + cap);
   return out;
 }
 
@@ -543,6 +689,40 @@ function vestShape(geos: THREE.BufferGeometry[]): VestShape {
   return { x0, z0, yMin, yMax, env, girth: girth / n };
 }
 
+/**
+ * A vest model's armpit: the top of its side panels, where the arm comes out. Going up the sides (within 30° of
+ * ±X) from mid-chest, the last height where the model still reaches out as far as its side panel does there; the
+ * straps over the shoulders lie further in, so they end it. Kept between a sixth and two thirds of the way down.
+ */
+function modelArmpit(geos: THREE.BufferGeometry[], sh: VestShape): number {
+  const H = sh.yMax - sh.yMin;
+  const N = 60;
+  const yRef = sh.yMax - H * 0.6;
+  const hit = new Uint8Array(N);
+  for (const g of geos) {
+    const p = g.attributes.position!;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i) - sh.x0;
+      const z = p.getZ(i) - sh.z0;
+      const th = Math.atan2(z, x);
+      if (Math.abs(Math.cos(th)) < 0.86) continue;
+      if (Math.hypot(x, z) < cavity(sh, th, yRef) * 0.85) continue;
+      hit[Math.min(N - 1, Math.max(0, Math.floor(((p.getY(i) - sh.yMin) / H) * N)))] = 1;
+    }
+  }
+  let b = Math.floor(((yRef - sh.yMin) / H) * N);
+  let miss = 0;
+  let top = b;
+  for (; b < N; b++) {
+    if (hit[b]) {
+      top = b;
+      miss = 0;
+    } else if (++miss > 2) break;
+  }
+  const y = sh.yMin + ((top + 1) / N) * H;
+  return THREE.MathUtils.clamp(y, sh.yMax - H * 0.66, sh.yMax - H * 0.17);
+}
+
 function cavity(sh: VestShape, th: number, y: number): number {
   const fb = THREE.MathUtils.clamp(((sh.yMax - y) / (sh.yMax - sh.yMin)) * MB - 0.5, 0, MB - 1);
   const b0 = Math.min(MB - 2, Math.floor(fb));
@@ -562,23 +742,35 @@ export interface VestOptions {
   anchor?: 'shoulders' | 'belt';
   /** Where its bottom edge should come, from spine_01 (0, about the navel) to spine_02 (1, the lower ribs). */
   hem?: number;
+  /** The model's armpit (top of its side panels) as a share of its height from the top; found if not given. */
+  arm?: number;
 }
 
 /**
  * Wrap a vest or rig model (as wornGear gives it: front to +Z) onto `under`, the surface it rests on. Returns one
  * geometry per mesh of the model, in the body's bind space, with skin weights for the body's skeleton.
  */
-export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt: VestOptions = {}): { geos: THREE.BufferGeometry[]; materials: (THREE.Material | THREE.Material[])[] } {
+export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt: VestOptions = {}): { geos: THREE.BufferGeometry[]; materials: (THREE.Material | THREE.Material[])[]; info: Record<string, number> } {
   obj.updateMatrixWorld(true);
   const meshes: THREE.Mesh[] = [];
   obj.traverse((o) => (o as THREE.Mesh).isMesh && meshes.push(o as THREE.Mesh));
-  const geos = meshes.map((m) => m.geometry.clone().applyMatrix4(m.matrixWorld));
-  const sh = vestShape(geos);
+  const all = meshes.map((m) => floatPositions(m.geometry.clone()).applyMatrix4(m.matrixWorld));
+  // Shoulder caps (separate meshes named `cap…`) are rigid: seated on the shoulder joints, not wrapped, and left
+  // out of the model's own shape.
+  const isCap = meshes.map((m) => /^cap/i.test(m.name));
+  const raw = all.filter((_, i) => !isCap[i]);
+  // Fine enough that the wrap's bend shows in the surface, not only at the model's own corners (subdivideLong).
+  // The model's own shape (cavity, armpit, strap undersides) is still measured on its own vertices (`raw`).
+  const tall = new THREE.Box3();
+  for (const g of raw) tall.union((g.computeBoundingBox(), g.boundingBox!));
+  const geos = all.map((g, i) => (isCap[i] ? g : subdivideLong(g, (tall.max.y - tall.min.y) / 14)));
+  const sh = vestShape(raw);
   const f = opt.fit ?? {};
   const k = bf.k;
   const J = bf.joints;
   const gap = (f.gap ?? 0.012) * k;
-  const skin = 0.004 * k;
+  const skin = 0.008 * k;
+  const bulk = f.bulk ?? 1;
 
   // Where the wrap stops and the model keeps its own shape: under the arms at the sides, at the collarbones in
   // front and behind.
@@ -598,16 +790,37 @@ export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt
       n++;
     }
   // (A vest is cut to go over a uniform, not bare skin: a little larger than the body alone.)
-  const s = ((girth / n) * 1.08 / sh.girth) * (f.size ?? 1);
+  // How much wider the wrap makes the model round the body as dressed: its horizontal scale, in effect. Every
+  // other scale stays within 15% of it, so pouches, plates and panels keep their proportions (a vest isn't
+  // squashed flat, stretched long or blown wide to fit; one that's too short for the body ends higher).
+  let girthD = 0;
+  for (let y = J.spine_02.y; y <= ySide - 0.02 * k; y += DY)
+    for (let t = 0; t < NT; t++) girthD += sample(under, under.r, ((t + 0.5) / NT) * TAU, y);
+  const u = ((girthD / n + gap) / sh.girth) * (f.size ?? 1);
+  const s = THREE.MathUtils.clamp(((girth / n) * 1.08 / sh.girth) * (f.size ?? 1), u * 0.9, u * 1.15);
   // Its length is the model's own, scaled with it, unless that leaves it ending high on the ribs or low on the
   // hips: then it is stretched (or squashed) towards its hem landmark, a carrier's bottom edge just above the navel.
-  const yHem = J.spine_01.y + (J.spine_02.y - J.spine_01.y) * (opt.hem ?? 0.3);
-  let sy = s * (f.h ?? 1);
+  const yHem = J.spine_01.y + (J.spine_02.y - J.spine_01.y) * (opt.hem ?? -0.05);
+  const H = sh.yMax - sh.yMin;
+  // Landmarks: strap tops onto the shoulders, bottom edge to the hem landmark (the waist), in one vertical scale
+  // bounded to ±15% of the width's `u` (see toHem). The model's armpit (top of its side panels: `arm`, or found)
+  // splits that in two only when given, and it's reported in `info` for the dev views.
+  const yArmM = opt.arm !== undefined ? sh.yMax - H * opt.arm : modelArmpit(raw, sh);
+  let sy = THREE.MathUtils.clamp(s * (f.h ?? 1), u * 0.87, u * 1.15);
+  let syL = sy;
   const toHem = () => {
     if (opt.anchor === 'belt') return;
-    sy = THREE.MathUtils.clamp((yTop - yHem) / H, s * 0.9, s * 1.3) * (f.h ?? 1);
+    // Shoulders to hem in one scale, within 15% of the width's. Only with the armpit given (`arm`, a model whose
+    // straps are much longer or shorter than its panels) do the two parts take scales of their own, as bounded.
+    sy = THREE.MathUtils.clamp(((yTop - yHem) / H) * (f.h ?? 1), u * 0.87, u * 1.15);
+    syL = sy;
+    if (opt.arm !== undefined) {
+      sy = THREE.MathUtils.clamp(((yTop - ySide) / Math.max(1e-6, sh.yMax - yArmM)) * (f.h ?? 1), u * 0.87, u * 1.15);
+      syL = THREE.MathUtils.clamp(((ySide - yHem) / Math.max(1e-6, yArmM - sh.yMin)) * (f.h ?? 1), u * 0.87, u * 1.15);
+    }
   };
-  const H = sh.yMax - sh.yMin;
+  /** Model height → body height, through the landmarks. */
+  const mapY = (y: number) => (y >= yArmM ? yTop - (sh.yMax - y) * sy : yTop - (sh.yMax - yArmM) * sy - (yArmM - y) * syL);
 
   // Shoulder line: the top of the body midway between neck and shoulder joint.
   const neckR = Math.abs(J.shoulder.x - under.x0) * 0.6;
@@ -620,9 +833,9 @@ export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt
   yTop += (f.y ?? 0) * (J.neck.y - J.spine_02.y);
   toHem();
 
-  let target = taut(under, yTop - H * sy - 0.06 * k, yHi);
-  const w = f.w ?? 1;
-  const d = f.d ?? 1;
+  let target = taut(under, mapY(sh.yMin) - 0.06 * k, yHi);
+  const w = THREE.MathUtils.clamp(f.w ?? 1, 0.9, 1.1);
+  const d = THREE.MathUtils.clamp(f.d ?? 1, 0.9, 1.1);
 
   // What lies over the shoulders (straps, a yoke) is cloth: the vest hangs so the highest of it rests on the
   // shoulder, and the rest of it is lifted onto the body rather than held in the arch it was modelled in. Worked
@@ -638,7 +851,7 @@ export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt
   const gcell = (c: number) => ((c + E) / (2 * E)) * G - 0.5;
   const undersides = () => {
     ceil.fill(NaN);
-    for (const g of geos) {
+    for (const g of raw) {
       const p = g.attributes.position!;
       for (let i = 0; i < p.count; i++) {
         const y = p.getY(i);
@@ -669,7 +882,7 @@ export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt
   const out = new THREE.Vector3();
   /** Model point → body bind space, by the current `yTop`. Returns the direction round the axis. */
   const place = (x: number, y: number, z: number): number => {
-    let yb = yTop - (sh.yMax - y) * sy;
+    let yb = mapY(y);
     const dx = x - sh.x0;
     const dz = z - sh.z0;
     const th = Math.atan2(dz, dx);
@@ -679,6 +892,11 @@ export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt
     const cav = cavity(sh, th, y - over / sy);
     const tgt = sample(under, target, th, yb - over) * Math.hypot(w * Math.cos(th), d * Math.sin(th)) + gap;
     let rb = s * r + (tgt - s * cav) * Math.min(1, r / cav);
+    // Pouches and plates stand further off (a rig's are the part the raid camera sees).
+    if (r > cav) rb += (bulk - 1) * s * (r - cav);
+    // Above the armpits nothing stands out past the torso's own side (shoulder guards and the tops of side panels
+    // hug the shoulder instead of flaring out over the arm like a sleeve).
+    if (yb > ySide - 0.05 * k && Math.abs(Math.cos(th)) > 0.5) rb = Math.min(rb, sample(under, target, th, Math.min(yb, ySide)) * Math.hypot(w * Math.cos(th), d * Math.sin(th)) + gap + 0.03 * k);
     if (y >= yStrap && opt.anchor !== 'belt') yb += liftAt(dx, dz) * THREE.MathUtils.smoothstep(yb - yf, -0.01 * k, 0.03 * k);
     // Never inside what's under it: out, or for a strap over the shoulder, up.
     // (A soft collar gives way: round the neck the straps go where the model has them.)
@@ -733,7 +951,7 @@ export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt
   }
   for (let c = 0; c < G * G; c++) if (!Number.isNaN(needAt[c]!)) lift[c] = Math.max(0, needAt[c]! - yTop);
 
-  target = taut(under, yTop - H * sy - 0.06 * k, yHi);
+  target = taut(under, mapY(sh.yMin) - 0.06 * k, yHi);
   // Spine weights by height: each bone's share peaks mid-way along it.
   const mids = [
     (J.pelvis.y + J.spine_01.y) / 2,
@@ -741,10 +959,80 @@ export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt
     (J.spine_02.y + J.spine_03.y) / 2,
     (J.spine_03.y + J.neck.y) / 2,
   ];
-  for (const g of geos) {
+  geos.forEach((g, gi) => {
     const p = g.attributes.position!;
     const I = new Uint16Array(p.count * 4);
     const W = new Float32Array(p.count * 4);
+    if (isCap[gi]) {
+      // Rigid, on top of the shoulder as dressed (bf.shoulders.pts; the bind pose has the arms level), never in
+      // it: from the joint out over the deltoid, its whole underside clear of the clothes below. Skinned to the upper arm alone, so it turns with the arm as one piece: an arm raised to aim can't
+      // pass through it, and nothing stretches.
+      g.computeBoundingBox();
+      const bb = g.boundingBox!;
+      const c = bb.getCenter(new THREE.Vector3());
+      const side = Math.sign(c.x - sh.x0) || 1;
+      const jx = Math.abs(J.shoulder.x - under.x0);
+      const own = Math.sign(J.shoulder.x - under.x0) === side ? 0 : 1;
+      const cf = f.cap ?? {};
+      const clear = 0.012 * k;
+      const pts = bf.shoulders?.pts ?? new Float32Array();
+      // Its length along the arm: the deltoid's, within 15% of the vest's own scale.
+      const sc = THREE.MathUtils.clamp((0.17 * k) / Math.max(1e-6, bb.max.x - bb.min.x), s * 0.85, s * 1.15);
+      const inner = side > 0 ? bb.min.x : bb.max.x;
+      const tx = under.x0 + side * (jx - 0.03 * k + (cf.x ?? 0) * k) - (inner - c.x) * sc;
+      // Front to back: centred on the arm's top round the joint.
+      let zs = 0;
+      let zn = 0;
+      let yTop = -Infinity;
+      for (let i = 0; i < pts.length; i += 3) {
+        const dx = (pts[i]! - under.x0) * side;
+        if (dx < jx - 0.02 * k || dx > jx + 0.12 * k) continue;
+        if (pts[i + 1]! > yTop) yTop = pts[i + 1]!;
+      }
+      for (let i = 0; i < pts.length; i += 3) {
+        const dx = (pts[i]! - under.x0) * side;
+        if (dx < jx - 0.02 * k || dx > jx + 0.12 * k || pts[i + 1]! < yTop - 0.03 * k) continue;
+        zs += pts[i + 2]!;
+        zn++;
+      }
+      const tz = (zn ? zs / zn : J.shoulder.z) + (cf.z ?? 0) * k;
+      // A height map of the clothes under it, to lift it clear. (Not the vest: its inner end starts at the joint,
+      // past the vest's shoulder.)
+      const cs = 0.012 * k;
+      const top = new Map<string, number>();
+      const put = (x: number, y: number, z: number) => {
+        const key = `${Math.floor(x / cs)},${Math.floor(z / cs)}`;
+        if (!(top.get(key)! >= y)) top.set(key, y);
+      };
+      for (let i = 0; i < pts.length; i += 3) put(pts[i]!, pts[i + 1]!, pts[i + 2]!);
+      const at = (x: number, z: number) => {
+        let y = -Infinity;
+        const cx = Math.floor(x / cs);
+        const cz = Math.floor(z / cs);
+        for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) y = Math.max(y, top.get(`${cx + dx},${cz + dz}`) ?? -Infinity);
+        return y;
+      };
+      let ty = -Infinity;
+      for (let i = 0; i < p.count; i++) {
+        const x = tx + (p.getX(i) - c.x) * sc;
+        const z = tz + (p.getZ(i) - c.z) * sc;
+        ty = Math.max(ty, at(x, z) + clear - (p.getY(i) - c.y) * sc);
+      }
+      if (!Number.isFinite(ty)) ty = J.shoulder.y + 0.08 * k;
+      ty += (cf.y ?? 0) * k;
+      const arm = bf.shoulders?.arm[own] ?? -1;
+      for (let i = 0; i < p.count; i++) {
+        p.setXYZ(i, tx + (p.getX(i) - c.x) * sc, ty + (p.getY(i) - c.y) * sc, tz + (p.getZ(i) - c.z) * sc);
+        I[i * 4] = arm >= 0 ? arm : bf.spine[3]!;
+        W[i * 4] = 1;
+      }
+      p.needsUpdate = true;
+      g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(I, 4));
+      g.setAttribute('skinWeight', new THREE.BufferAttribute(W, 4));
+      g.computeBoundingBox();
+      g.computeBoundingSphere();
+      return;
+    }
     for (let i = 0; i < p.count; i++) {
       place(p.getX(i), p.getY(i), p.getZ(i));
       p.setXYZ(i, out.x, out.y, out.z);
@@ -761,8 +1049,10 @@ export function fitVest(obj: THREE.Object3D, bf: BodyFit, under: TorsoField, opt
     g.setAttribute('skinWeight', new THREE.BufferAttribute(W, 4));
     g.computeBoundingBox();
     g.computeBoundingSphere();
-  }
-  return { geos, materials: meshes.map((m) => m.material) };
+  });
+  // Landmarks as placed (for the dev views: __lab[i] and CharLab).
+  const info = { arm: (sh.yMax - yArmM) / H, u, sy: sy / u, syL: syL / u, yTop, yArm: mapY(yArmM), ySide, yHem, yBottom: mapY(sh.yMin), s };
+  return { geos, materials: meshes.map((m) => m.material), info };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

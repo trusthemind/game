@@ -58,6 +58,10 @@ export const CLOTH_SOURCES = ['cl_man', 'cl_civ', 'cl_soldier', 'cl_tim', 'cl_al
 export const bodySex = (id: string): 'm' | 'f' => (id.startsWith('fem') ? 'f' : 'm');
 
 const BASE = `${import.meta.env.BASE_URL}models/`;
+/** Content hash of each model file (vite.config.ts), so a changed gear.glb is never served from an old cache. */
+declare const __MODEL_REV__: Record<string, string> | undefined;
+const REV: Record<string, string> = typeof __MODEL_REV__ === 'undefined' ? {} : __MODEL_REV__;
+const modelUrl = (file: string) => `${BASE}${file}${REV[file] ? `?v=${REV[file]}` : ''}`;
 let pending: Promise<AssetLibrary> | null = null;
 let ready: AssetLibrary | null = null;
 
@@ -75,7 +79,7 @@ export function loadBodies(lib: AssetLibrary, ids: Iterable<string | undefined>)
     if (!id || lib.bodies.has(id) || failedBodies.has(id)) continue;
     let p = bodyLoads.get(id);
     if (!p) {
-      p = loader.loadAsync(`${BASE}bodies/${id}.glb`).then(
+      p = loader.loadAsync(modelUrl(`bodies/${id}.glb`)).then(
         (g) => {
           cleanModel(g.scene);
           lib.bodies.set(id, g);
@@ -105,7 +109,7 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
   manager.onProgress = (_url, loaded, total) => onProgress?.(loaded / total);
   const loader = new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder);
   const load = (name: string) =>
-    loader.loadAsync(`${BASE}${name}.glb`).then((g) => {
+    loader.loadAsync(modelUrl(`${name}.glb`)).then((g) => {
       cleanModel(g.scene);
       return g;
     });
