@@ -146,8 +146,8 @@ pmc_heavy, fem_police):
   cl_alan.glb    — "Alan Survivor(rigged)" by RRB STUDIOS
                    https://sketchfab.com/3d-models/alan-survivorrigged-cca25ef7b9794d49b909022ed8e81f15
 
-Worn armour and helmets in gear.glb — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Decimated, textures
-resized to WebP, meshopt-compressed (tools/assets/vehicles.mjs gear); scaled and fitted to the head or skinned to the
+Worn armour, helmets, rigs and backpacks in gear.glb — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Decimated, textures
+resized to WebP, meshopt-compressed (tools/assets/vehicles.mjs gear); scaled and fitted to the head or back, or skinned to the
 torso at load (apps/web/src/render/gearModels.ts, character.ts):
     vest_danly (item pc_tan) — "Low Poly Game Ready Armor Vest" by DanlyVostok (https://sketchfab.com/3d-models/low-poly-game-ready-armor-vest-90c084b9a56441b1afcfa9293b6fe4af)
     altyn — "Low-Poly Altyn Helmet" by notcplkerry (https://sketchfab.com/3d-models/low-poly-altyn-helmet-c3cf2fdf55b94b248d39063d11507230)
@@ -159,3 +159,10 @@ torso at load (apps/web/src/render/gearModels.ts, character.ts):
     wz2005 (h_kevlar) — "Hełm wz. 2005 (Helmet model 2005)" by Armored Wave (https://sketchfab.com/3d-models/hem-wz-2005-helmet-model-2005-3bef9733977142599dc2275cf889fcef)
     helmet_headset (h_fast_headset) — "Tactical Helmet with Headset (Game-Ready)" by Exactly (https://sketchfab.com/3d-models/tactical-helmet-with-headset-game-ready-82adf376164f4d99a4e0b2949930e2ad)
     vest_pack (paca, 6b23, gzhel, slick6, r_mbss) — "Vest Armor Holster LowPoly GameReady Pack" by 00amza (https://sketchfab.com/3d-models/vest-armor-holster-lowpoly-gameready-pack-7c41d35e505c4057abe60f89537408bd)
+    chest_rig (r_scav) — "Chest Rig" by FailureToComply (https://sketchfab.com/3d-models/chest-rig-563eff6d49004d9c9d9b8a168d0e1d3e)
+    lpc (r_alpha) — "LPC Plate Carrier" by WooTech (https://sketchfab.com/3d-models/lpc-plate-carrier-63910ff3792a4eefbe3a20906641de7c)
+    combat_vest (r_bank) — "Combat Vest" by csheffield (https://sketchfab.com/3d-models/combat-vest-ce92c014efd140deb6e918b3c59bf539)
+    bp_daypack (b_daypack) — "Backpack - Low Poly PBR [1 of 2]" by RETROSPEC (https://sketchfab.com/3d-models/backpack-low-poly-pbr-1-of-2-0b795895343b44b69191ef9b55b35840)
+    bp_camping (b_pilgrim) — "Large Camping BackPack (Free/GameReady)" by Sebastian Webster (https://sketchfab.com/3d-models/large-camping-backpack-freegameready-a7086b50dae84706b81bb3ce14ad9094)
+    bp_tactical (b_attack) — "Low Poly Game Ready Military Tactical Backpack" by DanlyVostok (https://sketchfab.com/3d-models/low-poly-game-ready-military-tactical-backpack-95a4fc7300584384b56ce3add58dbc9f)
+    bp_messenger (b_sling) — "messenger bag" by N1008650 (https://sketchfab.com/3d-models/messenger-bag-99787b78b1d24e3aa10bc14fe0b33d60)

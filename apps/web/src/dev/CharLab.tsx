@@ -149,10 +149,12 @@ export function CharLab() {
         ['f', 'c_bomber', 'c_desert_pants', 'c_desert_boots', 'c_balaclava_tan'],
         ['m'],
       ];
+      // `&gun=ak74m`: everyone aiming it, to see the clothes with the arms up.
+      const gun = new URLSearchParams(location.hash.split('?')[1] ?? '').get('gun');
       outfits.forEach(([sex, ...ids], i) => {
         const base = lookFor(i + 60, 'scav');
-        const eq = ids.map((id) => `${id}:${getDef(id).clothing!.slot}`);
-        cast.push({ look: { ...base, sex: sex as 'm' | 'f', hair: sex === 'f' ? 'ponytail' : base.hair, body: undefined, hat: null, clothed: true }, eq, active: 'melee', speed: 0 });
+        const eq = [...ids.map((id) => `${id}:${getDef(id).clothing!.slot}`), ...(gun ? [`${gun}:primary`] : [])];
+        cast.push({ look: { ...base, sex: sex as 'm' | 'f', hair: sex === 'f' ? 'ponytail' : base.hair, body: undefined, hat: null, clothed: true }, eq, active: gun ? 'primary' : 'melee', speed: 0 });
       });
       cam.position.set(0, 1.5, 10);
       cam.lookAt(0, 1.0, 0);
@@ -169,8 +171,14 @@ export function CharLab() {
       const bottoms = [top, 'c_trousers', 'c_shoes'];
       ids.forEach((id, i) => {
         const base = lookFor(60, 'scav');
-        const slot = getDef(id).category === 'helmet' ? 'helmet' : getDef(id).category === 'rig' ? 'rig' : 'armor';
-        const eq = [...bottoms.map((c) => `${c}:${getDef(c).clothing!.slot}`), `${id}:${slot}`, ...(slot === 'armor' ? ['ssh36:helmet'] : [])];
+        const cat = getDef(id).category;
+        const slot = cat === 'helmet' || cat === 'rig' || cat === 'backpack' ? cat : 'armor';
+        // `&with=trooper,r_alpha`: more kit on each (armour and a rig under a backpack).
+        const more = (q.get('with') ?? '').split(',').filter(Boolean).map((w) => {
+          const c = getDef(w).category;
+          return `${w}:${c === 'helmet' || c === 'rig' || c === 'backpack' ? c : 'armor'}`;
+        });
+        const eq = [...bottoms.map((c) => `${c}:${getDef(c).clothing!.slot}`), `${id}:${slot}`, ...more, ...(slot === 'armor' ? ['ssh36:helmet'] : [])];
         cast.push({ look: { ...base, sex, body: undefined, hat: null, clothed: true }, eq, active: 'melee', speed: 0 });
         void i;
       });
@@ -324,7 +332,9 @@ export function CharLab() {
         const only = q.get('ids');
         // `&items=1`: every item's model as it's worn (turned, one piece of a pack), front should face the camera.
         const items = q.get('items');
-        const ids = items ? Object.keys(GEAR_MODEL) : only ? only.split(',') : [...lib.gear.keys()];
+        const ids = items && !only ? Object.keys(GEAR_MODEL) : only ? only.split(',') : [...lib.gear.keys()];
+        // `&turn=1.57`: all of them turned about Y (radians), to see their sides.
+        const spin = Number(q.get('turn') ?? 0);
         (window as unknown as { __gearIds: string[] }).__gearIds = ids;
         ids.forEach((id, i) => {
           const src = items ? wornGear(lib, id) : lib.gear.get(id);
@@ -337,6 +347,7 @@ export function CharLab() {
           const k = 0.6 / Math.max(sz.x, sz.y, sz.z);
           o.position.sub(b.getCenter(new THREE.Vector3()));
           wrap.scale.setScalar(k);
+          wrap.rotation.y = spin;
           wrap.position.set((i - (ids.length - 1) / 2) * 0.8, 0.5, 0);
           scene.add(wrap);
           const ax = new THREE.AxesHelper(0.45);

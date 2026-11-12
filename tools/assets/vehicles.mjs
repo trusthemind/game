@@ -87,6 +87,14 @@ const PACKS = {
       plate_carrier: 'ar_plate_carrier',
       vest_danly: 'cloth_armor_vest',
       vest_pack: 'ar_vest_pack',
+      // Rigs and backpacks
+      chest_rig: 'ar_chest_rig',
+      lpc: 'ar_lpc',
+      combat_vest: 'ar_combat_vest',
+      bp_daypack: 'bp_daypack',
+      bp_camping: 'bp_camping',
+      bp_tactical: 'bp_tactical',
+      bp_messenger: 'bp_messenger',
     },
   },
 };

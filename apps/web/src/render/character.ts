@@ -12,7 +12,16 @@ import { HEAVY_MELEE, meleeModel, REVERSE_GRIP } from './melee3d';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import { itemModel } from './thumbnails';
 import { GEAR_MODEL, wornGear } from './gearModels';
-import { fitHelmet, fitVest, helmetLiner, measureBody, withLayer, type BodyFit, type TorsoField } from './gearFit';
+import {
+  fitHelmet,
+  fitPack,
+  fitVest,
+  helmetLiner,
+  measureBody,
+  withLayer,
+  type BodyFit,
+  type TorsoField,
+} from './gearFit';
 import { attachSkinned, cloneHuman, type HumanParts } from './human';
 import { fitToRest, gltfMeshNames, rebindToSkeleton } from './rebind';
 import { ease, newPalm, palmFrame, reachPalm, type Arm } from './armIK';
@@ -243,6 +252,105 @@ const BODY_FIT = new Map<string, BodyFit | null>();
 /** Helmet liners (padding under every helmet), per colour. */
 const LINER_FIT = new Map<string, THREE.BufferGeometry>();
 const LINER_MAT = new Map<number, THREE.MeshStandardMaterial>();
+const STRAP_MAT = new Map<string, THREE.MeshStandardMaterial>();
+let webbing: THREE.Texture | null = null;
+
+/** Webbing, grey (the material's colour tints it): ribs along the strap, a darker selvedge, a stitch line inside
+ * each edge. u runs across the strap, v along it (one tile per strap width). */
+function webbingTex(): THREE.Texture {
+  if (webbing) return webbing;
+  const c = document.createElement('canvas');
+  c.width = 32;
+  c.height = 32;
+  const g = c.getContext('2d')!;
+  for (let x = 0; x < 32; x++) {
+    const rib = x % 2 ? 214 : 236;
+    const edge = x < 2 || x > 29 ? 0.72 : 1;
+    g.fillStyle = `rgb(${rib * edge},${rib * edge},${rib * edge})`;
+    g.fillRect(x, 0, 1, 32);
+  }
+  g.fillStyle = 'rgb(150,150,150)';
+  for (let y = 0; y < 32; y += 8) {
+    g.fillRect(4, y, 1, 5);
+    g.fillRect(27, y, 1, 5);
+  }
+  webbing = new THREE.CanvasTexture(c);
+  webbing.wrapS = webbing.wrapT = THREE.RepeatWrapping;
+  webbing.colorSpace = THREE.SRGBColorSpace;
+  webbing.anisotropy = 4;
+  return webbing;
+}
+
+/** The colour a pack mostly shows: its materials' colours times their textures' average, by triangle count. */
+function dominantColour(obj: THREE.Object3D): THREE.Color {
+  const sum = new THREE.Color(0, 0, 0);
+  let n = 0;
+  const avg = new Map<unknown, THREE.Color>();
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 16;
+  const g = cv.getContext('2d', { willReadFrequently: true });
+  obj.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const tris = (m.geometry.index?.count ?? m.geometry.attributes.position!.count) / 3;
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    for (const mat of mats) {
+      const std = mat as THREE.MeshStandardMaterial;
+      const c = std.color ? std.color.clone() : new THREE.Color(1, 1, 1);
+      const img = std.map?.image as CanvasImageSource | undefined;
+      if (img && g) {
+        let a = avg.get(img);
+        if (!a) {
+          a = new THREE.Color(1, 1, 1);
+          try {
+            g.clearRect(0, 0, 16, 16);
+            g.drawImage(img, 0, 0, 16, 16);
+            const d = g.getImageData(0, 0, 16, 16).data;
+            let r = 0;
+            let gg = 0;
+            let b = 0;
+            for (let i = 0; i < d.length; i += 4) {
+              r += d[i]!;
+              gg += d[i + 1]!;
+              b += d[i + 2]!;
+            }
+            const px = d.length / 4;
+            a.setRGB(r / px / 255, gg / px / 255, b / px / 255, THREE.SRGBColorSpace);
+          } catch {
+            /* unreadable: the colour alone */
+          }
+          avg.set(img, a);
+        }
+        c.multiply(a);
+      }
+      sum.r += c.r * tris;
+      sum.g += c.g * tris;
+      sum.b += c.b * tris;
+      n += tris;
+    }
+  });
+  return n ? sum.multiplyScalar(1 / n) : new THREE.Color(0x57533f);
+}
+
+/** A pack's strap material: webbing in the pack's dominant colour (or its paint), a shade darker, matt. */
+function strapMat(pack: THREE.Object3D, paint: number | undefined): THREE.MeshStandardMaterial {
+  const col = paint !== undefined ? new THREE.Color(paint) : dominantColour(pack);
+  col.multiplyScalar(0.72);
+  const key = col.getHexString();
+  let m = STRAP_MAT.get(key);
+  if (!m)
+    STRAP_MAT.set(
+      key,
+      (m = new THREE.MeshStandardMaterial({
+        color: col,
+        map: webbingTex(),
+        vertexColors: true,
+        roughness: 0.95,
+        metalness: 0,
+      })),
+    );
+  return m;
+}
 /** Vests and rigs already wrapped onto a body: per measured body, item and what is under it. */
 const VEST_FIT = new Map<string, { geos: THREE.BufferGeometry[]; over: TorsoField }>();
 
@@ -523,6 +631,8 @@ const enum Region {
   Pants = 4,
   Boots = 5,
   Belt = 6,
+  /** The crown and back of the head: skin, but under a balaclava (only humanBodyMaterial; 7 is unused). */
+  Scalp = 8,
 }
 
 interface RigInfo {
@@ -560,6 +670,7 @@ function analyseRig(meshes: THREE.SkinnedMesh[], paintedFace = true): RigInfo {
   for (const mesh of meshes) {
     analyseMesh(mesh, boxes);
     geometries.set(mesh.name, mesh.geometry);
+    markNape(mesh);
   }
   if (!paintedFace) return { geometries, boxes, forward: new THREE.Vector3(0, 0, 1) };
   // Second pass once the head box is known: planar face UVs for head vertices on the front half.
@@ -584,6 +695,48 @@ function analyseRig(meshes: THREE.SkinnedMesh[], paintedFace = true): RigInfo {
   }
   // Face direction: the hands of an A/T-pose sit on ±X, so forward is ±Z; glTF characters face +Z.
   return { geometries, boxes, forward: new THREE.Vector3(0, 0, 1) };
+}
+
+/**
+ * How far the skin at the back of the neck sinks under a top's collar (aNape, 0..1: fully up to 60% of the neck,
+ * none from four fifths of the way up, fading out to the sides): in some poses it would poke through the collar,
+ * and cut away it would leave a hole wherever the collar stands off the neck. Also the head's own regions (Scalp).
+ */
+function markNape(mesh: THREE.SkinnedMesh): void {
+  const bones = mesh.skeleton.bones;
+  const ni = bones.findIndex((b) => /^neck_01$/i.test(b.name));
+  const hi = bones.findIndex((b) => /^head$/i.test(b.name));
+  const reg = mesh.geometry.attributes.aRegion;
+  const pos = mesh.geometry.attributes.position!;
+  const nape = new Float32Array(pos.count);
+  mesh.geometry.setAttribute('aNape', new THREE.BufferAttribute(nape, 1));
+  if (ni < 0 || hi < 0 || !reg) return;
+  const at = (i: number) => new THREE.Vector3().setFromMatrixPosition(mesh.skeleton.boneInverses[i]!.clone().invert());
+  const neck = at(ni);
+  const head = at(hi);
+  const len = head.y - neck.y;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    if (reg.getX(i) !== Region.Skin || y > neck.y + len * 0.8 || z > neck.z) continue;
+    const up = THREE.MathUtils.smoothstep(neck.y + len * 0.8 - y, 0, len * 0.2);
+    const back = THREE.MathUtils.smoothstep(neck.z - z, 0, len * 0.15);
+    nape[i] = up * back;
+  }
+  // The scalp: head skin above the brows, or behind the ears. A balaclava's crown can sit lower than a tall head's.
+  let crown = -Infinity;
+  let back = Infinity;
+  for (let i = 0; i < pos.count; i++)
+    if (reg.getX(i) === Region.Skin && pos.getY(i) > head.y) (crown = Math.max(crown, pos.getY(i))), (back = Math.min(back, pos.getZ(i)));
+  if (!(crown > head.y)) return;
+  const brow = head.y + (crown - head.y) * 0.62;
+  const behind = head.z - (head.z - back) * 0.3;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    if (reg.getX(i) !== Region.Skin || y < head.y - (head.y - neck.y) * 0.3) continue;
+    if (y > brow || pos.getZ(i) < behind) reg.setX(i, Region.Scalp);
+  }
+  reg.needsUpdate = true;
 }
 
 function analyseMesh(mesh: THREE.SkinnedMesh, boxes: RigInfo['boxes']): void {
@@ -665,7 +818,7 @@ function bodyMaterial(a: Appearance, u: WorldUniforms, dead = false): THREE.Mesh
           for (int i = 1; i < 7; i++) if (i == ri) pc = uPal[i];
           // Cheap fabric/grime variation so flat colours don't look like plastic.
           float n = fract(sin(dot(floor(vObjPos * 40.0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-          if (ri != 0) pc *= 0.9 + n * 0.14;
+          if (ri != 0 && ri < 7) pc *= 0.9 + n * 0.14;
           if (vFace.z > 0.01) {
             vec4 ft = texture2D(uFaceTex, vFace.xy);
             pc = mix(pc, ft.rgb * uDead, ft.a * vFace.z);
@@ -786,42 +939,48 @@ function humanBodyMaterial(
   m.userData.src = src;
   m.roughness = 0.75;
   const pal = palette(a, dead);
+  pal.push(pal[0]!, pal[0]!);
   const tint = new THREE.Color(a.skin);
   tint.r /= TEX_SKIN.r;
   tint.g /= TEX_SKIN.g;
   tint.b /= TEX_SKIN.b;
   if (dead) tint.multiplyScalar(0.7);
-  const skinMask = [1, a.gloves === null ? 1 : 0, 0, a.topStyle === 'tee' ? 1 : 0, 0, 0, 0];
+  const skinMask = [1, a.gloves === null ? 1 : 0, 0, a.topStyle === 'tee' ? 1 : 0, 0, 0, 0, 1, 1];
   // Under real clothes (clothKit) the body isn't drawn: what it would show is inside them. Head, neck and hands
   // always show, forearms under short sleeves, and any part with no garment on it (the painted base layer).
   const on = (slot: ClothingSlot) => clothed && kitFor(a).some((k) => k.slot === slot);
   const top = kitFor(a).find((k) => k.slot === 'top');
-  const hide = [0, 0, on('top') ? 1 : 0, on('top') && !top?.short ? 1 : 0, on('pants') ? 1 : 0, on('boots') ? 1 : 0, 0];
+  const hide = [0, 0, on('top') ? 1 : 0, on('top') && !top?.short ? 1 : 0, on('pants') ? 1 : 0, on('boots') ? 1 : 0, 0, 0, kitFor(a).some((k) => k.slot === 'hat' && k.underHelmet) && clothed ? 1 : 0];
   patchWorldMaterial(m, u, {
     pre: (shader) => {
       shader.uniforms.uHide = { value: hide };
+      // The back of the neck sinks forward under a collar (along its normals it would open at the UV seam there).
+      shader.uniforms.uNapeIn = { value: on('top') ? 0.025 : 0 };
       shader.uniforms.uPal = { value: pal };
       shader.uniforms.uSkinTint = { value: tint };
       shader.uniforms.uSkinMask = { value: skinMask };
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
-          '#include <common>\nattribute float aRegion;\nvarying float vRegion;\nvarying vec3 vObjPos;',
+          '#include <common>\nattribute float aRegion;\nattribute float aNape;\nuniform float uNapeIn;\nvarying float vRegion;\nvarying vec3 vObjPos;',
         )
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRegion = aRegion;\nvObjPos = position;');
+        .replace(
+          '#include <begin_vertex>',
+          '#include <begin_vertex>\nvRegion = aRegion;\nvObjPos = position;\ntransformed.z += uNapeIn * aNape;',
+        );
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform vec3 uPal[7];\nuniform vec3 uSkinTint;\nuniform float uSkinMask[7];\nuniform float uHide[7];\nvarying float vRegion;\nvarying vec3 vObjPos;',
+          '#include <common>\nuniform vec3 uPal[9];\nuniform vec3 uSkinTint;\nuniform float uSkinMask[9];\nuniform float uHide[9];\nvarying float vRegion;\nvarying vec3 vObjPos;',
         )
         .replace(
           '#include <map_fragment>',
           `#include <map_fragment>
           int ri = int(vRegion + 0.5);
-          for (int i = 0; i < 7; i++) if (i == ri && uHide[i] > 0.5) discard;
+          for (int i = 0; i < 9; i++) if (i == ri && uHide[i] > 0.5) discard;
           float skin = 0.0;
           vec3 cloth = uPal[0];
-          for (int i = 0; i < 7; i++) if (i == ri) { skin = uSkinMask[i]; cloth = uPal[i]; }
+          for (int i = 0; i < 9; i++) if (i == ri) { skin = uSkinMask[i]; cloth = uPal[i]; }
           if (skin > 0.5) {
             diffuseColor.rgb = min(diffuseColor.rgb * uSkinTint, vec3(1.0));
           } else {
@@ -866,6 +1025,25 @@ function worldMat(src: THREE.MeshStandardMaterial, u: WorldUniforms, tint: numbe
   if (m) return m;
   m = src.clone();
   if (tint !== null) m.color = new THREE.Color(tint);
+  patchWorldMaterial(m, u, { key: 'eyes' });
+  humanMatCache.set(key, m);
+  return m;
+}
+
+/**
+ * A worn garment's material: as its model has it, but matte. Some are glossy (a leather jacket's roughness map
+ * reads about 0.5), and under the raid's sky light a glossy shoulder panel moulded on the source's own muscular
+ * back read as bare skin.
+ */
+function clothMat(src: THREE.MeshStandardMaterial, u: WorldUniforms): THREE.MeshStandardMaterial {
+  const key = `${src.uuid}|cloth`;
+  let m = humanMatCache.get(key);
+  if (m) return m;
+  m = src.clone();
+  if (m.roughnessMap) {
+    m.roughnessMap = null;
+    m.roughness = 0.85;
+  } else m.roughness = Math.max(m.roughness, 0.85);
   patchWorldMaterial(m, u, { key: 'eyes' });
   humanMatCache.set(key, m);
   return m;
@@ -1374,7 +1552,7 @@ export class CharacterView {
         g.animations[0],
         this.model,
         human.body.skeleton.bones,
-        (m) => worldMat(m as THREE.MeshStandardMaterial, this.u, null),
+        (m) => clothMat(m as THREE.MeshStandardMaterial, this.u),
         (n) => re.test(n),
         `${body}|${part}|${this.look.sex}`,
       );
@@ -1501,6 +1679,11 @@ export class CharacterView {
     const hat = !s.helmet && !this.sfBody && !this.human && this.look.hat && !this.look.zombie ? this.look.hat : null;
     // Hats and helmets sit over short hair; long hair stays (it hangs below the rim). A balaclava covers it all.
     for (const h of this.hairMeshes) h.visible = !maskOn && (!(s.helmet || capOn || (hat && hat !== 'bandana')) || /Long/.test(h.name));
+    // Brows and a beard are under it too (they'd poke through the knit).
+    if (this.human)
+      this.model.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh && /eyebrow|beard/i.test(o.name)) o.visible = !maskOn;
+      });
     if (hat) {
       // A bandana is a band round the forehead; the rest cover the crown.
       const brow = hc.y + hs.y * (hat === 'cap' ? 0.1 : hat === 'bandana' ? 0.2 : 0.06);
@@ -1642,7 +1825,7 @@ export class CharacterView {
     };
     let surface = measured?.dressed ?? null;
     if (realArmor) surface = vest(s.armor!.def, realArmor, surface, '');
-    if (realRig) vest(s.rig!.def, realRig, surface, realArmor ? s.armor!.def : '');
+    if (realRig) surface = vest(s.rig!.def, realRig, surface, realArmor ? s.armor!.def : '') ?? surface;
     if (s.armor && !realArmor && !wear(s.armor.def, ARMOR_SPECS[s.armor.def])) {
       const bottom = chest.min.y - cs.y * 0.62;
       add(
@@ -1669,7 +1852,56 @@ export class CharacterView {
         ),
       );
     }
-    if (s.backpack) {
+    const realPack = s.backpack ? real(s.backpack.def) : null;
+    if (s.backpack && realPack) {
+      // A real pack (gearModels.ts): rigid on the back, sized by the item, clear of whatever is worn under it.
+      const id = s.backpack.def;
+      const d = getDef(id);
+      const spec = GEAR_MODEL[id]!;
+      const k = 0.75 + (d.w * d.h) / 40;
+      const maxWidth = cs.x * 0.95 * Math.min(1.15, k);
+      const body = this.human?.body;
+      if (measured && surface && body) {
+        const pack = fitPack(realPack, measured, surface, {
+          tall: 0.35 + 0.4 * k,
+          maxWidth,
+          fit: spec.fit,
+          dropLoose: spec.dropLoose,
+          sling: id === 'b_sling',
+          sternum: id === 'b_pilgrim' || id === 'b_attack',
+        });
+        const strap = pack.userData.strap as THREE.BufferGeometry | undefined;
+        if (strap) {
+          // Its straps, skinned as the clothes under them: webbing in the pack's own colour, a shade darker.
+          const sm = strapMat(realPack, spec.paint ?? spec.mono);
+          const m = new THREE.SkinnedMesh(strap, worldMat(sm, this.u, null));
+          m.bind(body.skeleton, body.bindMatrix);
+          m.frustumCulled = false;
+          m.castShadow = true;
+          body.parent!.add(m);
+          this.gearAttachments.push(m);
+        }
+        // On spine_02, mid-way down the pack: on spine_03 its bottom swings out as the chest moves.
+        add(/^spine_02$/, pack);
+      } else {
+        // The mannequin: by the chest's box.
+        const t = new THREE.Group();
+        t.rotation.y = Math.PI;
+        t.add(realPack);
+        const f = spec.fit ?? {};
+        const pack = hang(
+          t,
+          maxWidth * 0.8 * (f.w ?? 1) * (f.size ?? 1),
+          cs.z * 0.75 * k,
+          new THREE.Vector3(cc.x, chest.max.y + cs.y * (0.05 + (f.y ?? 0)), 0),
+        );
+        pack.updateMatrixWorld(true);
+        const pb = new THREE.Box3().setFromObject(pack);
+        pack.position.z = chest.min.z - (s.armor ? cs.z * 0.1 : 0) - pb.max.z;
+        // On spine_02, mid-way down the pack: on spine_03 its bottom swings out as the chest moves.
+        add(/^spine_02$/, pack);
+      }
+    } else if (s.backpack) {
       const id = s.backpack.def;
       const d = getDef(id);
       let bp: THREE.Object3D | null = null;

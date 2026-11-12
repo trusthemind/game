@@ -190,6 +190,8 @@ export function itemModel(lib: AssetLibrary, item: ItemInstance): { obj: THREE.O
     case 'rig':
       return front(wornGear(lib, id) ?? shellModel(lib, id, RIG_SPECS[id]) ?? rigModel(id));
     case 'backpack': {
+      const real = wornGear(lib, id);
+      if (real) return front(real);
       if (id === 'b_sling') return front(slingModel());
       const bp = lib.props.get('backpack');
       return front(bp ? tinted(bp, BACKPACK_TINT[id] ?? 0x666666) : null);

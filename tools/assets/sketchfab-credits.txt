@@ -123,3 +123,10 @@
 "Russian 6B45 Vest" by miliangamingvr (https://sketchfab.com/3d-models/russian-6b45-vest-1cd10867c8ff49d8a95f1d3fd3dd2983) — CC BY 4.0 — armour: 6B45 vest
 "Tactical Helmet with Headset (Game-Ready)" by Exactly (https://sketchfab.com/3d-models/tactical-helmet-with-headset-game-ready-82adf376164f4d99a4e0b2949930e2ad) — CC BY 4.0 — armour: tactical helmet with headset
 "Vest Armor Holster LowPoly GameReady Pack" by 00amza (https://sketchfab.com/3d-models/vest-armor-holster-lowpoly-gameready-pack-7c41d35e505c4057abe60f89537408bd) — CC BY 4.0 — armour: vest, armour, holster pack
+"Chest Rig" by FailureToComply (https://sketchfab.com/3d-models/chest-rig-563eff6d49004d9c9d9b8a168d0e1d3e) — CC BY 4.0 — rig: chest rig (r_scav)
+"LPC Plate Carrier" by WooTech (https://sketchfab.com/3d-models/lpc-plate-carrier-63910ff3792a4eefbe3a20906641de7c) — CC BY 4.0 — rig: LPC plate carrier (r_alpha)
+"Combat Vest" by csheffield (https://sketchfab.com/3d-models/combat-vest-ce92c014efd140deb6e918b3c59bf539) — CC BY 4.0 — rig: combat vest (r_bank)
+"Backpack - Low Poly PBR [1 of 2]" by RETROSPEC (https://sketchfab.com/3d-models/backpack-low-poly-pbr-1-of-2-0b795895343b44b69191ef9b55b35840) — CC BY 4.0 — backpack: low poly daypack (b_daypack)
+"Large Camping BackPack (Free/GameReady)" by Sebastian Webster (https://sketchfab.com/3d-models/large-camping-backpack-freegameready-a7086b50dae84706b81bb3ce14ad9094) — CC BY 4.0 — backpack: large camping pack (b_pilgrim)
+"Low Poly Game Ready Military Tactical Backpack" by DanlyVostok (https://sketchfab.com/3d-models/low-poly-game-ready-military-tactical-backpack-95a4fc7300584384b56ce3add58dbc9f) — CC BY 4.0 — backpack: military tactical (b_attack)
+"messenger bag" by N1008650 (https://sketchfab.com/3d-models/messenger-bag-99787b78b1d24e3aa10bc14fe0b33d60) — CC BY 4.0 — backpack: messenger bag (b_sling)

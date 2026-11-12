@@ -428,6 +428,29 @@ export function fitToRest(
     }
     return m.premultiply(new THREE.Matrix4().makeTranslation(to.x, to.y, to.z));
   });
+  // The head is carried by its shape, not its joint: heads differ (a longer skull, eyes higher or lower above the
+  // neck), so what's on it (a balaclava, a cap) goes from the source head's box onto ours, its eye holes over our
+  // eyes. The jaw and neck below stay with the neck's carry.
+  const hi = bones.findIndex((b) => b.name === 'Head');
+  const srcHead = hi >= 0 ? sourceHeadBox(src, skinned, T) : null;
+  const ourHead = hi >= 0 ? ourHeadBox(model, bones, hi, toModel) : null;
+  if (srcHead && ourHead) {
+    const cs = srcHead.getCenter(new THREE.Vector3());
+    const ss = srcHead.getSize(new THREE.Vector3());
+    const co = ourHead.getCenter(new THREE.Vector3());
+    const so = ourHead.getSize(new THREE.Vector3());
+    // One scale (the head keeps its shape), by the axis that needs most and a little loose: what hugged their head
+    // would sink into ours where the shapes differ.
+    // Only when what was found looks like a whole head (some models split it, or have none to find): otherwise
+    // the joint's carry stands.
+    const q = [so.x / ss.x, so.y / ss.y, so.z / ss.z];
+    const r = Math.max(...q) * 1.16;
+    if (Math.min(...q) > 0.6 && Math.max(...q) < 1.6 && Math.max(...q) / Math.min(...q) < 1.35)
+      carry[hi] = new THREE.Matrix4()
+      .makeTranslation(co.x, co.y, co.z)
+      .multiply(new THREE.Matrix4().makeScale(r, r, r))
+      .multiply(new THREE.Matrix4().makeTranslation(-cs.x, -cs.y, -cs.z));
+  }
   const parentOf = new Map(bones.map((b) => [b, b.parent as THREE.Object3D | null]));
   const carryOf = (i: number): THREE.Matrix4 => {
     let b: THREE.Object3D | null = bones[i]!;
@@ -441,6 +464,7 @@ export function fitToRest(
   const inverses = bones.map((b) => new THREE.Matrix4().multiplyMatrices(toModel, b.matrixWorld).invert());
 
   const out: THREE.SkinnedMesh[] = [];
+  let under: BodySkin | null | undefined;
   for (const sm of skinned) {
     const lut = sm.skeleton.bones.map((b) => {
       let o: THREE.Object3D | null = b;
@@ -492,6 +516,13 @@ export function fitToRest(
       const remapped = new Uint16Array(si.count * 4);
       for (let i = 0; i < si.count; i++) for (let c = 0; c < 4; c++) remapped[i * 4 + c] = lut[si.getComponent(i, c)]!;
       g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(remapped, 4));
+      // The upper body follows the body underneath: the source's weights were painted for its own pose (arms often
+      // well down) and its own body, and by them the shoulders pinch when our arms come down from rest and our
+      // upper back pokes through when it bends. There a piece takes our body's own weights instead.
+      under ??= bodySkin(model, bones, toModel);
+      if (under) shoulderWeights(g, under, bones);
+      const neckB = ours.get('neck_01');
+      if (under && neckB && ours.get('Head')) closeNeck(g, under, bones, modelPos(neckB), modelPos(ours.get('Head')!).y);
       // The clone kept the source's bounds (its own units): measure the fitted garment.
       g.computeBoundingBox();
       g.computeBoundingSphere();
@@ -506,6 +537,356 @@ export function fitToRest(
     out.push(mesh);
   }
   return out;
+}
+
+interface BodySkin {
+  pos: Float32Array;
+  nor: Float32Array;
+  idx: Uint16Array;
+  w: Float32Array;
+}
+
+/** Our body's vertices at rest (model space) with their skin weights, by index into `bones`. */
+function bodySkin(model: THREE.Object3D, bones: THREE.Bone[], toModel: THREE.Matrix4): BodySkin | null {
+  let body: THREE.SkinnedMesh | null = null;
+  model.traverse((o) => {
+    const sm = o as THREE.SkinnedMesh;
+    if (!sm.isSkinnedMesh || sm.userData.worn || !sm.skeleton.bones.includes(bones[0]!)) return;
+    if (!body || sm.geometry.attributes.position!.count > body.geometry.attributes.position!.count) body = sm;
+  });
+  const b = body as THREE.SkinnedMesh | null;
+  const si = b?.geometry.attributes.skinIndex;
+  const sw = b?.geometry.attributes.skinWeight;
+  if (!b || !si || !sw) return null;
+  const n = b.geometry.attributes.position!.count;
+  const at = b.skeleton.bones.map((x) => bones.indexOf(x));
+  const pos = new Float32Array(n * 3);
+  const nor = new Float32Array(n * 3);
+  const bn = b.geometry.attributes.normal;
+  const idx = new Uint16Array(n * 4);
+  const w = new Float32Array(n * 4);
+  const v = new THREE.Vector3();
+  const M = new THREE.Matrix4().multiplyMatrices(toModel, b.matrixWorld);
+  const NM = new THREE.Matrix3().getNormalMatrix(M);
+  for (let i = 0; i < n; i++) {
+    b.getVertexPosition(i, v).applyMatrix4(M).toArray(pos, i * 3);
+    if (bn) v.fromBufferAttribute(bn, i).applyMatrix3(NM).normalize().toArray(nor, i * 3);
+    for (let c = 0; c < 4; c++) {
+      idx[i * 4 + c] = Math.max(0, at[si.getComponent(i, c)] ?? 0);
+      w[i * 4 + c] = sw.getComponent(i, c);
+    }
+  }
+  return { pos, nor, idx, w };
+}
+
+/**
+ * A fitted piece's vertices on the chest, upper back and shoulders (weighted to the upper spine, neck, clavicles or
+ * upper arms) take the weights of the nearest few body vertices, as much as the source weighted them there, so they
+ * bend with the body under them and it can't poke through when the back bends or the arms come down. Where the
+ * body already pokes through at rest (the top of the back between a collar and the back panel) they're pushed out.
+ */
+function shoulderWeights(g: THREE.BufferGeometry, under: BodySkin, bones: THREE.Bone[]): void {
+  const region = new Set(['spine_02', 'spine_03', 'neck_01', 'clavicle_l', 'clavicle_r', 'upperarm_l', 'upperarm_r'].map((n) => bones.findIndex((b) => b.name === n)));
+  const head = bones.findIndex((b) => b.name === 'Head');
+  const si = g.attributes.skinIndex!;
+  const sw = g.attributes.skinWeight!;
+  const pos = g.attributes.position!;
+  // Headwear (a balaclava's neck) stays as it was fitted: it goes with the head.
+  let onHeadN = 0;
+  for (let i = 0; i < si.count; i++) if ([0, 1, 2, 3].some((c) => si.getComponent(i, c) === head && sw.getComponent(i, c) > 0.2)) onHeadN++;
+  if (onHeadN > 0.25 * si.count) return;
+  const NI = new Uint16Array(si.count * 4);
+  const NW = new Float32Array(si.count * 4);
+  const K = 6;
+  const GAP = 0.003;
+  const kd = new Float64Array(K);
+  const ki = new Int32Array(K);
+  const nb = under.pos.length / 3;
+  for (let i = 0; i < pos.count; i++) {
+    let on = 0;
+    let tot = 0;
+    let onHead = 0;
+    for (let c = 0; c < 4; c++) {
+      const w = sw.getComponent(i, c);
+      tot += w;
+      if (region.has(si.getComponent(i, c))) on += w;
+      if (si.getComponent(i, c) === head) onHead += w;
+    }
+    const f = tot > 0 && !onHead ? Math.min(1, (2.5 * on) / tot) : 0;
+    const acc = new Map<number, number>();
+    for (let c = 0; c < 4; c++) {
+      const w = sw.getComponent(i, c);
+      if (w) acc.set(si.getComponent(i, c), (acc.get(si.getComponent(i, c)) ?? 0) + (w / (tot || 1)) * (1 - f));
+    }
+    if (f > 0) {
+      kd.fill(Infinity);
+      ki.fill(-1);
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const z = pos.getZ(i);
+      for (let j = 0; j < nb; j++) {
+        const dx = under.pos[j * 3]! - x;
+        const dy = under.pos[j * 3 + 1]! - y;
+        const dz = under.pos[j * 3 + 2]! - z;
+        const d = dx * dx + dy * dy + dz * dz;
+        if (d >= kd[K - 1]!) continue;
+        let k = K - 1;
+        while (k > 0 && kd[k - 1]! > d) (kd[k] = kd[k - 1]!), (ki[k] = ki[k - 1]!), k--;
+        kd[k] = d;
+        ki[k] = j;
+      }
+      let ws = 0;
+      const iw = Array.from(kd, (d) => 1 / (Math.sqrt(d) + 0.01));
+      for (let k = 0; k < K; k++) if (ki[k]! >= 0) ws += iw[k]!;
+      // How far outside the skin (along its normal, near points weighted): at least a little. Only over the top of
+      // the back and shoulders (skin facing back or up): in front, collars and lapels lie in layers over a shirt,
+      // and pushing each out by itself would push the one under through the one over it.
+      let out = 0;
+      for (let k = 0; k < K; k++) {
+        const j = ki[k]!;
+        if (j < 0) continue;
+        out += ((x - under.pos[j * 3]!) * under.nor[j * 3]! + (y - under.pos[j * 3 + 1]!) * under.nor[j * 3 + 1]! + (z - under.pos[j * 3 + 2]!) * under.nor[j * 3 + 2]!) * (iw[k]! / ws);
+      }
+      const j0 = ki[0]!;
+      // Faded in by both (not cut off), or the push leaves a crease across the back where it stops.
+      const fade = j0 >= 0 ? THREE.MathUtils.smoothstep(0.1 - under.nor[j0 * 3 + 2]!, 0, 0.2) * THREE.MathUtils.smoothstep(out + 0.06, 0, 0.02) : 0;
+      if (fade > 0 && out < GAP) {
+        const push = (GAP - out) * f * fade;
+        pos.setXYZ(i, x + under.nor[j0 * 3]! * push, y + under.nor[j0 * 3 + 1]! * push, z + under.nor[j0 * 3 + 2]! * push);
+      }
+      for (let k = 0; k < K; k++) {
+        const j = ki[k]!;
+        if (j < 0) continue;
+        for (let c = 0; c < 4; c++) {
+          const w = under.w[j * 4 + c]!;
+          if (w) acc.set(under.idx[j * 4 + c]!, (acc.get(under.idx[j * 4 + c]!) ?? 0) + (w * iw[k]! * f) / ws);
+        }
+      }
+    }
+    const top = [...acc].sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const s = top.reduce((a, t) => a + t[1], 0) || 1;
+    top.forEach(([b, w], c) => ((NI[i * 4 + c] = b), (NW[i * 4 + c] = w / s)));
+  }
+  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(NI, 4));
+  g.setAttribute('skinWeight', new THREE.BufferAttribute(NW, 4));
+}
+
+/** The K body vertices nearest a point (squared distances), nearest first. */
+function nearestBody(under: BodySkin, x: number, y: number, z: number, kd: Float64Array, ki: Int32Array): void {
+  const K = kd.length;
+  kd.fill(Infinity);
+  ki.fill(-1);
+  const nb = under.pos.length / 3;
+  for (let j = 0; j < nb; j++) {
+    const dx = under.pos[j * 3]! - x;
+    const dy = under.pos[j * 3 + 1]! - y;
+    const dz = under.pos[j * 3 + 2]! - z;
+    const d = dx * dx + dy * dy + dz * dz;
+    if (d >= kd[K - 1]!) continue;
+    let k = K - 1;
+    while (k > 0 && kd[k - 1]! > d) (kd[k] = kd[k - 1]!), (ki[k] = ki[k - 1]!), k--;
+    kd[k] = d;
+    ki[k] = j;
+  }
+}
+
+/**
+ * Close the gap at the back of the neck. A top cut low at the back (a smock, a shirt) leaves our neck and the top of
+ * our back bare between its neckline and a balaclava's hem, which ends half way down the neck: the open edge of a
+ * top's back neckline is drawn up to the base of our neck, a headwear piece's lower hem down to it (and evened out),
+ * each with the cloth around it following smoothly and kept just outside our skin, never further out than it was.
+ * A hood's neck is drawn in onto ours.
+ */
+function closeNeck(g: THREE.BufferGeometry, under: BodySkin, bones: THREE.Bone[], neck: THREE.Vector3, headY: number): void {
+  const pos = g.attributes.position!;
+  const si = g.attributes.skinIndex!;
+  const sw = g.attributes.skinWeight!;
+  const n = pos.count;
+  const head = bones.findIndex((b) => b.name === 'Head');
+  let onHeadN = 0;
+  for (let i = 0; i < n; i++) if ([0, 1, 2, 3].some((c) => si.getComponent(i, c) === head && sw.getComponent(i, c) > 0.2)) onHeadN++;
+  const headwear = onHeadN > 0.25 * n;
+  // Open edges, on positions welded across UV seams.
+  const ids = new Map<string, number>();
+  const wid = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const key = `${Math.round(pos.getX(i) * 2e4)},${Math.round(pos.getY(i) * 2e4)},${Math.round(pos.getZ(i) * 2e4)}`;
+    const at = ids.get(key);
+    if (at === undefined) ids.set(key, i);
+    wid[i] = at ?? i;
+  }
+  const index = g.index;
+  const tris = index ? index.count : n;
+  const edges = new Map<number, number>();
+  for (let t = 0; t + 2 < tris; t += 3) {
+    for (let e = 0; e < 3; e++) {
+      const a = wid[index ? index.getX(t + e) : t + e]!;
+      const b = wid[index ? index.getX(t + ((e + 1) % 3)) : t + ((e + 1) % 3)]!;
+      if (a === b) continue;
+      const key = Math.min(a, b) * n + Math.max(a, b);
+      edges.set(key, (edges.get(key) ?? 0) + 1);
+    }
+  }
+  const border = new Uint8Array(n);
+  for (const [key, c] of edges) if (c === 1) border[Math.floor(key / n)] = border[key % n] = 1;
+  // Where the open edge should be: a top's back neckline at the base of the neck, a hood's hem a little below it.
+  const UP = (headY - neck.y) * 0.5;
+  const DOWN = -0.012;
+  const lift: [number, number, number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    if (wid[i] !== i || !border[i]) continue;
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const dx = Math.abs(x - neck.x);
+    if (headwear) {
+      if (y < headY - 0.01 && y > neck.y + DOWN) lift.push([x, y, z, neck.y + DOWN - y]);
+    } else if (z < neck.z && dx < 0.11 && y > neck.y - 0.14 && y < neck.y + UP) {
+      const fade = dx < 0.06 ? 1 : 1 - (dx - 0.06) / 0.05;
+      lift.push([x, y, z, (neck.y + UP - y) * fade]);
+    }
+  }
+  const R = headwear ? 0.035 : 0.06;
+  const K = 6;
+  const GAP = 0.003;
+  const kd = new Float64Array(K);
+  const ki = new Int32Array(K);
+  const outAt = (x: number, y: number, z: number, iw: number[]): number => {
+    nearestBody(under, x, y, z, kd, ki);
+    let ws = 0;
+    for (let k = 0; k < K; k++) if (ki[k]! >= 0) ws += (iw[k] = 1 / (Math.sqrt(kd[k]!) + 0.01));
+    let out = 0;
+    for (let k = 0; k < K; k++) {
+      const j = ki[k]!;
+      if (j < 0) continue;
+      out += ((x - under.pos[j * 3]!) * under.nor[j * 3]! + (y - under.pos[j * 3 + 1]!) * under.nor[j * 3 + 1]! + (z - under.pos[j * 3 + 2]!) * under.nor[j * 3 + 2]!) * (iw[k]! / ws);
+    }
+    for (let k = 0; k < K; k++) iw[k] = ki[k]! >= 0 ? iw[k]! / ws : 0;
+    return out;
+  };
+  const NI = new Uint16Array(n * 4);
+  const NW = new Float32Array(n * 4);
+  const iw: number[] = new Array(K).fill(0);
+  for (let i = 0; i < n; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    let dy = 0;
+    let f = 0;
+    for (const [lx, ly, lz, ld] of lift) {
+      const d = Math.hypot(x - lx, y - ly, z - lz);
+      if (d >= R) continue;
+      const s = 1 - d / R;
+      const w = s * s * (3 - 2 * s);
+      if (Math.abs(ld * w) > Math.abs(dy)) (dy = ld * w), (f = w);
+    }
+    // A hood's neck hugs ours (it was fitted loose with the head), so a collar closes over it.
+    // Up to the base of the skull, so it's inside any collar.
+    const hug = headwear ? Math.min(1, Math.max(0, (headY + 0.09 - y) / 0.04)) : 0;
+    f = Math.max(f, hug);
+    const acc = new Map<number, number>();
+    for (let c = 0; c < 4; c++) {
+      const w = sw.getComponent(i, c);
+      if (w) acc.set(si.getComponent(i, c), (acc.get(si.getComponent(i, c)) ?? 0) + w * (1 - f));
+    }
+    if (Math.abs(dy) > 1e-5 || hug > 0) {
+      const before = outAt(x, y, z, iw);
+      const ny = y + dy;
+      const now = outAt(x, ny, z, iw);
+      // Hug the body: out by at least the gap, never further out than before (it rose over the slope of the back).
+      const want = THREE.MathUtils.lerp(Math.max(GAP, Math.min(now, Math.max(GAP, before))), 0.004, hug);
+      const j0 = ki[0]!;
+      const sh = want - now;
+      pos.setXYZ(i, x + under.nor[j0 * 3]! * sh, ny + under.nor[j0 * 3 + 1]! * sh, z + under.nor[j0 * 3 + 2]! * sh);
+      for (let k = 0; k < K; k++) {
+        const j = ki[k]!;
+        if (j < 0) continue;
+        for (let c = 0; c < 4; c++) {
+          const w = under.w[j * 4 + c]!;
+          if (w) acc.set(under.idx[j * 4 + c]!, (acc.get(under.idx[j * 4 + c]!) ?? 0) + w * iw[k]! * f);
+        }
+      }
+    }
+    const top = [...acc].sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const s = top.reduce((a, t) => a + t[1], 0) || 1;
+    top.forEach(([b, w], c) => ((NI[i * 4 + c] = b), (NW[i * 4 + c] = w / s)));
+  }
+  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(NI, 4));
+  g.setAttribute('skinWeight', new THREE.BufferAttribute(NW, 4));
+}
+
+/** Not the head's own skin: what's worn on it or stuck in it. */
+const NOT_HEAD = /hair|hat|cap|helm|mask|eye|teeth|tongue|brow|lash|beard|glass|goggle|headset|hood/i;
+
+/** Index of the bone that carries most of vertex i. */
+function dominant(si: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, sw: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, i: number): number {
+  let best = 0;
+  let bw = -1;
+  for (let c = 0; c < 4; c++) {
+    const w = sw.getComponent(i, c);
+    if (w > bw) (bw = w), (best = si.getComponent(i, c));
+  }
+  return best;
+}
+
+/**
+ * The source model's bare head as drawn (after T): the vertices its head joint carries most, on the skinned mesh
+ * with the most of them that isn't a kept piece or something worn (hair, a hat, eyes).
+ */
+function sourceHeadBox(src: THREE.Object3D, kept: THREE.SkinnedMesh[], T: THREE.Matrix4): THREE.Box3 | null {
+  let best: THREE.Box3 | null = null;
+  let bestN = 0;
+  const v = new THREE.Vector3();
+  src.traverse((o) => {
+    const sm = o as THREE.SkinnedMesh;
+    if (!sm.isSkinnedMesh || kept.includes(sm)) return;
+    const mat = (Array.isArray(sm.material) ? sm.material[0]! : sm.material).name;
+    if (NOT_HEAD.test(`${sm.name} ${mat}`)) return;
+    const head = sm.skeleton.bones.map((b) => {
+      let x: THREE.Object3D | null = b;
+      while (x) {
+        const name = MAP[clean(x.name)];
+        if (name) return name === 'Head';
+        x = x.parent;
+      }
+      return false;
+    });
+    const si = sm.geometry.attributes.skinIndex;
+    const sw = sm.geometry.attributes.skinWeight;
+    const pos = sm.geometry.attributes.position;
+    if (!si || !sw || !pos) return;
+    const box = new THREE.Box3();
+    const M = new THREE.Matrix4().multiplyMatrices(T, sm.matrixWorld);
+    let n = 0;
+    for (let i = 0; i < pos.count; i++) {
+      if (!head[dominant(si, sw, i)]) continue;
+      box.expandByPoint(sm.getVertexPosition(i, v).applyMatrix4(M));
+      n++;
+    }
+    if (n > bestN) (bestN = n), (best = box);
+  });
+  return bestN > 50 ? best : null;
+}
+
+/** Our body's head in the model's space: the body mesh's vertices the head bone carries most. */
+function ourHeadBox(model: THREE.Object3D, bones: THREE.Bone[], hi: number, toModel: THREE.Matrix4): THREE.Box3 | null {
+  let body: THREE.SkinnedMesh | null = null;
+  model.traverse((o) => {
+    const sm = o as THREE.SkinnedMesh;
+    if (!sm.isSkinnedMesh || sm.userData.worn || sm.skeleton.bones[hi] !== bones[hi]) return;
+    if (!body || sm.geometry.attributes.position!.count > body.geometry.attributes.position!.count) body = sm;
+  });
+  const b = body as THREE.SkinnedMesh | null;
+  if (!b) return null;
+  const si = b.geometry.attributes.skinIndex;
+  const sw = b.geometry.attributes.skinWeight;
+  const pos = b.geometry.attributes.position!;
+  if (!si || !sw) return null;
+  const box = new THREE.Box3();
+  const v = new THREE.Vector3();
+  const M = new THREE.Matrix4().multiplyMatrices(toModel, b.matrixWorld);
+  for (let i = 0; i < pos.count; i++) if (dominant(si, sw, i) === hi) box.expandByPoint(b.getVertexPosition(i, v).applyMatrix4(M));
+  return box.isEmpty() ? null : box;
 }
 
 /** glTF mesh names of a loaded model's nodes (three.js names nodes after the node, which is often Object_N). */

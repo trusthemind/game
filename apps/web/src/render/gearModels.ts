@@ -39,15 +39,21 @@ export interface GearSpec {
    * flat black blob in our light). `liftGain`: how strongly the texture's own detail shows over it (default 1.6). */
   lift?: number;
   liftGain?: number;
+  /** Recolours the texture: its brightness times this colour (a red-plaid daypack becomes a slate one, its seams
+   * and pockets still drawn). `monoGain`: how bright (default 1.5). */
+  mono?: number;
+  monoGain?: number;
   /** Helmets: drop the loose pieces that stand out sideways past the dome (the SSh-40's chin-strap ends). */
   trim?: boolean;
   /** Helmets: cut away everything below this share of the model's height, from the bottom (the FAST's chin
    * strap hangs as a loose loop round the face). */
   cutBelow?: number;
+  /** Backpacks: drop the thin loose pieces when worn (a messenger bag's strap). */
+  dropLoose?: boolean;
 }
 
 /** Connected pieces of a mesh (welded by position: exports split vertices at UV seams): each triangle's piece. */
-function pieces(g: THREE.BufferGeometry): { of: Int32Array; tri: number; vi: (t: number, c: number) => number } {
+export function pieces(g: THREE.BufferGeometry): { of: Int32Array; tri: number; vi: (t: number, c: number) => number } {
   const pos = g.attributes.position!;
   const n = pos.count;
   const id = new Int32Array(n);
@@ -162,6 +168,33 @@ function cutBelow(root: THREE.Object3D, frac: number): void {
   });
 }
 
+/** The texture's brightness times a colour, per channel (sRGB). */
+function monoMap(tex: THREE.Texture, base: number, gain: number): THREE.Texture | null {
+  const img = tex.image as CanvasImageSource & { width: number; height: number };
+  if (!img?.width || typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  c.width = img.width;
+  c.height = img.height;
+  const x = c.getContext('2d');
+  if (!x) return null;
+  x.drawImage(img, 0, 0);
+  const d = x.getImageData(0, 0, c.width, c.height);
+  const bc = [(base >> 16) & 255, (base >> 8) & 255, base & 255];
+  for (let i = 0; i < d.data.length; i += 4) {
+    const l = ((0.3 * d.data[i]! + 0.59 * d.data[i + 1]! + 0.11 * d.data[i + 2]!) / 255) * gain;
+    for (let k = 0; k < 3; k++) d.data[i + k] = Math.min(255, bc[k]! * l);
+  }
+  x.putImageData(d, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.flipY = tex.flipY;
+  t.colorSpace = tex.colorSpace;
+  t.wrapS = tex.wrapS;
+  t.wrapT = tex.wrapT;
+  t.channel = tex.channel;
+  t.anisotropy = tex.anisotropy;
+  return t;
+}
+
 /** The texture's detail over a colour: base + gain × texel, per channel (sRGB). */
 function liftMap(tex: THREE.Texture, base: number, gain: number): THREE.Texture | null {
   const img = tex.image as CanvasImageSource & { width: number; height: number };
@@ -212,6 +245,14 @@ export const GEAR_MODEL: Record<string, GearSpec> = {
   pl_ceramic6: { model: 'v_6b43', turn: Math.PI / 2, paint: 0x6c7468 },
   // Rigs
   r_mbss: { model: 'vest_pack', part: '^Vest_T0', hem: 0.75 },
+  r_scav: { model: 'chest_rig', lift: 0x3c3b2e, liftGain: 1.0 },
+  r_alpha: { model: 'lpc', turn: Math.PI, paint: 0x7a8058 },
+  r_bank: { model: 'combat_vest', fit: { w: 0.92 } },
+  // Backpacks (outer face, the pockets, to +Z like the vests' fronts: the icon shows it; worn, it faces back)
+  b_sling: { model: 'bp_messenger', paint: 0x6b6450, dropLoose: true, fit: { size: 0.6 } },
+  b_daypack: { model: 'bp_daypack', turn: -Math.PI / 2, mono: 0x6f8296, monoGain: 3 },
+  b_pilgrim: { model: 'bp_camping', lift: 0x4c4632, liftGain: 1.1, dropLoose: true, fit: { h: 1.2 } },
+  b_attack: { model: 'bp_tactical', dropLoose: true, fit: { h: 1.1 } },
 };
 
 const made = new Map<string, THREE.Object3D | null>();
@@ -293,6 +334,13 @@ export function wornGear(lib: AssetLibrary, itemId: string): THREE.Object3D | nu
                 std.color.set(0xffffff);
                 std.roughness = 0.75;
                 std.metalness = 0;
+              }
+            }
+            if (spec.mono !== undefined && std.map) {
+              const t = monoMap(std.map, spec.mono, spec.monoGain ?? 1.5);
+              if (t) {
+                std.map = t;
+                std.color.set(0xffffff);
               }
             }
             twoSided.set(src, mat);

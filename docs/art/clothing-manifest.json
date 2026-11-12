@@ -1011,7 +1011,7 @@
     "creator": "Armored Wave",
     "created_at": "2026-11-09",
     "license": "CC BY 4.0",
-    "attribution": "\"He\u0142m wz. 2005\" by Armored Wave, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "attribution": "\"Hełm wz. 2005\" by Armored Wave, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
     "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
    },
    "verification": {
@@ -1289,6 +1289,216 @@
     "in_engine_reviewed": true,
     "technical_checks_passed": true,
     "approved_by": "delegated by Fedir, 2026-11-09"
+   }
+  },
+  {
+   "id": "r_scav",
+   "role": "rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "draft",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "FailureToComply",
+    "created_at": "2026-11-11",
+    "license": "CC BY 4.0",
+    "attribution": "\"Chest Rig\" by FailureToComply, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending review (added 2026-11-11)"
+   }
+  },
+  {
+   "id": "r_alpha",
+   "role": "rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "draft",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "WooTech",
+    "created_at": "2026-11-11",
+    "license": "CC BY 4.0",
+    "attribution": "\"LPC Plate Carrier\" by WooTech, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending review (added 2026-11-11)"
+   }
+  },
+  {
+   "id": "r_bank",
+   "role": "rig item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "draft",
+   "technical": {
+    "fit": "helmets rigid on the head bone; vests skinned to the torso (skinToTorso)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "csheffield",
+    "created_at": "2026-11-11",
+    "license": "CC BY 4.0",
+    "attribution": "\"Combat Vest\" by csheffield, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending review (added 2026-11-11)"
+   }
+  },
+  {
+   "id": "b_daypack",
+   "role": "backpack item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "draft",
+   "technical": {
+    "fit": "rigid on spine_02, sized by the item, pushed clear of the dressed back; straps built and skinned to the spine (gearFit.ts fitPack)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "RETROSPEC",
+    "created_at": "2026-11-11",
+    "license": "CC BY 4.0",
+    "attribution": "\"Backpack - Low Poly PBR [1 of 2]\" by RETROSPEC, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending review (added 2026-11-11)"
+   }
+  },
+  {
+   "id": "b_pilgrim",
+   "role": "backpack item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "draft",
+   "technical": {
+    "fit": "rigid on spine_02, sized by the item, pushed clear of the dressed back; straps built and skinned to the spine (gearFit.ts fitPack)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "Sebastian Webster",
+    "created_at": "2026-11-11",
+    "license": "CC BY 4.0",
+    "attribution": "\"Large Camping BackPack (Free/GameReady)\" by Sebastian Webster, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending review (added 2026-11-11)"
+   }
+  },
+  {
+   "id": "b_attack",
+   "role": "backpack item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "draft",
+   "technical": {
+    "fit": "rigid on spine_02, sized by the item, pushed clear of the dressed back; straps built and skinned to the spine (gearFit.ts fitPack)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "DanlyVostok",
+    "created_at": "2026-11-11",
+    "license": "CC BY 4.0",
+    "attribution": "\"Low Poly Game Ready Military Tactical Backpack\" by DanlyVostok, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending review (added 2026-11-11)"
+   }
+  },
+  {
+   "id": "b_sling",
+   "role": "backpack item (engine def)",
+   "path": "apps/web/public/models/gear.glb",
+   "status": "draft",
+   "technical": {
+    "fit": "rigid on spine_02, sized by the item, pushed clear of the dressed back; straps built and skinned to the spine (gearFit.ts fitPack)",
+    "textures": "WebP 512"
+   },
+   "visual_locks": [
+    "realistic PBR",
+    "drab palette",
+    "reads as its real-world type at game scale"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "tools/assets/sketchfab.json",
+    "creator": "N1008650",
+    "created_at": "2026-11-11",
+    "license": "CC BY 4.0",
+    "attribution": "\"messenger bag\" by N1008650, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab-credits.txt"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending review (added 2026-11-11)"
    }
   }
  ]
