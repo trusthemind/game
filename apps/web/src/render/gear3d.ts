@@ -171,7 +171,7 @@ export function helmetModel(id: string): THREE.Group {
       ),
     );
   } else if (id === 'zsh') {
-    // ZSh-1-2M: rounded composite shell, ear cut-outs and a clear visor down over the eyes.
+    // ZSh-1-2M: rounded composite shell, ear cut-outs and a clear visor, raised.
     const shell = gearMat(0x3e4636, 0.55, 0.1);
     g.add(
       (g.userData.shell = part(
@@ -210,13 +210,13 @@ export function helmetModel(id: string): THREE.Group {
           1.8,
         ),
         visor,
-        // Down over the eyes, hinged under the front of the shell.
-        [0, -0.055, 0.0],
+        // Raised onto the front of the shell: down, its edges and tab crossed the eyes and mouth as dark bars.
+        [0, 0.035, 0.0],
         [0.06, 0, 0],
       ),
     );
     // The visor's lifting tab, on its lower edge.
-    g.add(part(box(0.05, 0.012, 0.012), gearMat(0x1a1c1c, 0.4, 0.3), [0, -0.05, 0.15]));
+    g.add(part(box(0.05, 0.012, 0.012), gearMat(0x1a1c1c, 0.4, 0.3), [0, 0.04, 0.153]));
   } else if (id === 'altyn') {
     // Altyn: titanium bowl + heavy faceplate with a vision slit.
     const shell = gearMat(0x4d563a, 0.5, 0.4);

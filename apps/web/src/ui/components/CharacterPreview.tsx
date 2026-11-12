@@ -11,13 +11,17 @@ import { useHoverItem } from '../inventory/components';
  * Your survivor in 3D, wearing exactly what's in the loadout slots. Turns slowly on its own; drag to spin.
  * One small WebGL canvas, paused while the tab is hidden.
  */
-export function CharacterPreview() {
+export function CharacterPreview({ framing = 'body', bareHead = false, className }: { framing?: 'body' | 'face'; bareHead?: boolean; className?: string } = {}) {
   const ref = useRef<HTMLDivElement>(null);
+  const frame = useRef(framing);
+  frame.current = framing;
+  const bare = useRef(bareHead);
+  bare.current = bareHead;
   useEffect(() => {
     // A fresh canvas per mount: the context is released on cleanup (forceContextLoss), and a canvas whose
     // context was lost can't host a new renderer (Fast Refresh re-runs this effect on the same DOM).
     const canvas = document.createElement('canvas');
-    canvas.className = 'char-preview';
+    canvas.className = `char-preview${className ? ` ${className}` : ''}`;
     canvas.title = 'Drag to turn';
     ref.current!.appendChild(canvas);
     let disposed = false;
@@ -79,6 +83,8 @@ export function CharacterPreview() {
         const hover = useHoverItem.getState().item;
         const slot = hover ? getDef(hover.def).clothing?.slot : undefined;
         actor.eq = slot && p.equipment.slots[slot] !== hover ? { ...p.equipment, slots: { ...p.equipment.slots, [slot]: hover } } : p.equipment;
+        // Customising the face: nothing on the head (helmet, hat) in the way.
+        if (bare.current) actor.eq = { ...actor.eq, slots: { ...actor.eq.slots, helmet: null, hat: null } };
         const s = p.equipment.slots;
         actor.active = s.primary ? 'primary' : s.secondary ? 'secondary' : 'melee';
       };
@@ -120,13 +126,24 @@ export function CharacterPreview() {
       resize();
 
       let last = performance.now();
+      let camT = frame.current === 'face' ? 1 : 0;
       const tick = (now: number) => {
         raf = requestAnimationFrame(tick);
         if (document.hidden) return;
         const dt = Math.min(0.05, (now - last) / 1000);
         last = now;
-        if (!dragging) actor.facing += spin * dt;
+        // Close on the face it turns to the camera (a three-quarter view) unless you've turned it yourself.
+        if (frame.current === 'face' && spin) {
+          const d = Math.atan2(Math.sin(Math.PI / 2 - 0.35 - actor.facing), Math.cos(Math.PI / 2 - 0.35 - actor.facing));
+          actor.facing += d * Math.min(1, dt * 4);
+        }
+        else if (!dragging) actor.facing += spin * dt;
         if (view && actor.eq) view.update(actor, dt, true, false);
+        // Body (whole figure) or face (head and shoulders), eased between.
+        const face = frame.current === 'face' ? 1 : 0;
+        camT += (face - camT) * Math.min(1, dt * 6);
+        cam.position.set(0, 1.25 + 0.4 * camT, 4.6 - 3.3 * camT);
+        cam.lookAt(0, 0.95 + 0.66 * camT, 0);
         renderer.render(scene, cam);
       };
       raf = requestAnimationFrame(tick);

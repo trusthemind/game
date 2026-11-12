@@ -1165,6 +1165,8 @@ export interface HelmetOptions {
   /** Where the front rim sits on the brow, as a share of the model's height from its top; found from the shell if
    * not given. A helmet with its visor or faceplate down needs it (the lowest point in front is the visor's edge). */
   brow?: number;
+  /** How far it is worn tipped back (radians, pivoting on the back rim); default ~9° unless `brow` is given. */
+  tilt?: number;
   fit?: FitHandles;
 }
 
@@ -1234,6 +1236,68 @@ export function fitHelmet(obj: THREE.Object3D, head: HeadFit, k: number, opt: He
   for (let i = 0; i < pts.length; i += 3) if (inBand(i)) back = Math.max(back, cz - pts[i + 2]!);
   const domeW = halfX > 0 ? halfX * 2 : ss.x;
   const domeD = back > 0 ? back * 2 : ss.z;
+  // Nothing of it hangs in front of the face: a chin strap's loop, a goggle band or a headset's boom below the
+  // front rim crossed the eyes (more so from the raid camera above, and as the head turns). What is below the rim,
+  // ahead of the ears and over the face is cut away; a faceplate meant to be down (`brow` given) stays.
+  if (opt.brow === undefined && !named) {
+    const zCut = cz + domeD * 0.18;
+    const yCut = rim - (top - rim) * 0.04;
+    const a = new THREE.Vector3();
+    obj.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const g = m.geometry;
+      const p = g.attributes.position!;
+      const idx = g.index;
+      const tri = (idx ? idx.count : p.count) / 3;
+      const vi = (t: number, c: number) => (idx ? idx.getX(t * 3 + c) : t * 3 + c);
+      const keep: number[] = [];
+      let cutN = 0;
+      for (let t = 0; t < tri; t++) {
+        a.set(0, 0, 0);
+        for (let c = 0; c < 3; c++) a.add(v.fromBufferAttribute(p, vi(t, c)).applyMatrix4(m.matrixWorld));
+        a.multiplyScalar(1 / 3);
+        if (a.y < yCut && a.z > zCut && Math.abs(a.x - cx) < domeW * 0.42) cutN++;
+        else keep.push(vi(t, 0), vi(t, 1), vi(t, 2));
+      }
+      if (!cutN) return;
+      const ng = g.clone();
+      ng.setIndex(keep);
+      m.geometry = ng;
+    });
+  }
+  // A brim flared out over the face (SSh-36, SSh-68) is trimmed back to the dome's own front: from the raid camera
+  // (~59° above) a lip 9 cm ahead of the brow hid the eyes whatever the seat. Pulled in, not cut (it stays closed),
+  // keeping a short lip; only in front, faded out round the sides.
+  if (opt.brow === undefined && !named) {
+    const zFront = cz + domeD / 2;
+    const yLip = rim + (top - rim) * 0.4;
+    const w = new THREE.Vector3();
+    obj.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const inv = new THREE.Matrix4().copy(m.matrixWorld).invert();
+      const p = m.geometry.attributes.position!;
+      let ng: THREE.BufferGeometry | null = null;
+      for (let i = 0; i < p.count; i++) {
+        w.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld);
+        if (w.y > yLip || w.z <= zFront) continue;
+        const side = THREE.MathUtils.smoothstep(Math.abs(w.x - cx) / Math.max(1e-6, domeW / 2), 0.55, 0.95);
+        const low = 1 - THREE.MathUtils.smoothstep(w.y, yLip - (top - rim) * 0.12, yLip);
+        const s = (1 - side) * low;
+        if (s <= 0) continue;
+        w.z = THREE.MathUtils.lerp(w.z, zFront + (w.z - zFront) * 0.2, s);
+        if (!ng) (ng = m.geometry.clone()), (m.geometry = ng);
+        w.applyMatrix4(inv);
+        ng.attributes.position!.setXYZ(i, w.x, w.y, w.z);
+      }
+      if (ng) {
+        ng.attributes.position!.needsUpdate = true;
+        ng.computeBoundingBox();
+        ng.computeBoundingSphere();
+      }
+    });
+  }
   const f = opt.fit ?? {};
   const pad = 0.035 * k;
   const wide = (head.halfW * 2 + pad * 2) * (f.w ?? 1);
@@ -1250,10 +1314,13 @@ export function fitHelmet(obj: THREE.Object3D, head: HeadFit, k: number, opt: He
   const rr = Math.max(domeW, domeD) * 0.14;
   for (let i = 0; i < pts.length; i += 3) if (Math.hypot(pts[i]! - cx, pts[i + 2]! - cz) < rr) crown = Math.max(crown, pts[i + 1]!);
   if (!Number.isFinite(crown) || crown < rim) crown = top;
-  const ky = THREE.MathUtils.clamp((head.crown + clear - head.brow) / Math.max(1e-6, crown - rim), kxz * 0.78, kxz * 1.12) * (f.h ?? 1);
+  // The rim a little over the brow line (which is at the brows themselves): on it, a brim's edge read as a band
+  // across the eyes, worse from the raid camera above.
+  const browY = head.brow + (opt.brow === undefined ? 0.018 : 0.014) * k;
+  const ky = THREE.MathUtils.clamp((head.crown + clear - browY) / Math.max(1e-6, crown - rim), kxz * 0.78, kxz * 1.12) * (f.h ?? 1);
   // Rim on the brow; if the model is too deep for that, it rides a little high rather than over the eyes, and if
   // too shallow it rests on the crown.
-  const yCrown = THREE.MathUtils.clamp(head.brow + (crown - rim) * ky, head.crown + 0.028 * k, head.crown + 0.05 * k);
+  const yCrown = THREE.MathUtils.clamp(browY + (crown - rim) * ky, head.crown + 0.028 * k, head.crown + 0.05 * k);
   const yTop = yCrown + (top - crown) * ky;
   const wrap = new THREE.Group();
   wrap.add(obj);
@@ -1261,7 +1328,17 @@ export function fitHelmet(obj: THREE.Object3D, head: HeadFit, k: number, opt: He
   wrap.scale.set(kx, ky, kz);
   // Centred over the skull, a touch back: the face is flatter than the back of the head.
   wrap.position.set(head.x, yTop + (f.y ?? 0) * (head.crown - head.chin), (head.front + head.back) / 2 - 0.004 * k);
-  return wrap;
+  // Worn a little back on the head (pivoting on the back rim): aiming, the head tips forward and the raid camera
+  // looks down from behind, and a brim on the brow line (SSh-36, SSh-68) hid the eyes. A faceplate meant to be
+  // down (`brow` given) keeps its seat.
+  const tilt = opt.tilt ?? (opt.brow === undefined ? 0.16 : 0);
+  if (!tilt) return wrap;
+  const pivot = new THREE.Group();
+  pivot.position.set(head.x, browY, head.back);
+  pivot.rotation.x = -tilt;
+  wrap.position.sub(pivot.position);
+  pivot.add(wrap);
+  return pivot;
 }
 
 /**
@@ -1271,6 +1348,21 @@ export function fitHelmet(obj: THREE.Object3D, head: HeadFit, k: number, opt: He
  */
 export function helmetLiner(head: HeadFit, k: number): THREE.BufferGeometry {
   const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+  // Its front edge rides up off the brow: a rim on the brow line itself showed as a dark band across the eyes
+  // (from the front, and more from the raid camera above). Kept on the dome (the ring is pulled in as it rises).
+  const p = g.attributes.position!;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i);
+    const y = p.getY(i);
+    const z = p.getZ(i);
+    const r = Math.hypot(x, z);
+    if (r < 1e-6) continue;
+    const lo = 0.5 * THREE.MathUtils.smoothstep(z / r, -0.25, 0.55);
+    if (y >= lo) continue;
+    const s = Math.sqrt(1 - lo * lo) / r;
+    p.setXYZ(i, x * s, lo, z * s);
+  }
+  g.computeVertexNormals();
   const pad = 0.012 * k;
   g.scale(head.halfW + pad, head.crown - head.brow + pad, (head.front - head.back) / 2 + pad);
   g.translate(head.x, head.brow, (head.front + head.back) / 2);

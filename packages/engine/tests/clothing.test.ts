@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   ALL_ITEMS,
+  BOSSES,
+  encounterLoadout,
+  OUTFITS,
   CLOTHING_SLOTS,
   createItem,
   createProfile,
@@ -33,13 +36,29 @@ describe('clothing', () => {
     expect(starterKit().slots.top).toBeTruthy();
   });
 
-  it('scavs are dressed head to toe (bar a hat), raiders are not', () => {
+  it('scavs are dressed head to toe (bar a hat), soldiers in uniform', () => {
+    const tops = new Set<string>();
     for (let seed = 1; seed < 40; seed++) {
       const eq = generateLoadout('scav', new Rng(seed));
       for (const s of ['top', 'pants', 'boots'] as const) expect(getDef(eq.slots[s]!.def).clothing?.slot).toBe(s);
-      const r = generateLoadout('raider', new Rng(seed));
-      expect(r.slots.top ?? null).toBeNull();
+      for (const arch of ['raider', 'guard', 'boss'] as const) {
+        const r = generateLoadout(arch, new Rng(seed));
+        const top = getDef(r.slots.top!.def).clothing!;
+        expect(top.slot).toBe('top');
+        expect(getDef(r.slots.boots!.def).clothing?.slot).toBe('boots');
+        // A coverall is the trousers too.
+        if (top.full) expect(r.slots.pants ?? null).toBeNull();
+        else expect(getDef(r.slots.pants!.def).clothing?.slot).toBe('pants');
+        if (arch === 'raider') tops.add(r.slots.top!.def);
+      }
     }
+    expect(tops.size).toBeGreaterThanOrEqual(4);
+  });
+
+  it('bosses and named NPCs wear their own outfits', () => {
+    for (const b of BOSSES) expect(b.loadout(new Rng(1)).slots.top?.def).toBe(OUTFITS[b.id]!.find((id) => getDef(id).clothing!.slot === 'top'));
+    for (const id of Object.keys(OUTFITS)) for (const c of OUTFITS[id]!) expect(getDef(c).category).toBe('clothing');
+    expect(encounterLoadout('taras').slots.top?.def).toBe('c_desert_top');
   });
 
   it('an old save gets the new slots and clothes on', () => {

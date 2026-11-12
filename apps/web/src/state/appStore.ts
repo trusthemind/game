@@ -19,6 +19,9 @@ interface AppState {
   lastResult: { result: RaidResult; summary: RaidSummary } | null;
   toasts: Toast[];
   dialogueNpc: string | null;
+  /** The character customisation window (Hideout). */
+  customizeOpen: boolean;
+  setCustomizeOpen(open: boolean): void;
   go(screen: Screen): void;
   setTab(tab: HideoutTab): void;
   startRaid(seed?: number, mapId?: MapId, time?: AppState['raidTime']): void;
@@ -38,6 +41,8 @@ export const useApp = create<AppState>((set) => ({
   lastResult: null,
   toasts: [],
   dialogueNpc: null,
+  customizeOpen: false,
+  setCustomizeOpen: (customizeOpen) => set({ customizeOpen }),
   go: (screen) => set({ screen }),
   setTab: (tab) => set({ tab }),
   startRaid: (seed, mapId, time) => set((s) => ({ screen: 'raid', raidSeed: seed ?? Math.floor(Math.random() * 2 ** 31), raidMap: mapId ?? s.raidMap, raidTime: time ?? s.raidTime })),

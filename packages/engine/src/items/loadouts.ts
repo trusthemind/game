@@ -153,6 +153,7 @@ export function generateLoadout(archetype: BotArchetype, rng: Rng, tier = 0): Eq
   for (let i = 0; i < extras; i++) putAnywhere(eq, rollItem(pickDef(rng, kit.extras)!, rng, tier));
   // Last, so the rest of a loadout rolls exactly as before clothes existed.
   if (archetype === 'scav') dressScav(eq, rng);
+  else if (archetype === 'raider' || archetype === 'guard' || archetype === 'boss') dressSoldier(eq, rng, archetype);
   return eq;
 }
 
@@ -200,6 +201,67 @@ export function dressScav(eq: Equipment, rng: Rng): void {
   eq.slots.pants = createItem(pants, { fir: true });
   eq.slots.boots = createItem(boots, { fir: true });
   if (hat) eq.slots.hat = createItem(hat, { fir: true });
+}
+
+/** Uniform sets (top, trousers or null under a coverall, boots), weighted per archetype. */
+const UNIFORMS: Record<'raider' | 'guard' | 'boss', readonly (readonly [readonly [string, string | null, string], number])[]> = {
+  raider: [
+    [['c_ukr_jacket', 'c_ukr_pants', 'c_ukr_boots'], 3],
+    [['c_desert_top', 'c_desert_pants', 'c_desert_boots'], 2.5],
+    [['c_smock', 'c_flora_pants', 'c_kirza'], 2.5],
+    [['c_acu_shirt', 'c_acu_pants', 'c_combat_boots'], 2],
+    [['c_mil_suit', null, 'c_combat_boots'], 2],
+    [['c_fw_top', 'c_fw_pants', 'c_fw_boots'], 1.2],
+    [['c_desert_top', 'c_ukr_pants', 'c_ukr_boots'], 1],
+    [['c_smock', 'c_kneepad_pants', 'c_combat_boots'], 1],
+  ],
+  // A boss's own men: the heavy units.
+  guard: [
+    [['c_swat_uniform', null, 'c_swat_boots'], 3],
+    [['c_fsb_uniform', null, 'c_swat_boots'], 2.5],
+    [['c_fsb_uniform', null, 'c_kirza'], 1],
+    [['c_mil_suit', null, 'c_ukr_boots'], 2],
+    [['c_ukr_jacket', 'c_ukr_pants', 'c_ukr_boots'], 1],
+  ],
+  boss: [[['c_kitel', 'c_officer_pants', 'c_officer_boots'], 1]],
+};
+
+/**
+ * Raiders, guards and bosses wear their unit's uniform (whole sets, now and then a balaclava or a cap): all of
+ * it items, loot on their body like a scav's clothes.
+ */
+export function dressSoldier(eq: Equipment, rng: Rng, archetype: 'raider' | 'guard' | 'boss'): void {
+  const [top, pants, boots] = rng.weighted(UNIFORMS[archetype]);
+  const hat = pickDef(rng, archetype === 'guard' ? [[null, 2], ['c_balaclava', 2], ['c_balaclava_tan', 0.5]] : [[null, 4], ['c_balaclava', 1.5], ['c_balaclava_tan', 1], ['c_green_cap', 1], ['c_patrol_cap', 0.4]]);
+  dressOutfit(eq, [top, pants, boots, hat]);
+}
+
+/** Fixed outfits (item ids, any order) of the people you meet by name and of the bosses. */
+export const OUTFITS: Record<string, readonly string[]> = {
+  // Bosses
+  zhuk: ['c_fsb_uniform', 'c_swat_boots', 'c_balaclava'],
+  gorelov: ['c_kitel', 'c_officer_pants', 'c_officer_boots'],
+  kostia: ['c_swat_uniform', 'c_swat_boots'],
+  bohdan: ['c_smock', 'c_flora_pants', 'c_kirza', 'c_balaclava_tan'],
+  rina: ['c_fw_top', 'c_fw_pants', 'c_fw_boots'],
+  // NPCs
+  lena: ['c_survivor_top', 'c_police_pants', 'c_strap_boots'],
+  mykola: ['c_bomber', 'c_work_pants', 'c_tall_boots'],
+  vera: ['c_bomber', 'c_ripped_jeans', 'c_strap_boots'],
+  taras: ['c_desert_top', 'c_ukr_pants', 'c_ukr_boots', 'c_green_cap'],
+  yaryna: ['c_fw_top', 'c_fw_pants', 'c_combat_boots'],
+  ostap: ['c_smock', 'c_desert_pants', 'c_desert_boots'],
+};
+
+/** Put these clothes on (each in its own slot; nulls skipped). Whatever was in a clothing slot comes off. */
+export function dressOutfit(eq: Equipment, ids: readonly (string | null | undefined)[]): Equipment {
+  for (const sl of ['hat', 'top', 'pants', 'boots'] as const) eq.slots[sl] = null;
+  for (const id of ids) {
+    if (!id) continue;
+    const slot = getDef(id).clothing?.slot;
+    if (slot) eq.slots[slot] = createItem(id, { fir: true });
+  }
+  return eq;
 }
 
 /** Plain clothes for a fresh survivor (and the free kit when broke). */

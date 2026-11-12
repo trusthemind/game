@@ -4,6 +4,9 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   ALL_ITEMS,
   createEquipment,
+  generateLoadout,
+  Rng,
+  type BotArchetype,
   createItem,
   getDef,
   installPart,
@@ -12,13 +15,14 @@ import {
   type Actor,
   type ItemInstance,
 } from '@ashfall/engine';
-import { BODY_IDS, bodySex, CLOTH_SOURCES, loadAssets, loadBodies } from '../render/assets';
+import { BODY_IDS, CLOTH_SOURCES, loadAssets, loadBodies } from '../render/assets';
 import { buildGun } from '../render/gunsmith';
 import { GEAR_MODEL, wornGear } from '../render/gearModels';
 import { assembleGun, loadWeaponParts } from '../render/weaponAssembly';
 import { attachSkinned, cloneHuman } from '../render/human';
-import { CharacterView, lookFor, renderPortrait, type Appearance } from '../render/character';
+import { actorLook, CharacterView, lookFor, renderPortrait, type Appearance } from '../render/character';
 import { SHAPE_PRESETS, shapeStats } from '../render/bodyShape';
+import { FACE_PRESETS } from '@ashfall/engine';
 import type { WorldUniforms } from '../render/patches';
 
 /** Dev-only lineup of characters/outfits/weapons (open /#charlab). Used for visual checks and screenshots. */
@@ -100,21 +104,20 @@ export function CharLab() {
       { look: lookFor(14, 'scav'), eq: [], active: 'melee', speed: 0 },
       { look: lookFor(15, 'scav'), eq: [], active: 'melee', speed: 1.4 },
     ];
-    if (view === 'bodies') {
-      // Rigged Sketchfab bodies on our skeleton: idle with a rifle, walking, aiming, and one with our kit on.
-      // `&ids=swat,fem_ops` shows just those (all of them in a row otherwise, plus three moving).
+    if (view === 'bodies' || view === 'crowd') {
+      // Bots as the raid dresses them (generateLoadout: uniforms, armour, helmets, packs) on their seeded looks
+      // and body shapes. `&arch=guard` one archetype (default: scav, raider, guard, boss, three each).
       cast.length = 0;
-      const only = new URLSearchParams(location.hash.split('?')[1] ?? '').get('ids');
-      const ids: string[] = only ? only.split(',') : [...BODY_IDS];
-      ids.forEach((id, i) => {
-        const look = { ...lookFor(i + 3, 'raider'), body: id, sex: bodySex(id) };
-        cast.push({ look, eq: ['ak74m:primary'], active: 'primary', speed: 0 });
+      const only = new URLSearchParams(location.hash.split('?')[1] ?? '').get('arch');
+      const archs = (only ? only.split(',') : ['scav', 'raider', 'guard', 'boss']) as BotArchetype[];
+      archs.forEach((arch, j) => {
+        for (let i = 0; i < (only ? 10 : 3); i++) {
+          const seed = j * 100 + i + 7;
+          const eq = generateLoadout(arch, new Rng(seed), 2);
+          const ids = (Object.entries(eq.slots) as [string, { def: string } | null][]).filter(([sl, it]) => it && sl !== 'secondary' && sl !== 'melee' && sl !== 'secure').map(([sl, it]) => `${it!.def}:${sl}`);
+          cast.push({ look: actorLook(lookFor(seed, arch), eq), eq: ids, active: eq.slots.primary ? 'primary' : 'melee', speed: 0 });
+        }
       });
-      if (!only) {
-        cast.push({ look: { ...lookFor(4, 'raider'), body: 'swat', sex: 'm' }, eq: ['akm:primary'], active: 'primary', speed: 1.4 });
-        cast.push({ look: { ...lookFor(6, 'raider'), body: 'fem_ops', sex: 'f' }, eq: ['pm:secondary'], active: 'secondary', speed: 3.2 });
-        cast.push({ look: { ...lookFor(5, 'raider'), body: 'fem_jacket', sex: 'f' }, eq: ['axe:melee'], active: 'melee', speed: 0 });
-      }
       const span = cast.length * 1.35;
       cam.position.set(0, 2.2, Math.max(9.5, span * 1.25));
       cam.lookAt(0, 1.0, 0);
@@ -122,15 +125,14 @@ export function CharLab() {
       (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
     }
     if (view === 'kit') {
-      // Each body bare, then in a carrier, helmet and rig: worn kit must replace the model's own, never stack on it.
-      // `&ids=pmc_a,fem_jacket` (default: the player's two).
+      // Each body bare, then in a carrier, helmet and rig. `&ids=m,f` (default: both).
       cast.length = 0;
       // `&kit=gzhel:armor,r_scav:rig` other kit (default: trooper, zsh, r_alpha); `&bare=0` leaves the bare ones out.
       const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
       const only = q.get('ids');
       const kit = (q.get('kit') ?? 'trooper:armor,zsh:helmet,r_alpha:rig').split(',').filter(Boolean);
-      for (const id of only ? only.split(',') : ['pmc_a', 'fem_jacket']) {
-        const look = { ...lookFor(3, 'raider'), body: id || undefined, sex: id ? bodySex(id) : ('m' as const) };
+      for (const id of only ? only.split(',') : ['m', 'f']) {
+        const look = { ...lookFor(3, 'raider'), sex: id === 'f' ? ('f' as const) : ('m' as const) };
         if (q.get('bare') !== '0') cast.push({ look, eq: ['ak74m:primary'], active: 'primary', speed: 0 });
         cast.push({ look, eq: ['ak74m:primary', ...kit], active: 'primary', speed: 0 });
       }
@@ -153,12 +155,15 @@ export function CharLab() {
         ['f', 'c_bomber', 'c_desert_pants', 'c_desert_boots', 'c_balaclava_tan'],
         ['m'],
       ];
-      // `&gun=ak74m`: everyone aiming it, to see the clothes with the arms up.
-      const gun = new URLSearchParams(location.hash.split('?')[1] ?? '').get('gun');
+      // `&gun=ak74m`: everyone aiming it, to see the clothes with the arms up. `&fits=m:c_a,c_b;f:c_c` other outfits.
+      const wq = new URLSearchParams(location.hash.split('?')[1] ?? '');
+      const gun = wq.get('gun');
+      const fits = wq.get('fits');
+      if (fits) outfits.splice(0, outfits.length, ...fits.split(';').map((f) => [f.split(':')[0]!, ...(f.split(':')[1] ?? '').split(',').filter(Boolean)] as [string, ...string[]]));
       outfits.forEach(([sex, ...ids], i) => {
         const base = lookFor(i + 60, 'scav');
         const eq = [...ids.map((id) => `${id}:${getDef(id).clothing!.slot}`), ...(gun ? [`${gun}:primary`] : [])];
-        cast.push({ look: { ...base, sex: sex as 'm' | 'f', hair: sex === 'f' ? 'ponytail' : base.hair, body: undefined, hat: null, clothed: true }, eq, active: gun ? 'primary' : 'melee', speed: 0 });
+        cast.push({ look: { ...base, sex: sex as 'm' | 'f', hair: sex === 'f' ? 'ponytail' : base.hair, hat: null, clothed: true }, eq, active: gun ? 'primary' : 'melee', speed: 0 });
       });
       cam.position.set(0, 1.5, 10);
       cam.lookAt(0, 1.0, 0);
@@ -186,7 +191,7 @@ export function CharLab() {
         // `&gun=ak74m`: aiming it (arms up: shoulder guards and side panels against the arms).
         const gun = q.get('gun');
         const eq = [...bottoms.map((c) => `${c}:${getDef(c).clothing!.slot}`), `${id}:${slot}`, ...more, ...(slot === 'armor' ? ['ssh36:helmet'] : []), ...(gun ? [`${gun}:primary`] : [])];
-        cast.push({ look: { ...base, sex, body: undefined, hat: null, clothed: true }, eq, active: gun ? 'primary' : 'melee', speed: 0 });
+        cast.push({ look: { ...base, sex, hat: null, clothed: true }, eq, active: gun ? 'primary' : 'melee', speed: 0 });
         void i;
       });
       cam.position.set(0, 1.45, Math.max(3.2, ids.length * 0.7));
@@ -202,10 +207,11 @@ export function CharLab() {
       const presets = SHAPE_PRESETS[sex];
       const gun = q.get('gun');
       const wear = [q.get('top') ?? 'c_bomber', 'c_trousers', 'c_shoes'].map((c) => `${c}:${getDef(c).clothing!.slot}`);
-      const kit = q.get('armor') === '0' ? [] : ['trooper:armor'];
+      // `&eq=b_attack:backpack,ssh68:helmet` more kit (rigid gear rides on the shaped body).
+      const kit = [...(q.get('armor') === '0' ? [] : ['trooper:armor']), ...(q.get('eq') ?? '').split(',').filter(Boolean)];
       for (const name of Object.keys(presets)) {
         const base = lookFor(61, 'scav');
-        const look = { ...base, sex, hair: sex === 'f' ? ('ponytail' as const) : ('messy' as const), body: undefined, hat: null, clothed: true, shape: presets[name] };
+        const look = { ...base, sex, hair: sex === 'f' ? ('ponytail' as const) : ('messy' as const), hat: null, clothed: true, shape: presets[name] };
         cast.push({ look, eq: [...wear, ...kit, ...(gun ? [`${gun}:primary`] : [])], active: gun ? 'primary' : 'melee', speed: 0 });
       }
       cam.position.set(0, 1.45, Math.max(3.4, cast.length * 0.8));
@@ -213,10 +219,23 @@ export function CharLab() {
       (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
       (window as unknown as { __shapeStats: unknown }).__shapeStats = shapeStats;
     }
+    if (view === 'faceshapes') {
+      // Faces (shape.ts FACE_PRESETS) side by side, bare-headed, close up: `&sex=f`.
+      cast.length = 0;
+      const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
+      const sex: 'm' | 'f' = q.get('sex') === 'f' ? 'f' : 'm';
+      for (const name of Object.keys(FACE_PRESETS)) {
+        const look = { ...lookFor(61, 'scav'), sex, hair: sex === 'f' ? ('bob' as const) : ('buzz' as const), beard: false, hat: null, clothed: true, shape: SHAPE_PRESETS[sex].average, face: FACE_PRESETS[name] };
+        cast.push({ look, eq: ['c_bomber:top', 'c_trousers:pants', 'c_shoes:boots'], active: 'melee', speed: 0 });
+      }
+      cam.position.set(0, 1.62, 2.6);
+      cam.lookAt(0, 1.6, 0);
+      (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
+    }
     if (view === 'gestures') {
       // Reloads and treatment by hand, looping: AK, pistol, pump gun; dressing an arm, a leg, splint, injector.
       cast.length = 0;
-      const base = (i: number) => ({ ...lookFor(i + 3, 'raider'), body: 'pmc_a', sex: 'm' as const });
+      const base = (i: number) => ({ ...lookFor(i + 3, 'raider'), sex: 'm' as const });
       cast.push({ look: base(0), eq: ['ak74m:primary'], active: 'primary', speed: 0, reload: true });
       cast.push({ look: base(1), eq: ['pm:secondary'], active: 'secondary', speed: 0, reload: true });
       cast.push({ look: base(2), eq: ['mp133:primary'], active: 'primary', speed: 0, reload: true });
@@ -539,7 +558,7 @@ export function CharLab() {
                 ? Math.PI / 2 - 0.9
                 : view === 'gear'
                   ? Math.PI / 2 + [-0.7, 0.7, 2.6, -0.4, 3.4][i % 5]!
-                  : Math.PI / 2,
+                  : Math.PI / 2 + Number(new URLSearchParams(location.hash.split('?')[1] ?? '').get('face') ?? 0),
           crouching: !!c.crouch,
           sprinting: false,
           eq,

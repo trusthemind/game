@@ -208,7 +208,7 @@ function monoMap(tex: THREE.Texture, base: number, gain: number): THREE.Texture 
 
 /** The texture re-toned: its mean brightness becomes `base`, its detail (brightness over the mean) raised to the
  * power `contrast`, and a little of its own hue kept (sRGB). */
-function toneMap(tex: THREE.Texture, base: number, contrast: number, uv?: THREE.BufferAttribute | THREE.InterleavedBufferAttribute): THREE.Texture | null {
+export function toneMap(tex: THREE.Texture, base: number, contrast: number, uv?: THREE.BufferAttribute | THREE.InterleavedBufferAttribute): THREE.Texture | null {
   const img = tex.image as CanvasImageSource & { width: number; height: number };
   if (!img?.width || typeof document === 'undefined') return null;
   const c = document.createElement('canvas');

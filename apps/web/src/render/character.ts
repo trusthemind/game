@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { CLOTHING_SLOTS, Rng, getDef, type Actor, type ClothingSlot, type Corpse, type Equipment, type ItemInstance } from '@ashfall/engine';
+import { CLOTHING_SLOTS, Rng, faceFromSeed, getDef, NEUTRAL_SHAPE, npcShape, OUTFITS, resolveFace, resolveShape, SHAPE_PRESETS, type Actor, type ClothingSlot, type Corpse, type Equipment, type ItemInstance, type PlayerLook } from '@ashfall/engine';
 import { bodySettled, loadBodies, type AssetLibrary } from './assets';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
 import { faceTexture, type FaceSpec } from './facePainter';
@@ -8,12 +8,12 @@ import { buildGun, gunKey } from './gunsmith';
 import { armorModel, BACKPACK_TINT, hatModel, helmetModel, rigModel, slingModel } from './gear3d';
 import { bakeRigid } from './bakeRigid';
 import { CLOTH_KIT, DEFAULT_OUTFITS, type KitPiece } from './clothKit';
-import { ARMOR_KIT, armorSources, holdToSpine, layerOver, type ArmorKit } from './armorKit';
+import { ARMOR_KIT, ARMOR_TONE, armorSources, holdToSpine, layerOver, type ArmorKit } from './armorKit';
 import { HEAVY_MELEE, meleeModel, REVERSE_GRIP } from './melee3d';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import { itemModel } from './thumbnails';
 import { offscreenRenderer } from './offscreen';
-import { GEAR_MODEL, wornGear } from './gearModels';
+import { GEAR_MODEL, toneMap, wornGear } from './gearModels';
 import {
   fitHelmet,
   fitPack,
@@ -26,8 +26,8 @@ import {
   type TorsoField,
 } from './gearFit';
 import { attachSkinned, cloneHuman, type HumanParts } from './human';
-import { heightFactor, shapeKey, shapeMesh, ShapeField, withNeutral, type BodyShape } from './bodyShape';
-import { fitToRest, gltfMeshNames, rebindToSkeleton } from './rebind';
+import { heightFactor, restPoints, shapeKey, shapeMesh, ShapeField, withNeutral, type BodyShape, type FaceShape } from './bodyShape';
+import { fitToRest, gltfMeshNames } from './rebind';
 import { ease, newPalm, palmFrame, reachPalm, type Arm } from './armIK';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -74,9 +74,6 @@ export interface Appearance {
   feet?: 'ranger' | 'peasant';
   hat?: Hat | null;
   hatColor?: number;
-  /** A rigged character model (models/bodies/<id>.glb) instead of the modelled body + outfit: it brings its
-   * own face, clothes and kit, and is rebound onto our skeleton so every animation and attachment works. */
-  body?: string;
   /** Dressed from their kit: the hat / top / trousers / boots items they wear (see wearClothes). */
   clothed?: boolean;
   /** Clothes: real garments from rigged models (see clothKit.ts), fitted to this body. Unset: an outfit picked
@@ -84,6 +81,8 @@ export interface Appearance {
   kit?: Worn[];
   /** Body shape (bodyShape.ts) on our modelled body: unset is the base mesh. */
   shape?: BodyShape;
+  /** Face sliders (shape.ts FaceShape): brow, jaw, chin, nose, cheekbones; unset is the modelled face. */
+  face?: FaceShape;
 }
 export type Worn = KitPiece & { slot: ClothingSlot; id: string };
 
@@ -96,9 +95,8 @@ const DRAB_TOPS = [0x4f553a, 0x5a4632, 0x55595b, 0x2b3346, 0x6b5b45, 0x3d4a3a, 0
 const DRAB_PANTS = [0x3a4558, 0x2e3324, 0x45403a, 0x2b2b2e, 0x524634];
 
 /** Deterministic look per actor so the same bot looks the same every frame / reload. */
-/** `armored`: whether they go in wearing body armour (see ARMORED_BODIES). */
-export function lookFor(seed: number, archetype: string, npcId?: string, bossId?: string, armored = true): Appearance {
-  const kit = (ids: string[]) => (armored ? ids : ids.filter((id) => !ARMORED_BODIES.has(id)));
+/** Everybody is one of our two bodies; their clothes come from the items they wear (actorLook). */
+export function lookFor(seed: number, archetype: string, npcId?: string, bossId?: string): Appearance {
   if (npcId && NPC_LOOKS[npcId]) return NPC_LOOKS[npcId]!;
   if (bossId && BOSS_LOOKS[bossId]) return BOSS_LOOKS[bossId]!;
   const rng = new Rng(seed * 7919 + archetype.length);
@@ -122,6 +120,9 @@ export function lookFor(seed: number, archetype: string, npcId?: string, bossId?
       [2, 2],
     ] as const),
     scars: rng.chance(archetype === 'raider' || archetype === 'guard' ? 0.35 : 0.1),
+    // One of a dozen shapes per sex (npcShape): their baked meshes are shared across the crowd.
+    shape: npcShape(sex, seed * 31 + archetype.length),
+    face: faceFromSeed(seed * 17 + archetype.length),
   };
   // Clothing: mix pack pieces and prints so a crowd doesn't look like clones.
   const civ = (): Partial<Appearance> => {
@@ -215,17 +216,6 @@ export function lookFor(seed: number, archetype: string, npcId?: string, bossId?
         ...camo(),
         gloves: 0x1a1a1a,
         boots: 0x1a1816,
-        // Guards (a boss's own men) wear the heavy kit; raiders anything military.
-        body:
-          archetype === 'guard'
-            ? rng.pick(kit(sex === 'f' ? ['fem_ops', 'fem_police'] : ['swat', 'swat_mc', 'pmc_heavy', 'rus_a']))
-            : rng.pick(
-                kit(
-                  sex === 'f'
-                    ? ['fem_w2', 'fem_ops', 'fem_jacket']
-                    : ['pmc_a', 'fsb', 'pmc_heavy', 'swat_mc', 'ukr_a', 'ukr_b', 'rus_a'],
-                ),
-              ),
       };
     case 'boss':
       return { ...base, top: 0x3b2622, topStyle: 'coat', pants: 0x1f1f22, beard: true, hair: 'buzz', gloves: 0x1a1a1a };
@@ -241,13 +231,8 @@ export function lookFor(seed: number, archetype: string, npcId?: string, bossId?
         pants: (c.pants ?? base.pants) & 0x7f7f7f,
       };
     }
-    default: {
-      // Some scavengers wear a whole rigged model: women more often, there are more civilian ones of those.
-      const c: Appearance = { ...base, ...civ() };
-      if (archetype === 'scav' && rng.chance(sex === 'f' ? 0.6 : 0.3))
-        c.body = rng.pick(kit(sex === 'f' ? ['fem_jacket', 'fem_leather', 'fem_police', 'fem_w2'] : ['ukr_b', 'rus_a', 'pmc_a']));
-      return c;
-    }
+    default:
+      return { ...base, ...civ() };
   }
 }
 
@@ -362,36 +347,14 @@ const VEST_FIT = new Map<string, { geos: THREE.BufferGeometry[]; over: TorsoFiel
 /** Armour and rigs from the kit (armorKit.ts) laid over a body: per measured body, item and what is under it. */
 const ARMOR_FIT = new Map<string, { geos: THREE.BufferGeometry[]; over: TorsoField }>();
 
-/**
- * Kit a rigged body comes modelled with, matched on "<body> <glTF mesh> <material>". Armour, helmets, goggles and
- * pouches are items: they show only when worn, drawn by syncGear, so the model's own are always hidden (the
- * soldiers' "Hats" are helmets). A cap comes off under a helmet.
- */
-const SF_KIT = /helmet|headgear|night_vis|plate|armors|pouch|puches|^(ukr_a|ukr_b|rus_a) hats_/i;
-const SF_HAT = / (hats|cap)_/i;
-/**
- * Bodies whose armour is part of the jacket (one mesh, one texture), so it can't come off: only someone actually
- * wearing a carrier gets one of these.
- */
-export const ARMORED_BODIES = new Set(['ukr_a', 'ukr_b', 'rus_a', 'fem_ops', 'swat_mc']);
-function kitVisibility(meshes: THREE.SkinnedMesh[], helmet: boolean): void {
-  for (const m of meshes) {
-    const part = String(m.userData.part ?? '');
-    m.visible = !SF_KIT.test(part) && !(helmet && SF_HAT.test(part));
-  }
-}
-
 /** The player's own survivor: persisted body/hair choices + a practical scavenger outfit. */
-export function playerAppearance(look: {
-  sex: 'm' | 'f';
-  skin: number;
-  hair: string;
-  hairColor: number;
-  beard: boolean;
-}): Appearance {
+export function playerAppearance(look: PlayerLook): Appearance {
+  const { shape, face, ...rest } = look;
   return {
-    ...look,
+    ...rest,
     hair: look.hair as HairStyle,
+    shape: resolveShape(look.sex, shape),
+    face: resolveFace(face),
     top: 0x4b5138,
     topStyle: 'jacket',
     pants: 0x3a3a30,
@@ -422,7 +385,6 @@ export function wearClothes(look: Appearance, eq: Equipment | null): Appearance 
   const top = kit.find((k) => k.slot === 'top');
   return {
     ...look,
-    body: undefined,
     clothed: true,
     kit,
     top: color('top', BARE.top),
@@ -487,9 +449,9 @@ export function armorKitModel(lib: AssetLibrary, defId: string): THREE.Object3D 
   for (const p of kit.pieces) {
     const g = lib.bodies.get(p.body)!;
     const re = new RegExp(p.part, 'i');
-    for (const m of fitToRest(g.scene, gltfMeshNames(g as never), g.animations[0], iconBody.model, iconBody.body.skeleton.bones, (mt) => worldMat(mt as THREE.MeshStandardMaterial, NO_FOW, null), (n) => re.test(n), `${p.body}|${p.part}|icon`)) {
+    for (const m of fitToRest(g.scene, gltfMeshNames(g as never), g.animations[0], iconBody.model, iconBody.body.skeleton.bones, (mt) => worldMat(mt as THREE.MeshStandardMaterial, NO_FOW, null), (n) => re.test(n), `${p.body}|${p.part}|icon`, true)) {
       m.parent?.remove(m);
-      out.add(new THREE.Mesh(m.geometry, m.material));
+      out.add(new THREE.Mesh(m.geometry, Array.isArray(m.material) ? m.material : armorMat(m.material, defId, m.geometry, NO_FOW)));
     }
   }
   return out.children.length ? out : null;
@@ -500,9 +462,8 @@ export const clothingSource = (defId: string): string | null => CLOTH_KIT[defId]
 /** Every rigged model an item worn from the kit comes from: a garment's, or an armour's or rig's pieces'. */
 export const kitSources = (defId: string): string[] => (CLOTH_KIT[defId] ? [CLOTH_KIT[defId]!.body] : armorSources(defId));
 
-/** Every rigged model a look needs loaded: its whole body, or the ones its clothes come from. */
+/** Every rigged model a look needs loaded: the ones its clothes come from. */
 export function lookBodies(look: Appearance): string[] {
-  if (look.body) return [look.body];
   return [...new Set(kitFor(look).map((k) => k.body))];
 }
 
@@ -511,9 +472,14 @@ export function actorLook(look: Appearance, eq: Equipment | null): Appearance {
   return look.clothed || CLOTHING_SLOTS.some((s) => eq?.slots[s]) ? wearClothes(look, eq) : look;
 }
 
+/** A named person's own clothes (OUTFITS in the engine), for when they are drawn without their kit. */
+const outfit = (id: string): Worn[] => (OUTFITS[id] ?? []).flatMap((c) => worn(c) ?? []);
+
 const BOSS_LOOKS: Record<string, Appearance> = {
   kostia: {
+    kit: outfit('kostia'),
     sex: 'm',
+    shape: SHAPE_PRESETS.m.heavy,
     skin: 0xe3b08e,
     hair: 'buzz',
     hairColor: 0x2a201a,
@@ -528,7 +494,9 @@ const BOSS_LOOKS: Record<string, Appearance> = {
     scars: true,
   },
   bohdan: {
+    kit: outfit('bohdan'),
     sex: 'm',
+    shape: SHAPE_PRESETS.m.stocky,
     skin: 0xc99069,
     hair: 'short',
     hairColor: 0x8c8a86,
@@ -542,7 +510,9 @@ const BOSS_LOOKS: Record<string, Appearance> = {
     age: 2,
   },
   rina: {
+    kit: outfit('rina'),
     sex: 'f',
+    shape: SHAPE_PRESETS.f.athletic,
     skin: 0xf1c8a8,
     hair: 'long',
     hairColor: 0x7c3b21,
@@ -559,7 +529,9 @@ const BOSS_LOOKS: Record<string, Appearance> = {
 
 const NPC_LOOKS: Record<string, Appearance> = {
   lena: {
+    kit: outfit('lena'),
     sex: 'f',
+    shape: SHAPE_PRESETS.f.slim,
     skin: 0xf1c8a8,
     hair: 'ponytail',
     hairColor: 0x7c3b21,
@@ -571,10 +543,11 @@ const NPC_LOOKS: Record<string, Appearance> = {
     gloves: null,
     eyes: 0x4f6a3a,
     age: 0,
-    body: 'fem_jacket',
   },
   mykola: {
+    kit: outfit('mykola'),
     sex: 'm',
+    shape: SHAPE_PRESETS.m.heavy,
     skin: 0xe3b08e,
     hair: 'short',
     hairColor: 0x8c8a86,
@@ -586,10 +559,11 @@ const NPC_LOOKS: Record<string, Appearance> = {
     gloves: 0x5a4632,
     eyes: 0x3a5a7a,
     age: 2,
-    body: 'pmc_a',
   },
   vera: {
+    kit: outfit('vera'),
     sex: 'f',
+    shape: SHAPE_PRESETS.f.average,
     skin: 0xe3b08e,
     hair: 'bob',
     hairColor: 0x1c1612,
@@ -601,10 +575,11 @@ const NPC_LOOKS: Record<string, Appearance> = {
     gloves: null,
     eyes: 0x2a1d14,
     age: 1,
-    body: 'fem_leather',
   },
   taras: {
+    kit: outfit('taras'),
     sex: 'm',
+    shape: SHAPE_PRESETS.m.athletic,
     skin: 0xd9a582,
     hair: 'buzz',
     hairColor: 0x3a2a1c,
@@ -617,10 +592,11 @@ const NPC_LOOKS: Record<string, Appearance> = {
     eyes: 0x5a6a7a,
     age: 1,
     scars: true,
-    body: 'ukr_a',
   },
   yaryna: {
+    kit: outfit('yaryna'),
     sex: 'f',
+    shape: SHAPE_PRESETS.f.slim,
     skin: 0xf3d0b4,
     hair: 'bun',
     hairColor: 0x2a1a12,
@@ -632,10 +608,11 @@ const NPC_LOOKS: Record<string, Appearance> = {
     gloves: null,
     eyes: 0x3a2a1a,
     age: 0,
-    body: 'fem_ops',
   },
   ostap: {
+    kit: outfit('ostap'),
     sex: 'm',
+    shape: SHAPE_PRESETS.m.stocky,
     skin: 0xc68a62,
     hair: 'short',
     hairColor: 0xb8b4ac,
@@ -647,7 +624,6 @@ const NPC_LOOKS: Record<string, Appearance> = {
     gloves: 0x4a3828,
     eyes: 0x4a3a2a,
     age: 2,
-    body: 'ukr_b',
   },
 };
 
@@ -831,7 +807,7 @@ function bodyMaterial(a: Appearance, u: WorldUniforms, dead = false): THREE.Mesh
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
-          '#include <common>\nattribute float aRegion;\nattribute vec3 aFace;\nvarying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vFace;',
+          '#include <common>\nattribute float aRegion;\nattribute vec3 aFace;\nflat varying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vFace;',
         )
         .replace(
           '#include <begin_vertex>',
@@ -840,7 +816,7 @@ function bodyMaterial(a: Appearance, u: WorldUniforms, dead = false): THREE.Mesh
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform vec3 uPal[7];\nuniform sampler2D uFaceTex;\nuniform float uDead;\nvarying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vFace;',
+          '#include <common>\nuniform vec3 uPal[7];\nuniform sampler2D uFaceTex;\nuniform float uDead;\nflat varying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vFace;',
         )
         .replace(
           '#include <color_fragment>',
@@ -982,6 +958,8 @@ function humanBodyMaterial(
   // always show, forearms under short sleeves, and any part with no garment on it (the painted base layer).
   const on = (slot: ClothingSlot) => clothed && kitFor(a).some((k) => k.slot === slot);
   const top = kitFor(a).find((k) => k.slot === 'top');
+  // vRegion is a flat varying: interpolated, the face (0) to scalp (8) border ran through 1..7 and drew (or,
+  // under a top, discarded: a see-through strip) a thin band of other regions across the forehead.
   const hide = [0, 0, on('top') ? 1 : 0, on('top') && !top?.short ? 1 : 0, on('pants') ? 1 : 0, on('boots') ? 1 : 0, 0, 0, kitFor(a).some((k) => k.slot === 'hat' && k.underHelmet) && clothed ? 1 : 0];
   patchWorldMaterial(m, u, {
     pre: (shader) => {
@@ -994,7 +972,7 @@ function humanBodyMaterial(
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
-          '#include <common>\nattribute float aRegion;\nattribute float aNape;\nuniform float uNapeIn;\nvarying float vRegion;\nvarying vec3 vObjPos;',
+          '#include <common>\nattribute float aRegion;\nattribute float aNape;\nuniform float uNapeIn;\nflat varying float vRegion;\nvarying vec3 vObjPos;',
         )
         .replace(
           '#include <begin_vertex>',
@@ -1003,7 +981,7 @@ function humanBodyMaterial(
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform vec3 uPal[9];\nuniform vec3 uSkinTint;\nuniform float uSkinMask[9];\nuniform float uHide[9];\nvarying float vRegion;\nvarying vec3 vObjPos;',
+          '#include <common>\nuniform vec3 uPal[9];\nuniform vec3 uSkinTint;\nuniform float uSkinMask[9];\nuniform float uHide[9];\nflat varying float vRegion;\nvarying vec3 vObjPos;',
         )
         .replace(
           '#include <map_fragment>',
@@ -1076,6 +1054,32 @@ function clothMat(src: THREE.MeshStandardMaterial, u: WorldUniforms): THREE.Mesh
     m.roughnessMap = null;
     m.roughness = 0.85;
   } else m.roughness = Math.max(m.roughness, 0.85);
+  patchWorldMaterial(m, u, { key: 'eyes' });
+  humanMatCache.set(key, m);
+  return m;
+}
+
+/**
+ * A carried armour piece's material: its texture re-toned to the item's colour (armorKit.ts ARMOR_TONE) so it stands
+ * off the clothes under it, a touch of sheen for its edges to catch the light, and a faint glow of its own colour
+ * so it still reads at night. `geo` gives the UVs the piece uses (for the texture's mean).
+ */
+function armorMat(src: THREE.Material, defId: string, geo: THREE.BufferGeometry, u: WorldUniforms): THREE.Material {
+  const tone = ARMOR_TONE[defId];
+  const s = src as THREE.MeshStandardMaterial;
+  if (!tone || !s.isMeshStandardMaterial) return src;
+  const key = `${s.uuid}|armor|${defId}`;
+  let m = humanMatCache.get(key);
+  if (m) return m;
+  m = s.clone();
+  const map = s.map ? toneMap(s.map, tone.base, tone.contrast, geo.attributes.uv as THREE.BufferAttribute | undefined) : null;
+  if (map) (m.map = map), m.color.setRGB(1, 1, 1);
+  else m.color.setHex(tone.base);
+  m.roughnessMap = null;
+  m.roughness = 0.72;
+  m.metalness = 0;
+  m.emissive.setHex(tone.base).multiplyScalar(0.06);
+  m.emissiveMap = null;
   patchWorldMaterial(m, u, { key: 'eyes' });
   humanMatCache.set(key, m);
   return m;
@@ -1243,28 +1247,19 @@ function attachToBone(mesh: THREE.SkinnedMesh, boneName: string, obj: THREE.Obje
 const UPPER = /^(spine_02|spine_03|neck_01|Head|clavicle|upperarm|lowerarm|hand|index|middle|pinky|ring|thumb)/;
 const LOWER = /^(root|pelvis|spine_01|thigh|calf|foot|ball)/;
 const filtered = new Map<string, THREE.AnimationClip>();
-/** Rebound body (id|sex) → how far it's raised to stand on its soles (CharacterView.soleLift). */
-const SOLE_LIFT = new Map<string, { lift: number; hip: number }>();
-
-/** Bones whose position the clips may set on a rebound body (everything else keeps the body's own proportions). */
-const MOVING = /^(root|pelvis)\.position$/;
-
-/**
- * One layer of a clip. `ownProportions`: a rebound body (rigged model on our skeleton) has its own bone lengths,
- * so the clip's per-bone position keys (authored for our mannequin) are dropped and only rotations drive it.
- */
-function layerClip(lib: AssetLibrary, name: string, layer: 'upper' | 'lower' | 'full', ownProportions = false): THREE.AnimationClip | null {
-  const key = `${name}:${layer}:${ownProportions ? 1 : 0}`;
+/** One layer of a clip (the clips key only rotations, and the root's and pelvis's positions: see assets.ts). */
+function layerClip(lib: AssetLibrary, name: string, layer: 'upper' | 'lower' | 'full'): THREE.AnimationClip | null {
+  const key = `${name}:${layer}`;
   const hit = filtered.get(key);
   if (hit) return hit;
   const src = lib.clips.get(name);
   if (!src) return null;
-  if (layer === 'full' && !ownProportions) return src;
-  const re = layer === 'upper' ? UPPER : layer === 'lower' ? LOWER : /./;
+  if (layer === 'full') return src;
+  const re = layer === 'upper' ? UPPER : LOWER;
   const clip = new THREE.AnimationClip(
-    `${name}_${layer}${ownProportions ? '_own' : ''}`,
+    `${name}_${layer}`,
     src.duration,
-    src.tracks.filter((t) => re.test(t.name) && (!ownProportions || !t.name.endsWith('.position') || MOVING.test(t.name))),
+    src.tracks.filter((t) => re.test(t.name)),
   );
   filtered.set(key, clip);
   return clip;
@@ -1284,6 +1279,14 @@ const _ikB = new THREE.Vector3();
 const _ikP = new THREE.Vector3();
 const _ikS = new THREE.Vector3();
 const _curlQ = new THREE.Quaternion();
+const _hv = new THREE.Vector3();
+const _hv2 = new THREE.Vector3();
+const _hup = new THREE.Vector3(0, 1, 0);
+const _hm = new THREE.Matrix4();
+const _hq0 = new THREE.Quaternion();
+const _hq1 = new THREE.Quaternion();
+const _hq2 = new THREE.Quaternion();
+const _hq3 = new THREE.Quaternion();
 const _curlZ = new THREE.Vector3(0, 0, 1);
 /**
  * How far each joint of a finger bends (radians, root to tip) round what the hand holds: a pistol grip or a
@@ -1350,22 +1353,18 @@ export class CharacterView {
   private aimT = 0;
   private rig!: RigInfo;
   private human: HumanParts | null = null;
-  /** Wearing a rigged model's own clothes and face (no hair, hats or outfit pieces of ours). */
-  private sfBody = false;
-  /** That model's own meshes (see SF_KIT: its helmet, plates and pouches only show as items we draw). */
-  private sfMeshes: THREE.SkinnedMesh[] = [];
   /** How much bulkier that model's torso is than the body armour shells are cut from (metres): see torsoPad. */
   private shellPad = 0;
   /** Our body's bones as they stand at rest (local transforms), to fit clothes and armour to whatever the pose. */
   private restPose: [THREE.Vector3, THREE.Quaternion, THREE.Vector3][] = [];
-  /** A rebound body's lift onto its soles (soleLift), scaled each frame by the pelvis height. */
-  private stand: { lift: number; hip: number; pelvis: THREE.Bone } | null = null;
   /** Calling in an extraction on the radio (standing still in the zone while its timer runs). */
   extracting = false;
   dead = false;
   private hidden = false;
   /** The body shape's displacement field (bodyShape.ts), built at rest on first use. */
   private shapeField: ShapeField | null = null;
+  /** Rigid gear on bones and where each meets the body (see applyShape). */
+  private rigidGear: { holder: THREE.Group; at: THREE.Vector3 }[] = [];
 
   constructor(
     private lib: AssetLibrary,
@@ -1395,11 +1394,8 @@ export class CharacterView {
     if (!rigInfos.has(src)) rigInfos.set(src, analyseRig(skinnedMeshes, !human));
     this.rig = rigInfos.get(src)!;
     this.bodyMeshes = skinnedMeshes;
-    const sfBody = human && look.body ? (lib.bodies.get(look.body) ?? null) : null;
-    let rebound: THREE.SkinnedMesh[] = [];
-    this.sfBody = !!sfBody;
-    // Our own bodies wear real clothes (clothKit); a rigged model wears its own.
-    const outfit = human && !sfBody;
+    // Our own bodies wear real clothes (clothKit).
+    const outfit = !!human;
     for (const m of skinnedMeshes) {
       m.material = human
         ? humanBodyMaterial(human.body.material as THREE.MeshStandardMaterial, look, u, false, !!outfit)
@@ -1419,21 +1415,6 @@ export class CharacterView {
       const bindK = heightScale(src, look.sex === 'f' ? 1.66 : 1.8);
       this.model.scale.setScalar(bindK * (outfit ? heightFactor(look.shape) : 1));
       if (outfit) this.wearKit(kitFor(look));
-      if (sfBody) {
-        for (const m of [human.body, human.eyes, human.brows]) if (m) m.visible = false;
-        ({ meshes: rebound } = rebindToSkeleton(sfBody.scene, sfBody.animations[0], this.model, human.body.skeleton.bones, (m) => worldMat(m as THREE.MeshStandardMaterial, u, null), `${look.body}|${look.sex}`));
-        for (const m of rebound) m.castShadow = shadows;
-        // Name each piece by its glTF mesh too: the nodes are just Object_N, and some exports share one material
-        // between a hat, a mask and gloves.
-        const meshName = new Map<string, string>();
-        sfBody.scene.traverse((o) => {
-          const i = sfBody.parser.associations.get(o)?.meshes;
-          if (i !== undefined) meshName.set(o.name, String(sfBody.parser.json.meshes[i]?.name ?? ''));
-        });
-        for (const m of rebound) m.userData.part = `${look.body} ${meshName.get(m.name) ?? ''} ${m.userData.part ?? ''}`;
-        this.sfMeshes = rebound;
-        kitVisibility(rebound, false);
-      }
     } else this.model.scale.setScalar(CHAR_SCALE);
     this.root.add(this.model);
     this.handR = this.skinned.skeleton.getBoneByName('hand_r') ?? null;
@@ -1446,28 +1427,6 @@ export class CharacterView {
     this.applyShape();
     this.root.add(this.gear);
     this.setLower('Idle_Loop', 1, 'full');
-    const pelvis = this.skinned.skeleton.getBoneByName('pelvis');
-    if (rebound.length && pelvis) this.stand = { ...this.soleLift(`${look.body}|${look.sex}`, rebound, pelvis), pelvis };
-    if (rebound.length && human) this.shellPad = this.torsoPad(`${look.body}|${look.sex}`, human.body, rebound);
-  }
-
-  /**
-   * How far to raise a rebound body so its soles rest on the ground standing idle (the clips keep the mannequin's
-   * pelvis height, and these bodies have longer legs, so they would stand ankle-deep), and the pelvis's height in
-   * that pose. Measured once per body.
-   */
-  private soleLift(key: string, meshes: THREE.SkinnedMesh[], pelvis: THREE.Bone): { lift: number; hip: number } {
-    let s = SOLE_LIFT.get(key);
-    if (s) return s;
-    this.mixer.update(0);
-    this.root.updateMatrixWorld(true);
-    let low = Infinity;
-    const v = new THREE.Vector3();
-    for (const m of meshes)
-      for (let i = 0, n = m.geometry.attributes.position!.count; i < n; i++) low = Math.min(low, m.getVertexPosition(i, v).applyMatrix4(m.matrixWorld).y);
-    s = { lift: Number.isFinite(low) ? -low : 0, hip: pelvis.position.length() };
-    SOLE_LIFT.set(key, s);
-    return s;
   }
 
   /**
@@ -1523,7 +1482,7 @@ export class CharacterView {
 
   /** What this body is and wears, as far as fitting gear to it goes. */
   private fitKey(): string {
-    return `${this.look.sex}|${this.look.body ?? ''}|${clothesKey(this.look)}|${this.outfitMeshes.length}`;
+    return `${this.look.sex}|${clothesKey(this.look)}|${this.outfitMeshes.length}`;
   }
 
   /** This body measured as it is dressed (gearFit.ts), once per body and set of clothes; null for the mannequin. */
@@ -1534,14 +1493,12 @@ export class CharacterView {
     let fit = BODY_FIT.get(key);
     if (fit === undefined) {
       const slot = (m: THREE.SkinnedMesh) => (m.userData.worn as Worn | undefined)?.slot;
-      // A rigged body stands in for ours whole, less the kit it's modelled with (that comes off, see SF_KIT).
-      const own = this.sfMeshes.filter((m) => !SF_KIT.test(String(m.userData.part ?? '')) && !SF_HAT.test(String(m.userData.part ?? '')));
       fit = withNeutral([human.body, ...this.outfitMeshes], () => measureBody(
         human.body,
-        this.sfBody ? own : this.outfitMeshes.filter((m) => slot(m) !== 'hat'),
-        this.sfBody ? [] : this.outfitMeshes.filter((m) => slot(m) === 'hat' && (m.userData.worn as Worn).underHelmet),
+        this.outfitMeshes.filter((m) => slot(m) !== 'hat'),
+        this.outfitMeshes.filter((m) => slot(m) === 'hat' && (m.userData.worn as Worn).underHelmet),
         human.eyes,
-        !this.sfBody,
+        true,
       ));
       BODY_FIT.set(key, fit);
     }
@@ -1556,7 +1513,6 @@ export class CharacterView {
     const rig = this.rig;
     const a = this.look;
     const head = this.bone(/^head$/i);
-    if (this.sfBody) return;
     if (this.human) {
       const clothed = this.outfitMeshes.length > 0;
       this.buildHair();
@@ -1647,7 +1603,7 @@ export class CharacterView {
       const re = new RegExp(p.part, 'i');
       this.atRest(() =>
         meshes.push(
-          ...fitToRest(g.scene, gltfMeshNames(g as never), g.animations[0], this.model, bones, (m) => clothMat(m as THREE.MeshStandardMaterial, this.u), (n) => re.test(n), `${p.body}|${p.part}|${this.look.sex}`),
+          ...fitToRest(g.scene, gltfMeshNames(g as never), g.animations[0], this.model, bones, (m) => clothMat(m as THREE.MeshStandardMaterial, this.u), (n) => re.test(n), `${p.body}|${p.part}|${this.look.sex}`, true),
         ),
       );
     }
@@ -1670,6 +1626,7 @@ export class CharacterView {
       ARMOR_FIT.set(key, (hit = { geos, over: withLayer(under, inBind, 0.03 * k) }));
     }
     meshes.forEach((m, i) => {
+      if (!Array.isArray(m.material)) m.material = armorMat(m.material, id, m.geometry, this.u);
       m.geometry = hit.geos[i]!;
       m.userData.rigidShape = true;
       m.castShadow = true;
@@ -1695,7 +1652,7 @@ export class CharacterView {
    * hair and the body's mask are rebuilt; a garment whose model hasn't loaded yet goes on once it has.
    */
   private redress(eq: Equipment): void {
-    if (!this.look.clothed || !this.human || this.sfBody) return;
+    if (!this.look.clothed || !this.human) return;
     const next = wearClothes(this.look, eq);
     if (clothesKey(next) === clothesKey(this.look)) return;
     const missing = lookBodies(next).filter((b) => !bodySettled(this.lib, b));
@@ -1713,19 +1670,59 @@ export class CharacterView {
     this.applyShape();
   }
 
+  private eyeField: ShapeField | null = null;
+  /** Between the eyes, at their front, at rest in the model's space (the face's landmark for bodyShape.ts). */
+  private eyeMark(): THREE.Vector3 | null {
+    const eyes = this.human?.eyes;
+    if (!eyes?.isSkinnedMesh) return null;
+    const pts = restPoints(eyes, this.model, 3);
+    if (!pts.length) return null;
+    const sum = new THREE.Vector3();
+    let zMax = -Infinity;
+    for (const p of pts) (sum.add(p), (zMax = Math.max(zMax, p.z)));
+    return sum.multiplyScalar(1 / pts.length).setZ(zMax);
+  }
+
   /**
    * Shape the body and everything skinned to it (clothes, armour, hair) by the look's body shape (bodyShape.ts):
    * all were fitted to the neutral body and take the same displacement, so they keep fitting. Cached per mesh
    * geometry and shape; anything already shaped is left as it is.
    */
   private applyShape(): void {
-    const key = shapeKey(this.look.shape);
-    if (!this.human || this.sfBody || !key) return;
+    const key = shapeKey(this.look.shape, this.look.face);
+    if (!this.human || !key) return;
     this.atRest(() => {
-      this.shapeField ??= ShapeField.fromBones(this.human!.body.skeleton.bones, this.model, this.look.shape!, this.look.sex);
+      const field = (this.shapeField ??= ShapeField.fromBones(
+        this.human!.body.skeleton.bones,
+        this.model,
+        this.look.shape ?? NEUTRAL_SHAPE,
+        this.look.sex,
+        this.look.face ?? null,
+        this.eyeMark(),
+      ));
       const all: THREE.SkinnedMesh[] = [];
       this.model.traverse((o) => (o as THREE.SkinnedMesh).isSkinnedMesh && all.push(o as THREE.SkinnedMesh));
-      for (const m of all) shapeMesh(m, this.model, this.shapeField, `${this.look.sex}|${key}`);
+      const eyes = this.human!.eyes;
+      for (const m of all)
+        if (m === eyes) shapeMesh(m, this.model, (this.eyeField ??= field.bodyOnly()), `${this.look.sex}|${key}|eyes`);
+        else shapeMesh(m, this.model, field, `${this.look.sex}|${key}`);
+      // Rigid gear on a bone (packs, a sling, helmets, pouches) isn't bent: it moves as one, by the field where it
+      // sits (the field depends on height and direction round the body, not on distance out), so a pack stays on
+      // a broader back instead of sinking into it.
+      if (!this.rigidGear.length) return;
+      const toModel = new THREE.Matrix4().copy(this.model.matrixWorld).invert();
+      const p = new THREE.Vector3();
+      const d = new THREE.Vector3();
+      const back = new THREE.Matrix3();
+      for (const { holder, at } of this.rigidGear) {
+        const parent = holder.parent;
+        if (!parent) continue;
+        p.copy(at).applyMatrix4(parent.matrixWorld).applyMatrix4(toModel);
+        field.at(p, d);
+        // Model space → world → the holder's parent's space (directions only, scale included).
+        d.applyMatrix3(back.setFromMatrix4(this.model.matrixWorld)).applyMatrix3(back.setFromMatrix4(parent.matrixWorld).invert());
+        holder.position.copy(d);
+      }
     });
   }
 
@@ -1756,10 +1753,15 @@ export class CharacterView {
     for (const g of this.gearAttachments) g.parent?.remove(g);
     this.gearAttachments = [];
     const rig = this.rig;
+    this.rigidGear = [];
     const add = (bone: RegExp, obj: THREE.Object3D) => {
       bakeRigid(obj);
       const holder = new THREE.Group();
       holder.add(obj);
+      // Where it meets the body, in the holder's own (bind) space: the body shape moves it by as much (applyShape).
+      obj.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(obj);
+      if (!box.isEmpty()) this.rigidGear.push({ holder, at: box.getCenter(new THREE.Vector3()) });
       attachToBone(this.skinned, this.bone(bone), holder);
       this.gearAttachments.push(holder.parent ?? holder);
     };
@@ -1796,7 +1798,6 @@ export class CharacterView {
     const cc = chest.getCenter(new THREE.Vector3());
     const cs = chest.getSize(new THREE.Vector3());
 
-    kitVisibility(this.sfMeshes, !!s.helmet);
     // Headwear from the kit: caps come off under a helmet, a balaclava stays on.
     let capOn = false;
     let maskOn = false;
@@ -1807,12 +1808,11 @@ export class CharacterView {
       if (w.underHelmet) maskOn = true;
       else if (m.visible) capOn = true;
     }
-    const hat = !s.helmet && !this.sfBody && !this.human && this.look.hat && !this.look.zombie ? this.look.hat : null;
+    const hat = !s.helmet && !this.human && this.look.hat && !this.look.zombie ? this.look.hat : null;
     // Hats and helmets sit over short hair; long hair stays (it hangs below the rim). A balaclava covers it all.
     for (const h of this.hairMeshes) h.visible = !maskOn && (!(s.helmet || capOn || (hat && hat !== 'bandana')) || /Long/.test(h.name));
-    // Brows and a beard are under it too (they'd poke through the knit). Not on a rigged body: our head (and its
-    // brows) stays hidden under it, and showing them again left our brows floating in and out of its face.
-    if (this.human && !this.sfBody)
+    // Brows and a beard are under it too (they'd poke through the knit).
+    if (this.human)
       this.model.traverse((o) => {
         if ((o as THREE.Mesh).isMesh && /eyebrow|beard/i.test(o.name)) o.visible = !maskOn;
       });
@@ -1899,7 +1899,8 @@ export class CharacterView {
     const wear = (id: string, spec: ArmorSpec | undefined): boolean => {
       const body = this.human?.body;
       if (!spec || !body) return false;
-      const parts = shellParts(body, id, spec, this.shellPad);
+      // Cut from the neutral body (applyShape shapes the shells with it; cut from a shaped one they'd go twice).
+      const parts = withNeutral([body], () => shellParts(body, id, spec, this.shellPad));
       for (const { shell, color } of parts)
         for (const geo of [shell.geometry, shell.rim]) {
           const m = new THREE.SkinnedMesh(geo, shellMat(spec, color, shell.frame.k, this.u));
@@ -1918,14 +1919,14 @@ export class CharacterView {
     };
     // Bulk of the clothes under it (see torsoPad), as a share of the chest's width: a rigged body's own, or the
     // top worn from the kit.
-    if ((s.armor || s.rig) && this.human && !this.sfBody) {
+    if ((s.armor || s.rig) && this.human) {
       const tops = this.outfitMeshes.filter((m) => (m.userData.worn as Worn | undefined)?.slot === 'top');
       this.shellPad = tops.length ? this.torsoPad(`kit|${(tops[0]!.userData.worn as Worn).id}|${this.look.sex}`, this.human.body, tops) : 0;
     }
     const bulk = 1 + this.shellPad * 2.2;
     // Armour and rigs on our own bodies are the soldiers' own (armorKit.ts, wearArmor), once the models they come
     // from have loaded (nothing until then); the models below (gear.glb, gearFit.ts) only when one failed to load.
-    const kitOf = (it: ItemInstance | null | undefined) => (it && this.human && !this.sfBody && measured ? ARMOR_KIT[it.def] : undefined);
+    const kitOf = (it: ItemInstance | null | undefined) => (it && this.human && measured ? ARMOR_KIT[it.def] : undefined);
     const kitArmor = kitOf(s.armor);
     const kitRig = kitOf(s.rig);
     const waiting = [s.armor, s.rig].flatMap((it) => (it && kitOf(it) ? armorSources(it.def) : [])).filter((b) => !bodySettled(this.lib, b));
@@ -2137,7 +2138,7 @@ export class CharacterView {
       if (this.lower) this.lower.timeScale = timeScale;
       return;
     }
-    const clip = layerClip(this.lib, name, layer, this.sfBody);
+    const clip = layerClip(this.lib, name, layer);
     if (!clip) return;
     const next = this.mixer.clipAction(clip);
     const sameClip = this.lowerName.split(':')[0] === name;
@@ -2161,7 +2162,7 @@ export class CharacterView {
     this.upper = null;
     this.upperName = name ?? '';
     if (name) {
-      const clip = layerClip(this.lib, name, 'upper', this.sfBody);
+      const clip = layerClip(this.lib, name, 'upper');
       if (clip) {
         const next = this.mixer.clipAction(clip);
         next.reset().play();
@@ -2173,7 +2174,7 @@ export class CharacterView {
   }
 
   private playOneShot(name: string, layer: 'upper' | 'full', speed = 1): void {
-    const clip = layerClip(this.lib, name, layer, this.sfBody);
+    const clip = layerClip(this.lib, name, layer);
     if (!clip) return;
     const a = this.mixer.clipAction(clip);
     // Already on (the next shot of a burst, or a one-shot still fading out): restart at full weight. Fading it
@@ -2300,12 +2301,42 @@ export class CharacterView {
       this.yawSaved.length = 0;
       this.mixer.update(dt);
       this.twistLegs(a, dt, moving && !zombie && !sprint && !a.crouching ? along : null);
-      // The longer legs hold the body up by less as the clip folds them (crouching): lift with the pelvis.
-      if (this.stand && !this.dead) this.model.position.y = (this.stand.lift * this.stand.pelvis.position.length()) / this.stand.hip;
+      this.liftHead(dt);
     }
     this.placeHeld(a, dt);
     if (!this.hidden) this.proceduralArms(a, dt);
     this.placeTreatProp();
+  }
+
+  private headLift = 0;
+  private headBone: THREE.Bone | null | undefined;
+  /**
+   * The gun stances bow the head ~20° over the sights; from the raid camera (~59° above) the face was then all
+   * crown, and under a helmet nothing but the dome. While a gun is up, level the gaze (eased; at most
+   * ~30°), on top of the clip (restored next frame like the leg twist).
+   */
+  private liftHead(dt: number): void {
+    if (this.headBone === undefined) this.headBone = this.skinned.skeleton.bones.find((b) => /^head$/i.test(b.name)) ?? null;
+    const h = this.headBone;
+    const goal = this.gunUp && !this.dead ? 1 : 0;
+    this.headLift += (goal - this.headLift) * Math.min(1, dt * 8);
+    if (!h || !h.parent || this.headLift < 0.01) return;
+    // Where the face points now: the bind pose's forward (+z) carried by the head's rotation since bind.
+    h.parent.updateWorldMatrix(true, false);
+    const parentQ = h.parent.getWorldQuaternion(_hq2);
+    const world = _hq3.copy(parentQ).multiply(h.quaternion);
+    const i = this.skinned.skeleton.bones.indexOf(h);
+    _hm.copy(this.skinned.skeleton.boneInverses[i]!);
+    _hq0.setFromRotationMatrix(_hm.extractRotation(_hm));
+    const fwd = _hv.set(0, 0, 1).applyQuaternion(_hq0).applyQuaternion(world).normalize();
+    // Level the gaze (aiming at someone on the same ground): up by however far the stance bows it, at most ~30°.
+    const down = Math.asin(THREE.MathUtils.clamp(-fwd.y, -1, 1)) - 0.04;
+    if (down <= 0) return;
+    const axis = _hv2.crossVectors(fwd, _hup);
+    if (axis.lengthSq() < 1e-8) return;
+    this.yawSaved.push([h, h.quaternion.clone()]);
+    const lift = _hq1.setFromAxisAngle(axis.normalize(), Math.min(0.52, down) * this.headLift);
+    h.quaternion.copy(parentQ.invert().multiply(lift.multiply(world)));
   }
 
   // ── Procedural hands: reloads and treatment, IK on top of the animated pose ───────────────────────────

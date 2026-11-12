@@ -14,56 +14,14 @@ import * as THREE from 'three';
  * Bones are not moved: most clips key every bone's position and scale, which would undo it (height is the
  * model's scale instead).
  */
-export interface BodyShape {
-  /** Each -1..1, 0 = the base mesh. */
-  height: number;
-  shoulders: number;
-  chest: number;
-  waist: number;
-  belly: number;
-  hips: number;
-  glutes: number;
-  thighs: number;
-  calves: number;
-  arms: number;
-}
+import { FACE_KEYS, NEUTRAL_SHAPE, type BodyShape, type FaceShape } from '@ashfall/engine';
+export { NEUTRAL_SHAPE, SHAPE_PRESETS, shapeFromSeed, type BodyShape, type FaceShape } from '@ashfall/engine';
 
-export const NEUTRAL_SHAPE: BodyShape = { height: 0, shoulders: 0, chest: 0, waist: 0, belly: 0, hips: 0, glutes: 0, thighs: 0, calves: 0, arms: 0 };
-
-const P = (s: Partial<BodyShape>): BodyShape => ({ ...NEUTRAL_SHAPE, ...s });
-export const SHAPE_PRESETS: Record<'m' | 'f', Record<string, BodyShape>> = {
-  m: {
-    average: NEUTRAL_SHAPE,
-    slim: P({ height: 0.2, shoulders: -0.5, chest: -0.6, waist: -0.7, belly: -0.6, hips: -0.5, glutes: -0.4, thighs: -0.6, calves: -0.4, arms: -0.6 }),
-    athletic: P({ shoulders: 0.8, chest: 0.7, waist: -0.4, belly: -0.5, glutes: 0.2, thighs: 0.5, calves: 0.4, arms: 0.8 }),
-    heavy: P({ height: -0.1, shoulders: 0.4, chest: 0.6, waist: 0.9, belly: 1, hips: 0.6, glutes: 0.5, thighs: 0.7, calves: 0.4, arms: 0.6 }),
-    stocky: P({ height: -0.6, shoulders: 0.6, chest: 0.4, waist: 0.4, belly: 0.3, thighs: 0.5, calves: 0.5, arms: 0.5 }),
-  },
-  f: {
-    average: NEUTRAL_SHAPE,
-    slim: P({ height: 0.2, shoulders: -0.4, chest: -0.5, waist: -0.6, belly: -0.5, hips: -0.5, glutes: -0.4, thighs: -0.6, calves: -0.3, arms: -0.5 }),
-    curvy: P({ chest: 0.8, waist: -0.3, hips: 0.9, glutes: 0.8, thighs: 0.6, calves: 0.2 }),
-    pear: P({ shoulders: -0.3, chest: -0.2, hips: 1, glutes: 0.7, thighs: 0.9, calves: 0.4 }),
-    athletic: P({ shoulders: 0.5, chest: -0.1, waist: -0.4, belly: -0.5, glutes: 0.5, thighs: 0.5, calves: 0.5, arms: 0.5 }),
-    heavy: P({ height: -0.1, shoulders: 0.3, chest: 0.8, waist: 0.9, belly: 0.9, hips: 0.8, glutes: 0.6, thighs: 0.8, calves: 0.4, arms: 0.6 }),
-  },
-};
-
-/** An NPC's shape: a preset by seed, jittered a little (deterministic). */
-export function shapeFromSeed(sex: 'm' | 'f', seed: number): BodyShape {
-  let s = (seed * 2654435761) >>> 0;
-  const rnd = () => ((s = (Math.imul(s ^ (s >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0) / 4294967296);
-  const names = Object.keys(SHAPE_PRESETS[sex]);
-  const base = SHAPE_PRESETS[sex][names[Math.floor(rnd() * names.length)]!]!;
-  const out = { ...base };
-  for (const k of Object.keys(out) as (keyof BodyShape)[]) out[k] = THREE.MathUtils.clamp(out[k] + (rnd() - 0.5) * 0.3, -1, 1);
-  return out;
-}
-
-export function shapeKey(s: BodyShape | undefined): string {
-  if (!s) return '';
-  const v = (Object.keys(NEUTRAL_SHAPE) as (keyof BodyShape)[]).map((k) => Math.round((s[k] ?? 0) * 20));
-  return v.every((x) => x === 0) ? '' : v.join(',');
+/** The cache key of a body shape and face ('' for the modelled body and face as they are). */
+export function shapeKey(s: BodyShape | undefined, face?: FaceShape): string {
+  const v = s ? (Object.keys(NEUTRAL_SHAPE) as (keyof BodyShape)[]).map((k) => Math.round((s[k] ?? 0) * 20)) : [];
+  const f = face ? FACE_KEYS.map((k) => Math.round((face[k] ?? 0) * 20)) : [];
+  return [...v, ...f].every((x) => x === 0) ? '' : `${v.join(',')}|${f.join(',')}`;
 }
 
 /** The model's scale for a shape's height (±6%). */
@@ -89,17 +47,30 @@ interface Marks {
   thigh: THREE.Vector3[];
   calf: THREE.Vector3[];
   foot: THREE.Vector3[];
+  /** Between the eyes, at their front (the face's landmark), if the model has eyes. */
+  eye: THREE.Vector3 | null;
 }
 
 /** The displacement field of one shape on one skeleton (built at rest, in the model's space). */
 export class ShapeField {
+  /** The sliders as the field uses them: a fuller build (+) goes further than a leaner one (-), which a limb's
+   * own thickness limits (a slim thigh can't lose as much as a heavy one gains). */
+  private s: BodyShape;
+  /** The model's height scale for this shape (rigid armour is scaled back by it: one size for everyone). */
+  readonly k: number;
   constructor(
     private m: Marks,
-    private s: BodyShape,
+    s: BodyShape,
     private sex: 'm' | 'f',
-  ) {}
+    private face: FaceShape | null = null,
+  ) {
+    this.k = heightFactor(s);
+    const out = { ...s };
+    for (const k of Object.keys(out) as (keyof BodyShape)[]) out[k] = out[k] > 0 ? out[k] * GAIN_UP : out[k] * GAIN_DOWN;
+    this.s = out;
+  }
 
-  static fromBones(bones: THREE.Bone[], model: THREE.Object3D, s: BodyShape, sex: 'm' | 'f'): ShapeField {
+  static fromBones(bones: THREE.Bone[], model: THREE.Object3D, s: BodyShape, sex: 'm' | 'f', face: FaceShape | null = null, eye: THREE.Vector3 | null = null): ShapeField {
     model.updateMatrixWorld(true);
     const inv = new THREE.Matrix4().copy(model.matrixWorld).invert();
     const at = (n: string) => {
@@ -108,10 +79,48 @@ export class ShapeField {
     };
     const lr = (n: string) => [at(`${n}_l`), at(`${n}_r`)];
     return new ShapeField(
-      { pelvis: at('pelvis'), s1: at('spine_01'), s2: at('spine_02'), s3: at('spine_03'), neck: at('neck_01'), ua: lr('upperarm'), la: lr('lowerarm'), hand: lr('hand'), thigh: lr('thigh'), calf: lr('calf'), foot: lr('foot') },
+      { pelvis: at('pelvis'), s1: at('spine_01'), s2: at('spine_02'), s3: at('spine_03'), neck: at('neck_01'), ua: lr('upperarm'), la: lr('lowerarm'), hand: lr('hand'), thigh: lr('thigh'), calf: lr('calf'), foot: lr('foot'), eye },
       s,
       sex,
+      face,
     );
+  }
+
+  /** The same body without the face (for the eyes themselves: the brow moves over them, they don't move). */
+  bodyOnly(): ShapeField {
+    const f = new ShapeField(this.m, NEUTRAL_SHAPE, this.sex);
+    f.s = this.s;
+    (f as { k: number }).k = this.k;
+    return f;
+  }
+
+  /** The face's part of D(p): brow ridge, jaw, chin, nose, cheekbones, round the eyes (metres, model space). */
+  private faceAt(p: THREE.Vector3, out: THREE.Vector3): void {
+    const F = this.face;
+    const e = this.m.eye;
+    if (!F || !e) return;
+    const dx = p.x - e.x;
+    const dy = p.y - e.y;
+    const dz = p.z - e.z;
+    if (dy > 0.08 || dy < -0.16 || Math.abs(dx) > 0.11 || dz < -0.13) return;
+    const ax = Math.abs(dx);
+    const sx = dx >= 0 ? 1 : -1;
+    // Only the face: fading out towards the ears and behind the jaw.
+    const front = smooth(-0.075, -0.02, dz);
+    const jawSide = smooth(-0.12, -0.05, dz);
+    // Brow ridge: forward over the eyes.
+    const brow = F.brow * 0.014 * bump(dy, 0.026, 0.022) * bump(ax, 0.028, 0.045) * front;
+    // Nose: forward along the middle, from the bridge to the tip.
+    const nose = F.nose * 0.014 * bump(dy, -0.03, 0.032) * bump(dx, 0, 0.017) * front;
+    // Cheekbones: out and a little forward, under the outer corner of the eyes.
+    const cheek = F.cheeks * bump(dy, -0.028, 0.028) * bump(ax, 0.048, 0.03) * front;
+    // Jaw: wider or narrower from below the ears to the chin's sides.
+    const jaw = F.jaw * 0.02 * bump(dy, -0.085, 0.045) * smooth(0.012, 0.05, ax) * jawSide;
+    // Chin: forward and a little down.
+    const chin = F.chin * bump(dy, -0.105, 0.032) * bump(dx, 0, 0.032) * front;
+    out.x += sx * (cheek * 0.012 + jaw);
+    out.y -= chin * 0.01;
+    out.z += brow + nose + cheek * 0.006 + chin * 0.016;
   }
 
   /** The spine's depth (z) at a height. */
@@ -169,10 +178,10 @@ export class ShapeField {
         const hipY = m.pelvis.y - 0.03;
         let d = 0;
         d += s.chest * (f ? 0.008 : 0.02) * bump(y, chestY, 0.13) * (0.4 + 0.6 * front);
-        d += s.shoulders * 0.025 * bump(y, m.ua[0]!.y - 0.02, 0.1) * lat * lat;
-        d += s.waist * 0.028 * bump(y, waistY, 0.12) * (0.6 + 0.4 * lat);
-        d += s.belly * (s.belly > 0 ? 0.06 : 0.02) * bump(y, bellyY, 0.15) * front ** 1.5;
-        d += s.hips * 0.035 * bump(y, hipY, 0.13) * lat ** 1.5;
+        d += s.shoulders * 0.03 * bump(y, m.ua[0]!.y - 0.02, 0.1) * lat * lat;
+        d += s.waist * 0.032 * bump(y, waistY, 0.12) * (0.6 + 0.4 * lat);
+        d += s.belly * (s.belly > 0 ? 0.036 : 0.02) * bump(y, bellyY, 0.15) * front ** 1.5;
+        d += s.hips * 0.03 * bump(y, hipY, 0.13) * lat ** 1.5;
         d += s.glutes * 0.035 * bump(y, hipY - 0.04, 0.12) * back ** 1.5;
         out.x += cx * d * wTorso;
         out.z += cz * d * wTorso;
@@ -190,7 +199,7 @@ export class ShapeField {
       const ua = m.ua[side]!;
       const hand = m.hand[side]!;
       const tE = ua.distanceTo(m.la[side]!) / Math.max(1e-6, ua.distanceTo(hand));
-      this.limb(p, ua, hand, wArm, (t) => s.arms * (t < tE ? 0.016 : THREE.MathUtils.lerp(0.012, 0, (t - tE) / (1 - tE))) + s.shoulders * 0.012 * bump(t, 0, tE * 1.2), out);
+      this.limb(p, ua, hand, wArm, (t) => s.arms * (t < tE ? 0.019 : THREE.MathUtils.lerp(0.014, 0, (t - tE) / (1 - tE))) + s.shoulders * 0.012 * bump(t, 0, tE * 1.2), out);
     }
 
     // Legs: each thigh, then calf; hips and glutes carry on down the top of the thigh. Blend the sides at x = 0.
@@ -209,15 +218,21 @@ export class ShapeField {
           const bk = Math.max(0, -dir.z);
           const thigh = t < tK ? 1 - 0.5 * (t / tK) ** 2 : 0.5 * bump(t, tK, 0.12);
           const calf = bump(t, tK + (1 - tK) * 0.35, (1 - tK) * 0.55) * (0.5 + 0.5 * bk);
-          return s.thighs * 0.026 * thigh + s.calves * 0.016 * calf + s.hips * 0.035 * top * lat ** 1.5 + s.glutes * 0.035 * top * bk ** 1.5;
+          return s.thighs * 0.03 * thigh + s.calves * 0.016 * calf + s.hips * 0.03 * top * lat ** 1.5 + s.glutes * 0.035 * top * bk ** 1.5;
         }, out);
       }
     }
-    return out.multiplyScalar(GAIN);
+    this.faceAt(p, out);
+    return out;
   }
 }
-/** Overall strength of the shapes (the amounts above are per unit slider at gain 1). */
-const GAIN = 1.6;
+/**
+ * Overall strength of the shapes (the amounts above are per unit slider at gain 1). At 1.6 a slim or athletic
+ * build moved the clothes 2-3.5 cm at most and nobody could tell the bodies apart from the raid camera; now a
+ * slim waist loses ~5 cm a side, a heavy one gains ~7, athletic shoulders ~6.
+ */
+const GAIN_UP = 2.7;
+const GAIN_DOWN = 2.1;
 
 const _ab = new THREE.Vector3();
 const _ap = new THREE.Vector3();
@@ -255,10 +270,37 @@ export function shapeMesh(mesh: THREE.SkinnedMesh, model: THREE.Object3D, field:
   mesh.geometry = g;
 }
 
+/** A skinned mesh's vertices (every `step`th) as they stand now, in the model's space (bakeShape's skinning). */
+export function restPoints(mesh: THREE.SkinnedMesh, model: THREE.Object3D, step = 1): THREE.Vector3[] {
+  model.updateMatrixWorld(true);
+  const sk = mesh.skeleton;
+  const bmInv = mesh.bindMode === 'attached' ? new THREE.Matrix4().copy(mesh.matrixWorld).invert() : mesh.bindMatrixInverse;
+  const pre = new THREE.Matrix4().copy(model.matrixWorld).invert().multiply(mesh.matrixWorld).multiply(bmInv);
+  const B = sk.bones.map((b, i) => new THREE.Matrix4().multiplyMatrices(pre, b.matrixWorld).multiply(sk.boneInverses[i]!).multiply(mesh.bindMatrix));
+  const geo = (mesh.userData.neutralGeo as THREE.BufferGeometry | undefined) ?? mesh.geometry;
+  const pos = geo.attributes.position!;
+  const si = geo.attributes.skinIndex!;
+  const sw = geo.attributes.skinWeight!;
+  const out: THREE.Vector3[] = [];
+  const v = new THREE.Vector3();
+  const t = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i += step) {
+    const p = new THREE.Vector3();
+    let ws = 0;
+    for (let c = 0; c < 4; c++) {
+      const w = sw.getComponent(i, c);
+      if (!w) continue;
+      ws += w;
+      p.addScaledVector(t.copy(v.fromBufferAttribute(pos, i)).applyMatrix4(B[si.getComponent(i, c)]!), w);
+    }
+    out.push(ws ? p.multiplyScalar(1 / ws) : p.copy(v.fromBufferAttribute(pos, i)));
+  }
+  return out;
+}
+
 /**
- * `rigid`: armour plates and carriers don't bulge with a belly. Round the spine in 16 sectors, each piece moves
- * out by the most the field pushes anything in that sector, upper and lower half apart (so it tilts over a belly
- * rather than wrapping it), and never less than the field there (no clipping).
+ * `rigid`: armour plates and carriers are one size for everyone: they never bulge, widen or stretch with a
+ * shape or a height (see rigidify).
  */
 function bakeShape(mesh: THREE.SkinnedMesh, src: THREE.BufferGeometry, model: THREE.Object3D, field: ShapeField, rigid = false): THREE.BufferGeometry {
   model.updateMatrixWorld(true);
@@ -316,57 +358,92 @@ function bakeShape(mesh: THREE.SkinnedMesh, src: THREE.BufferGeometry, model: TH
   return g;
 }
 
+/**
+ * Armour is one size for everyone. The front and the back (the plates and what's on them) each move as one rigid
+ * piece: out (or in) by as much as the field moves the body under them, upper and lower half apart, which tips
+ * the piece (a true rotation, so it keeps its size) over a belly or a chest instead of wrapping it. Only the side
+ * bands (cummerbund, straps) between them conform: they follow the body's sides and join the two pieces. The
+ * model's height scale is taken back out about the piece's centre, the plates kept as far off the body as before.
+ */
 function rigidify(P: Float32Array, D: Float32Array, field: ShapeField): void {
   const n = P.length / 3;
+  const k = field.k;
   let y0 = Infinity;
   let y1 = -Infinity;
-  for (let i = 0; i < n; i++) (y0 = Math.min(y0, P[i * 3 + 1]!)), (y1 = Math.max(y1, P[i * 3 + 1]!));
-  // Four faces (front +z, back -z, left +x, right -x), each moved straight out as one, by the most the field
-  // pushes it in its upper and lower half; in between by height (it tilts), blended round the corners.
-  const QX = [0, 0, 1, -1];
-  const QZ = [1, -1, 0, 0];
-  const top = [0, 0, 0, 0];
-  const bot = [0, 0, 0, 0];
+  const c = new THREE.Vector3();
+  const lo = new THREE.Vector3(Infinity, Infinity, Infinity);
+  const hi = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+  for (let i = 0; i < n; i++) {
+    lo.min(c.fromArray(P, i * 3));
+    hi.max(c);
+  }
+  c.addVectors(lo, hi).multiplyScalar(0.5);
+  y0 = lo.y;
+  y1 = hi.y;
   const mid = (y0 + y1) / 2;
-  const W = new Float32Array(n * 4);
-  const dir = new Float32Array(n * 2);
-  const rad = new Float32Array(n);
+  const CZ = new Float32Array(n);
+  const CX = new Float32Array(n);
+  // Front (q 0, +z) and back (q 1, -z): the most the field pushes either half out, and how far out the piece is.
+  const top = [-Infinity, -Infinity];
+  const bot = [-Infinity, -Infinity];
+  const out = [0, 0];
+  const cnt = [0, 0];
   for (let i = 0; i < n; i++) {
     const x = P[i * 3]!;
     const y = P[i * 3 + 1]!;
     const z = P[i * 3 + 2]! - field.axisZ(y);
     const r = Math.hypot(x, z) || 1;
-    const cx = x / r;
-    const cz = z / r;
-    dir[i * 2] = cx;
-    dir[i * 2 + 1] = cz;
-    rad[i] = D[i * 3]! * cx + D[i * 3 + 2]! * cz;
-    let ws = 0;
-    for (let q = 0; q < 4; q++) ws += W[i * 4 + q] = Math.max(0, cx * QX[q]! + cz * QZ[q]!) ** 2;
-    for (let q = 0; q < 4; q++) {
-      W[i * 4 + q]! /= ws || 1;
-      if (W[i * 4 + q]! < 0.5) continue;
-      const along = D[i * 3]! * QX[q]! + D[i * 3 + 2]! * QZ[q]!;
-      if (y > mid) top[q] = Math.max(top[q]!, along);
-      else bot[q] = Math.max(bot[q]!, along);
-    }
+    CX[i] = x / r;
+    CZ[i] = z / r;
+    if (Math.abs(CZ[i]!) < 0.5) continue;
+    const q = CZ[i]! > 0 ? 0 : 1;
+    const along = q === 0 ? D[i * 3 + 2]! : -D[i * 3 + 2]!;
+    if (y > mid) top[q] = Math.max(top[q]!, along);
+    else bot[q] = Math.max(bot[q]!, along);
+    out[q]! += Math.abs(P[i * 3 + 2]! - c.z);
+    cnt[q]!++;
   }
-  const yt = (mid + y1) / 2;
-  const yb = (y0 + mid) / 2;
+  for (let q = 0; q < 2; q++) {
+    if (!Number.isFinite(top[q]!)) top[q] = Number.isFinite(bot[q]!) ? bot[q]! : 0;
+    if (!Number.isFinite(bot[q]!)) bot[q] = top[q]!;
+  }
+  const span = Math.max(1e-6, (y1 - y0) / 2);
+  const pz = field.axisZ(mid);
+  // Each piece's pose: a rotation about x through (mid, axis) and a push along z.
+  const pose = (q: number, x: number, y: number, z: number, o: THREE.Vector3) => {
+    const sgn = q === 0 ? 1 : -1;
+    // A plate tips at most ~12° (it rests on a belly, it doesn't follow it) and stands off by as much as it
+    // needs to clear the body at its top and bottom.
+    const tn = THREE.MathUtils.clamp((top[q]! - bot[q]!) / span, -0.2, 0.2);
+    const th = Math.atan(tn) * sgn;
+    const push = Math.max(top[q]! - (tn * span) / 2, bot[q]! + (tn * span) / 2);
+    const cs = Math.cos(th);
+    const sn = Math.sin(th);
+    const dy = y - mid;
+    const dz = z - pz;
+    // The plates kept as far off the body as before once the height scale is taken out (below).
+    const keep = (cnt[q]! ? out[q]! / cnt[q]! : 0) * (1 - 1 / k) * k;
+    o.set(x, mid + dy * cs - dz * sn, pz + dz * cs + dy * sn + sgn * (push + keep));
+    return o;
+  };
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
   for (let i = 0; i < n; i++) {
-    const t = THREE.MathUtils.clamp((P[i * 3 + 1]! - yb) / Math.max(1e-6, yt - yb), 0, 1);
-    let dx = 0;
-    let dz = 0;
-    for (let q = 0; q < 4; q++) {
-      const a = THREE.MathUtils.lerp(bot[q]!, top[q]!, t) * W[i * 4 + q]!;
-      dx += QX[q]! * a;
-      dz += QZ[q]! * a;
-    }
-    // Never inside what the field puts under it.
-    const short = rad[i]! - (dx * dir[i * 2]! + dz * dir[i * 2 + 1]!);
-    if (short > 0) (dx += short * dir[i * 2]!), (dz += short * dir[i * 2 + 1]!);
-    D[i * 3] = dx;
-    D[i * 3 + 2] = dz;
+    const x = P[i * 3]!;
+    const y = P[i * 3 + 1]!;
+    const z = P[i * 3 + 2]!;
+    const wf = THREE.MathUtils.smoothstep(CZ[i]!, -0.35, 0.35);
+    pose(0, x, y, z, a);
+    pose(1, x, y, z, b);
+    a.lerp(b, 1 - wf);
+    // The side bands follow the body's sides (and its height scale, so they stay on them).
+    const wS = THREE.MathUtils.smoothstep(Math.abs(CX[i]!), 0.8, 0.97);
+    a.x += wS * (D[i * 3]! + x * (k - 1));
+    // Height taken back out about the piece's centre: the same size on everyone.
+    a.sub(c).divideScalar(k).add(c);
+    D[i * 3] = a.x - x;
+    D[i * 3 + 1] = a.y - y;
+    D[i * 3 + 2] = a.z - z;
   }
 }
 

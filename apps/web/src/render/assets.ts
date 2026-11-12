@@ -29,13 +29,16 @@ export interface AssetLibrary {
   gear: Map<string, THREE.Object3D>;
   /** Room furniture (beds, sofas, shelves…), front facing +Z, standing on y=0. */
   furniture: Map<string, THREE.Object3D>;
-  /** Rigged Sketchfab bodies on their own skeleton (rebound onto ours per character, see rebind.ts). */
+  /** Rigged Sketchfab models, loaded on demand for the clothes and armour taken from them (see rebind.ts fitToRest). */
   bodies: Map<string, GLTF>;
   /** Sketchfab vehicles (render/vehicle.ts normalises them): id → raw root node. */
   vehicles: Map<string, THREE.Object3D>;
 }
 
-/** Bodies that ship in models/bodies/ (CC BY, credited in models/CREDITS.txt). */
+/**
+ * Soldier models that ship in models/bodies/ (CC BY, credited in models/CREDITS.txt). Nobody is drawn as one any
+ * more: they are sources of clothes (clothKit.ts) and armour (armorKit.ts), loaded on demand when worn.
+ */
 export const BODY_IDS = [
   'pmc_a',
   'fsb',
@@ -54,8 +57,6 @@ export const BODY_IDS = [
 export type BodyId = (typeof BODY_IDS)[number];
 /** Rigged models kept only for their clothes (models/bodies/cl_*.glb, see CLOTH_KIT). */
 export const CLOTH_SOURCES = ['cl_man', 'cl_civ', 'cl_soldier', 'cl_tim', 'cl_alan'] as const;
-/** Female bodies are the fem_* ones (their wearer gets female voice, proportions and portrait). */
-export const bodySex = (id: string): 'm' | 'f' => (id.startsWith('fem') ? 'f' : 'm');
 
 const BASE = `${import.meta.env.BASE_URL}models/`;
 /** Content hash of each model file (vite.config.ts), so a changed gear.glb is never served from an old cache. */
@@ -130,7 +131,7 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
         if (p && !hair.has(p.name)) hair.set(p.name, sm);
       });
       const clips = new Map<string, THREE.AnimationClip>();
-      for (const c of character.animations) clips.set(c.name, stripRootMotion(c));
+      for (const c of character.animations) clips.set(c.name, stripRootMotion(stripStatic(c)));
       for (const g of [weapons, melee, props, nature, mods])
         g.scene.traverse((o) => {
           if ((o as THREE.Mesh).isMesh) o.castShadow = true;
@@ -149,6 +150,22 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
   );
   pending.catch(() => (pending = null));
   return pending;
+}
+
+/**
+ * Every clip keys every bone's position and scale, but only the root and pelvis ever move (the rest hold the rest
+ * pose, the scales are 1). Those tracks are dropped: less work per frame, and the bones' own positions and
+ * scales are free to change (a body shape could move them) without a clip undoing it.
+ */
+function stripStatic(clip: THREE.AnimationClip): THREE.AnimationClip {
+  clip.tracks = clip.tracks.filter((t) => {
+    const dot = t.name.lastIndexOf('.');
+    const bone = t.name.slice(0, dot);
+    const prop = t.name.slice(dot + 1);
+    if (prop === 'scale') return false;
+    return prop !== 'position' || bone === 'root' || bone === 'pelvis';
+  });
+  return clip;
 }
 
 /**

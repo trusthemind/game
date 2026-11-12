@@ -34,6 +34,7 @@ import { DropZoneBox, InventoryRoot, InvHint, ItemGrid } from '../inventory/comp
 import { GearPanel } from '../inventory/GearPanel';
 import { ItemInspector } from '../inventory/ItemInspector';
 import { CharacterPreview } from '../components/CharacterPreview';
+import { CustomizeModal, firstCustomize } from '../components/CustomizeModal';
 import { useEscape } from '../components/useEscape';
 import { makeProfileHost } from '../inventory/hosts';
 import { ItemArt } from '../inventory/ItemArt';
@@ -63,6 +64,11 @@ export function Hideout() {
   const dialogueNpc = useApp((s) => s.dialogueNpc);
   const host = useMemo(() => makeProfileHost(), []);
   const [deploy, setDeploy] = useState(false);
+  const customize = useApp((s) => s.customizeOpen);
+  const setCustomize = useApp((s) => s.setCustomizeOpen);
+  useEffect(() => {
+    if (firstCustomize() && !new URLSearchParams(location.search).has('nointro')) setCustomize(true);
+  }, [setCustomize]);
   const dialogueHost = useMemo(() => (dialogueNpc ? hideoutDialogueHost(dialogueNpc) : null), [dialogueNpc]);
   const lvl = levelFromXp(profile.xp);
 
@@ -89,6 +95,9 @@ export function Hideout() {
           </div>
           <div className="money mono">{fmt(profile.money)} ₵</div>
           <SyncBadge />
+          <button className="btn customize-btn" onClick={() => setCustomize(true)} title="Face, hair, skin and build">
+            Customize
+          </button>
           <button className="btn primary deploy" onClick={() => setDeploy(true)}>
             Deploy ▸
           </button>
@@ -107,6 +116,7 @@ export function Hideout() {
       </InventoryRoot>
 
       {deploy && <DeployModal onClose={() => setDeploy(false)} />}
+      {customize && <CustomizeModal onClose={() => setCustomize(false)} />}
       {dialogueNpc && dialogueHost && (
         <DialogueBox
           key={dialogueNpc}
@@ -177,6 +187,9 @@ function GearTab() {
             <span className="dim">drag to turn</span>
           </div>
           <CharacterPreview />
+          <button className="btn primary customize-cta" onClick={() => useApp.getState().setCustomizeOpen(true)}>
+            Customize character
+          </button>
         </section>
         <ItemInspector />
       </div>

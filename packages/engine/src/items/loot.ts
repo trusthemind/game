@@ -26,7 +26,9 @@ const CLOTHES: Table = [['c_green_cap', 1.2], ['c_patrol_cap', 0.3], ['c_balacla
   ['c_trousers', 1.5], ['c_work_pants', 1.5], ['c_ripped_jeans', 1.2], ['c_police_pants', 0.6], ['c_kneepad_pants', 0.4], ['c_flora_pants', 0.4],
   ['c_desert_pants', 0.4], ['c_acu_pants', 0.4], ['c_officer_pants', 0.15],
   ['c_shoes', 1.2], ['c_sneakers', 1.2], ['c_tall_boots', 1], ['c_police_shoes', 0.6], ['c_kirza', 1], ['c_combat_boots', 0.4], ['c_desert_boots', 0.4],
-  ['c_survivor_boots', 0.4], ['c_officer_boots', 0.15]];
+  ['c_survivor_boots', 0.4], ['c_officer_boots', 0.15],
+  ['c_ukr_jacket', 0.12], ['c_desert_top', 0.25], ['c_mil_suit', 0.1], ['c_swat_uniform', 0.1], ['c_fsb_uniform', 0.08], ['c_fw_top', 0.25],
+  ['c_ukr_pants', 0.25], ['c_fw_pants', 0.25], ['c_ukr_boots', 0.25], ['c_swat_boots', 0.25], ['c_fw_boots', 0.3], ['c_strap_boots', 0.5]];
 const SMALL_VAL: Table = [['chain', 6], ['rolex', 2], ['cpu', 2], ['flash', 2], ['bitcoin', 0.5], ['roubles', 8]];
 
 export const CONTAINERS: Record<ContainerKind, ContainerSpec> = {

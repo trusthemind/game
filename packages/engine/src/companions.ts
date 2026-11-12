@@ -1,7 +1,7 @@
 import { Rng } from './core/rng';
 import { getDef } from './items/defs';
 import { addItem, createItem, equipmentValue, itemValue, type Equipment } from './items/inventory';
-import { generateLoadout } from './items/loadouts';
+import { dressOutfit, generateLoadout, OUTFITS } from './items/loadouts';
 import type { Profile } from './profile';
 
 /**
@@ -125,6 +125,7 @@ export function upgradeCompanionGear(profile: Profile, npcId: string, level: num
   const current = profile.companionEq[npcId];
   const fresh = generateLoadout('raider', new Rng(`${seed}:${npcId}:lvl${level}`), gearTierFor(level));
   fresh.slots.backpack = null;
+  if (OUTFITS[npcId]) dressOutfit(fresh, OUTFITS[npcId]!);
   if (!current) {
     profile.companionEq[npcId] = fresh;
     return true;

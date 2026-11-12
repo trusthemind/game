@@ -265,7 +265,7 @@ export class GameRenderer {
   /** Bodies worn by the player and everyone on the map at the start (loaded before the first frame). */
   bodiesAtStart(): string[] {
     const p = this.raid.player;
-    return [...new Set(this.raid.actors.flatMap((a) => lookBodies(actorLook(a === p ? this.playerLook : lookFor(a.id, a.archetype, a.npcId, a.bossId, !!a.eq.slots.armor), a.eq))))];
+    return [...new Set(this.raid.actors.flatMap((a) => lookBodies(actorLook(a === p ? this.playerLook : lookFor(a.id, a.archetype, a.npcId, a.bossId), a.eq))))];
   }
 
   private prewarm(): void {
@@ -457,7 +457,7 @@ export class GameRenderer {
     for (const a of raid.actors) {
       let v = this.views.get(a.id);
       if (!v) {
-        const look = actorLook(a === p ? this.playerLook : lookFor(a.id, a.archetype, a.npcId, a.bossId, !!a.eq.slots.armor), a.eq);
+        const look = actorLook(a === p ? this.playerLook : lookFor(a.id, a.archetype, a.npcId, a.bossId), a.eq);
         // Someone who spawned mid-raid in a body nobody wore yet appears once it has loaded.
         if (!lookBodies(look).every((b) => bodySettled(this.lib, b))) {
           void loadBodies(this.lib, lookBodies(look));

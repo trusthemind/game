@@ -2,6 +2,7 @@ import type { Rng } from '../core/rng';
 import type { MapId } from '../world/mapGen';
 import type { District } from '../world/map';
 import { addItem, createEquipment, createItem, type Equipment } from './inventory';
+import { dressOutfit, OUTFITS } from './loadouts';
 import { effectiveWeapon, installMod } from './mods';
 
 /**
@@ -63,7 +64,7 @@ export const BOSSES: BossDef[] = [
       eq.slots.rig = createItem('r_bank');
       fill(eq, [['zhuk_orders', 1], ['key_armoury', 1], ['intel', 1], ['grizzly', 1], ['stim', 1], ['a_545bs', 90]]);
       if (rng.chance(0.25)) fill(eq, [[rng.chance(0.2) ? 'sc_gamma' : 'sc_beta', 1]]);
-      return eq;
+      return dressOutfit(eq, OUTFITS.zhuk!);
     },
   },
   {
@@ -88,7 +89,7 @@ export const BOSSES: BossDef[] = [
       eq.slots.rig = createItem('r_bank');
       fill(eq, [['gorelov_chain', 1], ['rolex', 1], ['bitcoin', 1], ['roubles', 60000], ['grizzly', 1], ['a_762bp', 60]]);
       if (rng.chance(0.25)) fill(eq, [['sc_beta', 1]]);
-      return eq;
+      return dressOutfit(eq, OUTFITS.gorelov!);
     },
   },
   {
@@ -112,7 +113,7 @@ export const BOSSES: BossDef[] = [
       eq.slots.backpack = createItem('b_attack');
       fill(eq, [['key_armoury', 1], ['kostia_ring', 1], ['grizzly', 1], ['stim', 1], ['surv12', 1], ['bitcoin', 1], ['a_54r7n1', 40], ['a_556m995', 60], ['intel', 1]]);
       if (rng.chance(0.25)) fill(eq, [[rng.chance(0.2) ? 'sc_gamma' : 'sc_beta', 1]]);
-      return eq;
+      return dressOutfit(eq, OUTFITS.kostia!);
     },
   },
   {
@@ -136,7 +137,7 @@ export const BOSSES: BossDef[] = [
       eq.slots.backpack = createItem('b_pilgrim');
       fill(eq, [['bohdan_claw', 1], ['ifak', 1], ['morphine', 1], ['a_54r7n1', 30], ['tushonka', 2], ['ledx', 1]]);
       if (rng.chance(0.2)) fill(eq, [['sc_beta', 1]]);
-      return eq;
+      return dressOutfit(eq, OUTFITS.bohdan!);
     },
   },
   {
@@ -160,7 +161,7 @@ export const BOSSES: BossDef[] = [
       eq.slots.backpack = createItem('b_daypack');
       fill(eq, [['rina_ledger', 1], ['gpu', 1], ['flash', 2], ['salewa', 1], ['a_9x19ap', 50], ['roubles', 40000]]);
       if (rng.chance(0.25)) fill(eq, [['sc_beta', 1]]);
-      return eq;
+      return dressOutfit(eq, OUTFITS.rina!);
     },
   },
 ];

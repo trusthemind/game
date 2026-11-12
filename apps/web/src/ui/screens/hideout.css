@@ -141,6 +141,16 @@
 .side-col { flex: 1 1 260px; min-width: 200px; max-width: 360px; align-self: stretch; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
 .survivor-panel { flex: 0 0 auto; }
 .survivor-panel .char-preview { height: 330px; min-height: 0; }
+.look-editor { padding: 6px 10px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.look-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.look-row > .dim:first-child { width: 42px; }
+.look-row .btn.active { outline: 1px solid currentColor; }
+.look-row .swatch { width: 16px; height: 16px; border-radius: 50%; border: 1px solid #0006; padding: 0; cursor: pointer; }
+.look-row .swatch.active { outline: 2px solid #e8d9a8; outline-offset: 1px; }
+.look-sliders { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; }
+.look-sliders label { display: flex; align-items: center; gap: 4px; }
+.look-sliders span { width: 58px; opacity: 0.7; }
+.look-sliders input { flex: 1; min-width: 0; }
 .inspector { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .inspector-empty { margin: 0; line-height: 1.5; }
 .inspector-art { display: flex; align-items: center; justify-content: center; height: 170px; margin: 14px 14px 0; border-bottom: 2px solid;
@@ -154,3 +164,22 @@
 
 .offer-icon .item-img { object-fit: contain; }
 .offer-icon .item-img { filter: drop-shadow(0 3px 4px rgba(0,0,0,.5)); }
+
+/* Character customisation (CustomizeModal) */
+.customize { width: min(1080px, 96vw); max-height: 94vh; display: flex; flex-direction: column; }
+.customize-body { display: flex; gap: 16px; padding: 12px 16px; min-height: 0; flex: 1 1 auto; }
+.customize-preview { flex: 1 1 46%; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.customize-preview .char-preview.big { width: 100%; height: min(62vh, 560px); border-radius: 6px; background: radial-gradient(ellipse at 50% 35%, #2a2f2a, #121412 70%); cursor: grab; }
+.customize-controls { flex: 1 1 54%; overflow: auto; min-width: 0; }
+.customize-foot { display: flex; justify-content: flex-end; padding: 0 16px 14px; }
+.customize .look-editor { padding: 0; gap: 14px; font-size: 13px; }
+.look-editor section { display: flex; flex-direction: column; gap: 6px; }
+.look-editor h4 { margin: 0; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-faint); font-weight: 600; }
+.look-row.center { justify-content: center; }
+.look-row .swatch.big { width: 30px; height: 30px; }
+.customize .look-row .swatch { width: 22px; height: 22px; }
+.customize .look-row .swatch.big { width: 34px; height: 34px; }
+.customize .look-sliders span { width: 78px; }
+.survivor-panel .customize-cta { margin: 8px 10px 10px; }
+.topbar .customize-btn { border-color: var(--accent); color: var(--accent-2); }
+@media (max-width: 760px) { .customize-body { flex-direction: column; } .customize-preview .char-preview.big { height: 42vh; } }

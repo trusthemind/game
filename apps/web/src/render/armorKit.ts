@@ -44,6 +44,25 @@ export const ARMOR_KIT: Record<string, ArmorKit> = {
   r_bank: { pieces: [{ body: 'pmc_heavy', part: HEAVY_BELT }] },
 };
 
+/**
+ * The colour each piece is re-toned to (gearModels.ts toneMap: its own texture's detail over this colour), so armour
+ * reads against the clothes under it from the raid camera: the soldiers' prints are near black, as dark as most
+ * jackets. Each item its own tone, the better ones (plate carriers) lighter and cleaner than a soft vest or scav rig,
+ * the top tier (Gzhel, Slick) dark but with its plates and pouches lifted out (`contrast`).
+ */
+export const ARMOR_TONE: Record<string, { base: number; contrast: number }> = {
+  paca: { base: 0x5c6878, contrast: 1.25 },
+  '6b23': { base: 0x666a44, contrast: 1.3 },
+  trooper: { base: 0x6c7464, contrast: 1.3 },
+  pc_tan: { base: 0xa8946c, contrast: 1.35 },
+  slick6: { base: 0x44484c, contrast: 1.55 },
+  gzhel: { base: 0x464c3e, contrast: 1.55 },
+  r_scav: { base: 0x7a6e52, contrast: 1.3 },
+  r_mbss: { base: 0x948866, contrast: 1.3 },
+  r_alpha: { base: 0x5e6848, contrast: 1.4 },
+  r_bank: { base: 0x8a7650, contrast: 1.35 },
+};
+
 /** Every rigged model an armour or rig item's pieces come from. */
 export const armorSources = (defId: string): string[] => [...new Set(ARMOR_KIT[defId]?.pieces.map((p) => p.body) ?? [])];
 

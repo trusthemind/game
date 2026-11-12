@@ -1,5 +1,5 @@
 import { addItem, carryGrids, removeItem, type ItemInstance, createEquipment, createGrid, createItem, type Equipment, type GridContainer, SLOTS, CLOTHING_SLOTS } from './items/inventory';
-import { generateLoadout, starterClothes, starterKit } from './items/loadouts';
+import { dressOutfit, generateLoadout, OUTFITS, starterClothes, starterKit } from './items/loadouts';
 import { getDef, ITEMS } from './items/defs';
 import { upgradeLegacyGun } from './items/mods';
 import { Rng } from './core/rng';
@@ -8,9 +8,10 @@ import { newRelationship, type Relationship } from './dialogue/types';
 import type { Difficulty, Grave, RaidResult } from './sim/raid';
 import { applyRaidToTasks, type TaskState } from './tasks';
 import { newHideout, type HideoutState } from './hideout';
+import { SHAPE_PRESETS, type FaceSpec, type ShapeSpec } from './shape';
 import { companionLevel, companionRaidXp, companionState, gearTierFor, upgradeCompanionGear, type CompanionState } from './companions';
 
-export const PROFILE_VERSION = 10;
+export const PROFILE_VERSION = 11;
 
 export interface ProfileStats {
   raids: number;
@@ -38,9 +39,13 @@ export interface PlayerLook {
   hair: string;
   hairColor: number;
   beard: boolean;
+  /** Body shape (shape.ts): a preset's id or the sliders. Unset reads as the sex's 'average'. */
+  shape?: ShapeSpec;
+  /** Face (shape.ts): a preset's id or the sliders. Unset reads as 'classic' (the modelled face). */
+  face?: FaceSpec;
 }
 
-export const DEFAULT_LOOK: PlayerLook = { sex: 'm', skin: 0xe3b08e, hair: 'short', hairColor: 0x3a281b, beard: true };
+export const DEFAULT_LOOK: PlayerLook = { sex: 'm', skin: 0xe3b08e, hair: 'short', hairColor: 0x3a281b, beard: true, shape: 'average' };
 
 export interface Profile {
   version: number;
@@ -223,12 +228,19 @@ export function migrateProfile(raw: unknown): Profile {
     visit(out);
     out.version = 10;
   }
+  if (out.version < 11) {
+    // v10 → v11: body shapes. An old survivor keeps the base body: the sex's 'average'.
+    out.look ??= { ...DEFAULT_LOOK };
+    out.version = 11;
+  }
   dropUnknownItems(out);
   out.companions ??= {};
   out.settings.difficulty ??= 'normal';
   out.grave ??= null;
   out.rev ??= 0;
   out.look ??= { ...DEFAULT_LOOK };
+  if (out.look.sex !== 'f') out.look.sex = 'm';
+  if (out.look.shape === undefined || (typeof out.look.shape === 'string' && !SHAPE_PRESETS[out.look.sex][out.look.shape])) out.look.shape = 'average';
   return out;
 }
 
@@ -260,6 +272,8 @@ export function companionLoadout(profile: Profile, npcId: string): Equipment {
     if (!(eq.slots.rig?.grid && addItem(eq.slots.rig.grid, rounds))) addItem(eq.pockets, rounds);
   }
   if (npcId === 'lena') for (let i = 0; i < 2; i++) addItem(eq.pockets, createItem('bandage'));
+  // Their own clothes, not the raider's uniform the loadout came with.
+  if (OUTFITS[npcId]) dressOutfit(eq, OUTFITS[npcId]!);
   profile.companionEq[npcId] = eq;
   return eq;
 }
@@ -280,7 +294,7 @@ export function encounterLoadout(npcId: string): Equipment {
   else eq.slots.secondary = createItem('pm', { ammo: 3, ammoType: 'a_9x18' });
   if (npcId === 'lena') addItem(eq.pockets, createItem('roubles', { stack: 6000 }));
   if (npcId === 'yaryna') addItem(eq.pockets, createItem('flash'));
-  return eq;
+  return OUTFITS[npcId] ? dressOutfit(eq, OUTFITS[npcId]!) : eq;
 }
 
 export interface RaidSummary {

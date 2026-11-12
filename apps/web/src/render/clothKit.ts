@@ -28,6 +28,12 @@ export const CLOTH_KIT: Record<string, KitPiece> = {
   c_smock: { body: 'rus_a', part: '^Tops_' },
   c_acu_shirt: { body: 'cl_soldier', part: '^Tops_', short: true },
   c_kitel: { body: 'pmc_heavy', part: 'Mark_Kitel' },
+  c_ukr_jacket: { body: 'ukr_a', part: '^Tops_' },
+  c_desert_top: { body: 'ukr_b', part: '^Tops_' },
+  c_mil_suit: { body: 'pmc_a', part: '^Mil_Suit_R5(\\.00[12])?_Mil_Suit_R5_0|Pads_Leg' },
+  c_swat_uniform: { body: 'swat', part: ' uniform$' },
+  c_fsb_uniform: { body: 'fsb', part: ' uniform$' },
+  c_fw_top: { body: 'fem_w2', part: '\\((clothes|fabrics)\\)' },
   // Trousers
   c_trousers: { body: 'cl_man', part: '^pants_' },
   c_work_pants: { body: 'cl_civ', part: '_Bottom_' },
@@ -38,6 +44,8 @@ export const CLOTH_KIT: Record<string, KitPiece> = {
   c_desert_pants: { body: 'ukr_b', part: '^Bottoms_' },
   c_acu_pants: { body: 'cl_soldier', part: '^Bottoms_' },
   c_officer_pants: { body: 'pmc_heavy', part: 'Mark_Pants' },
+  c_ukr_pants: { body: 'ukr_a', part: '^Bottoms_' },
+  c_fw_pants: { body: 'fem_w2', part: '\\(pants\\)' },
   // Footwear
   c_shoes: { body: 'cl_man', part: '^shoes_' },
   c_sneakers: { body: 'cl_tim', part: '^Shoes_' },
@@ -48,6 +56,10 @@ export const CLOTH_KIT: Record<string, KitPiece> = {
   c_desert_boots: { body: 'ukr_b', part: '^Shoes_' },
   c_survivor_boots: { body: 'cl_alan', part: ' Wolf3D_Outfit_Footwear$' },
   c_officer_boots: { body: 'pmc_heavy', part: 'Mark_Boots' },
+  c_ukr_boots: { body: 'ukr_a', part: '^Shoes_' },
+  c_swat_boots: { body: 'swat', part: ' boots$' },
+  c_fw_boots: { body: 'fem_w2', part: '\\(shoes\\)' },
+  c_strap_boots: { body: 'fem_leather', part: '^Punk_Strap_Boots' },
 };
 
 /** Outfits for people whose clothes don't come from items (NPCs, bosses, the infected): picked by a seed. */
