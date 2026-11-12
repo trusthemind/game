@@ -447,7 +447,11 @@ export function moveItem(src: ItemSource, dst: ItemTarget): boolean {
   return false;
 }
 
-/** Shift-click style transfer: first grid in `targets` with room wins. Equipment slots are tried when `eq` is given. */
+/**
+ * Shift-click style transfer. Stackables first top up existing stacks across all `targets` (in order), then the
+ * rest goes to the first grid in `targets` with room. Equipment slots are tried first when `eq` is given.
+ * Returns true when anything moved; a remainder that fits nowhere stays where it was (nothing is ever lost).
+ */
 export function quickMove(src: ItemSource, targets: GridContainer[], eq?: Equipment): boolean {
   const item = peekSource(src);
   if (!item) return false;
@@ -455,16 +459,162 @@ export function quickMove(src: ItemSource, targets: GridContainer[], eq?: Equipm
     const def = getDef(item.def);
     for (const s of SLOTS) if (!eq.slots[s] && slotAccepts(s, def)) return moveItem(src, { kind: 'slot', eq, slot: s });
   }
-  for (const g of targets) {
-    if (src.kind === 'grid' && g === src.grid) continue;
-    if (containsGrid(item, g)) continue;
+  const grids = targets.filter((g) => !(src.kind === 'grid' && g === src.grid) && !containsGrid(item, g));
+  const max = getDef(item.def).stackMax;
+  let moved = false;
+  if (max) {
+    for (const g of grids)
+      for (const p of g.items) {
+        if (item.stack <= 0) break;
+        if (p.item.uid === item.uid || p.item.def !== item.def || p.item.stack >= max) continue;
+        const n = Math.min(max - p.item.stack, item.stack);
+        p.item.stack += n;
+        item.stack -= n;
+        moved = true;
+      }
+    if (item.stack <= 0) {
+      detach(src);
+      return true;
+    }
+  }
+  for (const g of grids) {
+    const spot = findSpot(g, item);
+    if (!spot) continue;
     const d = detach(src);
-    if (!d) return false;
-    if (addItem(g, d.item)) return true;
-    // Partial stack merges leave a remainder; put it back where it came from.
+    if (!d) return moved;
+    if (placeAt(g, d.item, spot.x, spot.y, spot.rot)) return true;
     d.restore();
   }
-  return false;
+  return moved;
+}
+
+// ── One-click moves between the player's own containers ─────────────────────
+
+export type CarryPart = 'pockets' | 'rig' | 'backpack' | 'secure';
+
+/** A carried grid by name (null when that container isn't worn). */
+export function carryGrid(eq: Equipment, part: CarryPart): GridContainer | null {
+  if (part === 'pockets') return eq.pockets;
+  return eq.slots[part]?.grid ?? null;
+}
+
+/** Things that belong in a rig's quick-access pouches. */
+const RIG_FIRST: readonly Category[] = ['ammo', 'med', 'food', 'drink'];
+
+/**
+ * Where a one-click move sends an item from one of the player's own containers, best first:
+ * rig → backpack, pockets · backpack → rig (ammo/meds/food) or pockets, then secure · pockets → rig, backpack,
+ * secure · secure → pockets, backpack, rig.
+ */
+export function ownMoveOrder(from: CarryPart, def: ItemDef): CarryPart[] {
+  switch (from) {
+    case 'rig':
+      return ['backpack', 'pockets'];
+    case 'backpack':
+      return RIG_FIRST.includes(def.category) ? ['rig', 'pockets', 'secure'] : ['pockets', 'rig', 'secure'];
+    case 'pockets':
+      return ['rig', 'backpack', 'secure'];
+    case 'secure':
+      return ['pockets', 'backpack', 'rig'];
+  }
+}
+
+/** Move an item in the player's own `from` container to the next sensible own container (merging stacks first). */
+export function quickMoveOwn(eq: Equipment, from: CarryPart, uid: string): boolean {
+  const grid = carryGrid(eq, from);
+  const item = grid && findPlaced(grid, uid)?.item;
+  if (!grid || !item) return false;
+  const targets = ownMoveOrder(from, getDef(item.def))
+    .map((p) => carryGrid(eq, p))
+    .filter((g): g is GridContainer => !!g);
+  return quickMove({ kind: 'grid', grid, uid }, targets);
+}
+
+/**
+ * Take a worn item off into the first own grid with room (pockets, rig, backpack, secure), then `extra` grids
+ * (the hideout passes the stash). A container still holding things only fits the stash; false when nothing fits.
+ */
+export function unequipItem(eq: Equipment, slot: Slot, extra: GridContainer[] = []): boolean {
+  if (!eq.slots[slot]) return false;
+  return quickMove({ kind: 'slot', eq, slot }, [...carryGrids(eq), ...extra]);
+}
+
+// ── Equip / swap ─────────────────────────────────────────────────────────────
+
+/** What equipping `item` would do: the slot it goes to (free one first), 'plate' for a plate carrier, or null. */
+export function equipTarget(eq: Equipment, item: ItemInstance): Slot | 'plate' | null {
+  const def = getDef(item.def);
+  if (def.category === 'plate') return eq.slots.armor && takesPlate(eq.slots.armor) ? 'plate' : null;
+  const fits = SLOTS.filter((s) => slotAccepts(s, def));
+  return fits.find((s) => !eq.slots[s]) ?? fits[0] ?? null;
+}
+
+export type EquipResult = { ok: true; slot: Slot | 'plate'; displaced: ItemInstance | null; dropped: boolean } | { ok: false; reason: string };
+
+export interface EquipOptions {
+  /** Grids for the item it replaces, tried before the source grid (default: the player's carry grids). */
+  spill?: GridContainer[];
+  /** Last resort for the replaced item (a raid drops it to the ground). Without it, a swap with no room fails. */
+  drop?: (item: ItemInstance) => void;
+}
+
+/**
+ * Equip an item into the matching slot of `eq` (or a plate into the worn carrier). When the slot is taken, swap:
+ * the old item goes to `spill` (default: carry grids), else to the freed spot in the source grid (or anywhere in
+ * it), else `drop`. When it fits nowhere, everything is put back as it was and the reason is returned.
+ */
+export function equipItem(src: ItemSource, eq: Equipment, opts: EquipOptions = {}): EquipResult {
+  const item = peekSource(src);
+  if (!item) return { ok: false, reason: 'Nothing there' };
+  if (src.kind === 'slot' && src.eq === eq) return { ok: false, reason: 'Already equipped' };
+  const target = equipTarget(eq, item);
+  if (!target) return { ok: false, reason: getDef(item.def).category === 'plate' ? 'No plate carrier worn' : 'Can’t equip that' };
+  if (target !== 'plate' && !eq.slots[target]) {
+    return moveItem(src, { kind: 'slot', eq, slot: target }) ? { ok: true, slot: target, displaced: null, dropped: false } : { ok: false, reason: 'Can’t equip that' };
+  }
+  const at = src.kind === 'grid' ? findPlaced(src.grid, src.uid) : null;
+  const spot = at ? { x: at.x, y: at.y, rot: !!at.item.rot } : null;
+  const d = detach(src);
+  if (!d) return { ok: false, reason: 'Nothing there' };
+  let old: ItemInstance | null;
+  let undo: () => void;
+  if (target === 'plate') {
+    const carrier = eq.slots.armor!;
+    const r = insertPlate(carrier, d.item);
+    if (r === false) {
+      d.restore();
+      return { ok: false, reason: 'Can’t equip that' };
+    }
+    old = r;
+    undo = () => {
+      if (old) carrier.mods = { ...carrier.mods, plate: old };
+      else removePlate(carrier);
+    };
+  } else {
+    old = eq.slots[target];
+    d.item.rot = undefined;
+    eq.slots[target] = d.item;
+    undo = () => (eq.slots[target] = old);
+  }
+  if (!old) return { ok: true, slot: target, displaced: null, dropped: false };
+  const o = old;
+  const spill = (opts.spill ?? carryGrids(eq)).filter((g) => !containsGrid(o, g));
+  for (const g of spill) if (addItem(g, o)) return { ok: true, slot: target, displaced: o, dropped: false };
+  if (src.kind === 'grid' && !containsGrid(o, src.grid)) {
+    if ((spot && placeAt(src.grid, o, spot.x, spot.y, spot.rot)) || (spot && placeAt(src.grid, o, spot.x, spot.y, !spot.rot)) || addItem(src.grid, o))
+      return { ok: true, slot: target, displaced: o, dropped: false };
+  }
+  if (src.kind === 'slot' && !src.eq.slots[src.slot] && slotAccepts(src.slot, getDef(o.def))) {
+    src.eq.slots[src.slot] = o;
+    return { ok: true, slot: target, displaced: o, dropped: false };
+  }
+  if (opts.drop) {
+    opts.drop(o);
+    return { ok: true, slot: target, displaced: o, dropped: true };
+  }
+  undo();
+  d.restore();
+  return { ok: false, reason: `No room for the ${getDef(o.def).short}` };
 }
 
 export function cloneDeep<T>(v: T): T {

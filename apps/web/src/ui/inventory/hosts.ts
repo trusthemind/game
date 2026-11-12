@@ -11,12 +11,16 @@ import {
   repair,
   repairCost,
   sellPrice,
-  slotAccepts,
-  SLOTS,
   takesPlate,
-  moveItem,
   quickMove,
-  type Equipment,
+  quickMoveOwn,
+  equipItem,
+  equipTarget,
+  unequipItem,
+  ownMoveOrder,
+  type CarryPart,
+  type EquipOptions,
+  type EquipResult,
   type ItemInstance,
   type Profile,
 } from '@ashfall/engine';
@@ -52,14 +56,61 @@ function removeFrom(r: Resolver, src: SrcRef): ItemInstance | null {
   return it;
 }
 
-function equipQuick(r: Resolver, src: SrcRef, eq: Equipment): boolean {
-  const s = toSource(r, src);
-  const it = s && peekSource(s);
-  if (!s || !it) return false;
-  const def = getDef(it.def);
-  for (const slot of SLOTS) if (!eq.slots[slot] && slotAccepts(slot, def)) return moveItem(s, { kind: 'slot', eq, slot });
-  return false;
+const CARRY: readonly string[] = ['pockets', 'rig', 'backpack', 'secure'];
+/** The player's own carried container a source sits in ("player:rig" → rig), or null. */
+function ownPart(src: SrcRef): CarryPart | null {
+  if (src.kind !== 'grid') return null;
+  const { owner, part } = splitGridId(src.gridId);
+  return owner === 'player' && CARRY.includes(part) ? (part as CarryPart) : null;
 }
+/** Grid ids an item in an own container quick-moves to, best first. */
+const ownTargets = (part: CarryPart, item: ItemInstance) => ownMoveOrder(part, getDef(item.def)).map((p) => `player:${p}`);
+const PLAYER_GRIDS = ['player:rig', 'player:pockets', 'player:backpack'];
+const toast = (msg: string, tone?: 'good' | 'bad') => useApp.getState().toast(msg, tone);
+
+/** Equip (or swap) through a host's apply; toasts why when it can't. */
+function runEquip(host: InvHost, src: SrcRef, opts: (r: Resolver) => EquipOptions): boolean {
+  let res: EquipResult | null = null;
+  host.apply((r) => {
+    const s = toSource(r, src);
+    const eq = r.equipment('player');
+    if (!s || !eq) return false;
+    res = equipItem(s, eq, opts(r));
+    return res.ok;
+  });
+  const out = res as EquipResult | null;
+  if (out && !out.ok) toast(out.reason, 'bad');
+  else if (out?.ok && out.dropped && out.displaced) toast(`Dropped the ${getDef(out.displaced.def).short}`);
+  return !!out?.ok;
+}
+
+/** Move an item in an own container to the next one; toasts when nothing has room. */
+function runOwnMove(host: InvHost, part: CarryPart, uid: string): boolean {
+  const ok = host.apply((r) => {
+    const eq = r.equipment('player');
+    return !!eq && quickMoveOwn(eq, part, uid);
+  });
+  if (!ok) toast('No room in your other containers', 'bad');
+  return ok;
+}
+
+/** Take a worn item off into the first own grid with room (then `extra`, e.g. the stash); toasts when it can't. */
+function runUnequip(host: InvHost, src: SrcRef, extra: string[] = []): boolean {
+  if (src.kind !== 'slot' || src.owner !== 'player') return false;
+  const ok = host.apply((r) => {
+    const eq = r.equipment('player');
+    return !!eq && unequipItem(eq, src.slot, extra.map((g) => r.grid(g)).filter((g): g is NonNullable<typeof g> => !!g));
+  });
+  if (!ok) toast(extra.length ? 'No room to take that off' : 'No room in your containers', 'bad');
+  return ok;
+}
+const isOwnSlot = (src: SrcRef) => src.kind === 'slot' && src.owner === 'player';
+
+/** Can the player equip this (from anywhere but their own slots)? */
+const equippable = (r: Resolver, item: ItemInstance, src: SrcRef) => {
+  const eq = r.equipment('player');
+  return !!eq && !(src.kind === 'slot' && src.owner === 'player') && !!equipTarget(eq, item);
+};
 
 /** Hideout: stash ↔ equipment, selling to the trader. Every change is an atomic profile mutation (persisted + synced). */
 export function makeProfileHost(): InvHost {
@@ -69,11 +120,23 @@ export function makeProfileHost(): InvHost {
     resolver,
     apply: (fn) => store.getState().tryMutate((draft) => fn(profileResolver(() => draft))),
     quickTargets: (src) =>
-      src.kind === 'grid' && src.gridId === 'stash' ? { grids: ['player:rig', 'player:pockets', 'player:backpack'], owner: 'player' } : { grids: ['stash'] },
-    onDoubleClick: (_item, src) => {
-      if (src.kind === 'grid' && src.gridId === 'stash') host.apply((r) => equipQuick(r, src, r.equipment('player')!));
-      else host.apply((r) => quickMove(toSource(r, src)!, [r.grid('stash')!]));
+      src.kind === 'grid' && src.gridId === 'stash' ? { grids: PLAYER_GRIDS, owner: 'player' } : { grids: ['stash'] },
+    onDoubleClick: (item, src) => {
+      // Equippables go on (the replaced piece goes to the stash); loadout items hop to the next own container.
+      if (isOwnSlot(src)) return void runUnequip(host, src, ['stash']);
+      if (equippable(resolver, item, src)) return void runEquip(host, src, (r) => ({ spill: [r.grid('stash')!] }));
+      const part = ownPart(src);
+      if (part) return void runOwnMove(host, part, (src as { uid: string }).uid);
+      const targets = src.kind === 'grid' && src.gridId === 'stash' ? PLAYER_GRIDS : ['stash'];
+      const ok = host.apply((r) => quickMove(toSource(r, src)!, targets.map((g) => r.grid(g)).filter((g): g is NonNullable<typeof g> => !!g)));
+      if (!ok) toast(targets[0] === 'stash' ? 'No room in the stash' : 'No room in your loadout', 'bad');
     },
+    onDropKey: (_item, src) => {
+      // X never deletes in the hideout: loadout items go back to the stash.
+      if (src.kind === 'grid' && src.gridId === 'stash') return;
+      if (!host.apply((r) => quickMove(toSource(r, src)!, [r.grid('stash')!]))) toast('No room in the stash', 'bad');
+    },
+    hint: 'F / double-click equip · move   X to stash   ⇧+click stash ↔ loadout   R rotate',
     menu: (item, src) => {
       const profile = store.getState().profile!;
       const price = sellPrice(item, profile);
@@ -121,8 +184,11 @@ export function makeProfileHost(): InvHost {
           },
         });
       }
-      if (src.kind === 'grid' && src.gridId === 'stash') out.push({ label: 'Equip', run: () => host.apply((r) => equipQuick(r, src, r.equipment('player')!)) });
-      else out.push({ label: 'Move to stash', run: () => host.apply((r) => quickMove(toSource(r, src)!, [r.grid('stash')!])) });
+      if (equippable(resolver, item, src)) out.push({ label: 'Equip', run: () => void runEquip(host, src, (r) => ({ spill: [r.grid('stash')!] })) });
+      const part = ownPart(src);
+      if (part) out.push({ label: 'Quick move', run: () => void runOwnMove(host, part, (src as { uid: string }).uid) });
+      if (isOwnSlot(src)) out.push({ label: 'Unequip', run: () => void runUnequip(host, src, ['stash']) });
+      if (!(src.kind === 'grid' && src.gridId === 'stash')) out.push({ label: 'Move to stash', run: () => host.onDropKey!(item, src) });
       const cost = repairCost(item);
       if (cost)
         out.push({
@@ -186,6 +252,10 @@ export function makeRaidHost(session: GameSession): InvHost {
     if (l.kind === 'container') return { grids: [`c:${l.id}`] };
     return { grids: ['pockets', 'rig', 'backpack'].map((p) => `corpse:${l.id}:${p}`) };
   };
+  const peekItem = (src: SrcRef) => {
+    const s = toSource(resolver, src);
+    return s ? peekSource(s) : null;
+  };
   const fromPlayer = (src: SrcRef) => (src.kind === 'grid' ? src.gridId.startsWith('player:') : src.owner === 'player');
   const consume = (item: ItemInstance) => {
     const d = getDef(item.def);
@@ -211,22 +281,43 @@ export function makeRaidHost(session: GameSession): InvHost {
       const c = raid.container(Number(gridId.slice(2)));
       return !!c && !c.searched;
     },
-    quickTargets: (src) => (fromPlayer(src) ? lootGrids() : { grids: ['player:rig', 'player:pockets', 'player:backpack'], owner: 'player' }),
+    quickTargets: (src) => {
+      if (!fromPlayer(src)) return { grids: PLAYER_GRIDS, owner: 'player' };
+      if (raid.loot) return lootGrids();
+      // Nothing open: shift-click hops between own containers (a worn item goes into the bags).
+      const part = peekItem(src) && ownPart(src);
+      return part ? { grids: ownTargets(part, peekItem(src)!) } : { grids: ['player:backpack', 'player:rig', 'player:pockets'] };
+    },
     onDoubleClick(item, src) {
       const d = getDef(item.def);
       if (fromPlayer(src) && (d.med || d.food)) return consume(item);
-      host.apply((r) => {
+      if (isOwnSlot(src)) return void runUnequip(host, src);
+      if (equippable(resolver, item, src)) return void runEquip(host, src, () => ({ drop: (it) => raid.dropToGround(it) }));
+      const part = ownPart(src);
+      if (part) return void runOwnMove(host, part, (src as { uid: string }).uid);
+      const ok = host.apply((r) => {
         const s = toSource(r, src);
         if (!s) return false;
         const t = host.quickTargets(src);
         return quickMove(s, t.grids.map((g) => r.grid(g)!).filter(Boolean), t.owner ? r.equipment(t.owner)! : undefined);
       });
+      if (!ok) toast(fromPlayer(src) ? 'No room there' : 'No room in your gear', 'bad');
     },
+    onDropKey(_item, src) {
+      if (fromPlayer(src)) host.dropSpecial!('ground', src);
+    },
+    hint: 'F take · equip · move   X drop   ⇧+click transfer   R rotate',
     menu(item, src) {
       const d = getDef(item.def);
       const out: MenuAction[] = [];
       if (fromPlayer(src) && (d.med || d.food)) out.push({ label: d.med ? 'Use' : 'Consume', run: () => consume(item) });
-      if (!fromPlayer(src)) out.push({ label: 'Take', run: () => host.onDoubleClick!(item, src) });
+      if (equippable(resolver, item, src))
+        out.push({ label: d.category === 'plate' ? 'Insert plate' : 'Equip', run: () => void runEquip(host, src, () => ({ drop: (it) => raid.dropToGround(it) })) });
+      if (!fromPlayer(src)) out.push({ label: 'Take', run: () => void host.apply((r) => quickMove(toSource(r, src)!, PLAYER_GRIDS.map((g) => r.grid(g)!).filter(Boolean), r.equipment('player')!)) });
+      if (isOwnSlot(src)) out.push({ label: 'Unequip', run: () => void runUnequip(host, src) });
+      const part = ownPart(src);
+      if (part) out.push({ label: 'Quick move', run: () => void runOwnMove(host, part, (src as { uid: string }).uid) });
+      if (fromPlayer(src) && raid.loot) out.push({ label: 'Put in container', run: () => void host.apply((r) => quickMove(toSource(r, src)!, lootGrids().grids.map((g) => r.grid(g)!).filter(Boolean))) });
       if (fromPlayer(src)) out.push({ label: 'Drop', danger: true, run: () => host.dropSpecial!('ground', src) });
       return out;
     },

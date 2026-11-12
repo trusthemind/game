@@ -45,6 +45,8 @@ const useTip = create<{ item: ItemInstance | null; x: number; y: number; set(i: 
 }));
 /** The item under the pointer right now (null once it leaves): the character preview tries clothes on with it. */
 export const useHoverItem = create<{ item: ItemInstance | null }>(() => ({ item: null }));
+/** The tile under the pointer with where it sits and which host owns it: the F / X hover keys act on it. */
+const useHoverSrc = create<{ item: ItemInstance | null; src: SrcRef | null; host: InvHost | null }>(() => ({ item: null, src: null, host: null }));
 /** Last item the pointer rested on (stays after the pointer leaves), for the inspector panel. */
 export const useInspect = create<{ item: ItemInstance | null }>(() => ({ item: null }));
 const useMenu = create<{ actions: MenuAction[]; x: number; y: number; open(a: MenuAction[], x: number, y: number): void; close(): void }>((set) => ({
@@ -220,8 +222,15 @@ export function ItemTile({ item, cell, hidden, src, style, fit }: TileProps) {
       className={`item r${d.rarity}`}
       style={{ width: w, height: h, ...style }}
       onPointerDown={onPointerDown}
-      onPointerMove={(e) => useTip.getState().set(item, e.clientX, e.clientY)}
-      onPointerLeave={() => useTip.getState().set(null)}
+      onPointerMove={(e) => {
+        useTip.getState().set(item, e.clientX, e.clientY);
+        const h = useHoverSrc.getState();
+        if (h.item !== item || h.host !== host || h.src !== src) useHoverSrc.setState({ item, src, host });
+      }}
+      onPointerLeave={() => {
+        useTip.getState().set(null);
+        if (useHoverSrc.getState().item === item) useHoverSrc.setState({ item: null, src: null, host: null });
+      }}
       onDoubleClick={() => host.onDoubleClick?.(item, src)}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -452,9 +461,55 @@ export function useGridOwner(gridId: string) {
   return splitGridId(gridId).owner;
 }
 
+/** One-line key hint for the inventory panels (the host says which keys do what). */
+export function InvHint() {
+  const { host } = useInv();
+  if (!host.hint) return null;
+  return (
+    <span className="inv-hint dim">
+      {host.hint.split('   ').map((part) => {
+        const [k, ...rest] = part.split(' ');
+        return (
+          <span key={part}>
+            <span className="kbd">{k}</span> {rest.join(' ')}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+/** ABI-style hover keys: F = the double-click action, X = drop (raid) / to stash (hideout). */
+function useHoverKeys(host: InvHost) {
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if ((e.code !== 'KeyF' && e.code !== 'KeyX') || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      const h = useHoverSrc.getState();
+      if (!h.item || !h.src || h.host !== host) return;
+      if (useMenu.getState().actions.length || useModder.getState().src || useDrag.getState().drag) return;
+      // The key is ours while an item is under the pointer (don't toggle the flashlight too).
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.repeat) return;
+      const { item, src } = h;
+      // The tile may move away without a pointerleave: forget it, the next pointer move picks up what's there.
+      useHoverSrc.setState({ item: null, src: null, host: null });
+      useTip.getState().set(null);
+      if (e.code === 'KeyF') host.onDoubleClick?.(item, src);
+      else host.onDropKey?.(item, src);
+      audio.ui('move');
+    };
+    window.addEventListener('keydown', k, true);
+    return () => window.removeEventListener('keydown', k, true);
+  }, [host]);
+}
+
 export function InventoryRoot({ host, version, children }: { host: InvHost; version: number; children: React.ReactNode }) {
   const [, force] = useState(0);
   useEffect(() => force((n) => n + 1), [version]);
+  useHoverKeys(host);
   return (
     <InvContext.Provider value={{ host, version }}>
       {children}

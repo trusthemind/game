@@ -13,7 +13,7 @@ import { WorldMenu } from '../hud/WorldMenu';
 import { Minimap } from '../hud/Minimap';
 import { DialogueBox } from '../components/DialogueBox';
 import { raidDialogueHost } from '../dialogueHosts';
-import { InventoryRoot, ItemGrid, DropZoneBox } from '../inventory/components';
+import { InventoryRoot, ItemGrid, DropZoneBox, InvHint } from '../inventory/components';
 import { BodyFigure } from '../components/BodyFigure';
 import { GearPanel } from '../inventory/GearPanel';
 import { makeRaidHost } from '../inventory/hosts';
@@ -238,9 +238,12 @@ function InventoryOverlay({ session }: { session: GameSession }) {
           <div className="panel inv-col">
             <div className="panel-title">
               <span>Your gear</span>
-              <span>
-                <span className="kbd">Tab</span> close · <span className="kbd">R</span> rotate · <span className="kbd">⇧</span>+click quick move
+              <span className="dim">
+                <span className="kbd">Tab</span> close
               </span>
+            </div>
+            <div className="inv-hint-row">
+              <InvHint />
             </div>
             <div className="inv-scroll">
               <GearPanel owner="player" cell={46} title={raid.player.name} />

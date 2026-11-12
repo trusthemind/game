@@ -110,3 +110,8 @@
 .char-preview { flex: 1 1 auto; width: 100%; min-height: 260px; display: block; cursor: grab; border-radius: 4px;
   background: radial-gradient(60% 50% at 50% 60%, rgba(214,167,74,.07), transparent 70%); }
 .char-preview:active { cursor: grabbing; }
+
+/* Hover-key hint line (F / X / ⇧+click / R) */
+.inv-hint { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; line-height: 1.5; min-width: 0; }
+.inv-hint > span { white-space: nowrap; }
+.inv-hint-row { padding: 2px 12px 6px; }

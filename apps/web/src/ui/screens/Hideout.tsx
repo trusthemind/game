@@ -30,7 +30,7 @@ import {
 import { useApp, type HideoutTab } from '../../state/appStore';
 import { useProfile } from '../../state/profileStore';
 import { api } from '../../state/api';
-import { DropZoneBox, InventoryRoot, ItemGrid } from '../inventory/components';
+import { DropZoneBox, InventoryRoot, InvHint, ItemGrid } from '../inventory/components';
 import { GearPanel } from '../inventory/GearPanel';
 import { ItemInspector } from '../inventory/ItemInspector';
 import { CharacterPreview } from '../components/CharacterPreview';
@@ -154,9 +154,7 @@ function GearTab() {
       <section className="panel col stash-col">
         <div className="panel-title">
           <span>Stash</span>
-          <span className="dim">
-            <span className="kbd">⇧</span>+click to move · double-click to equip · <span className="kbd">R</span> rotate while dragging
-          </span>
+          <InvHint />
           <button
             className="btn small"
             title="Group by kind, biggest first, and top up part-stacks"

@@ -32,7 +32,12 @@ export interface InvHost {
   /** Grids for ctrl/shift-click quick transfer from the given source. */
   quickTargets(src: SrcRef): { grids: string[]; owner?: string };
   menu?(item: ItemInstance, src: SrcRef): MenuAction[];
+  /** Double-click and the F hover key: take / equip / move. */
   onDoubleClick?(item: ItemInstance, src: SrcRef): void;
+  /** The X hover key: drop to the ground in a raid, back to the stash in the hideout. Never deletes. */
+  onDropKey?(item: ItemInstance, src: SrcRef): void;
+  /** Key hint line shown in the inventory panels. */
+  hint?: string;
   /** Special drop zones (sell / ground). */
   dropSpecial?(zone: string, src: SrcRef): void;
 }
