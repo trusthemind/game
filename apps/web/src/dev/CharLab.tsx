@@ -18,6 +18,7 @@ import { GEAR_MODEL, wornGear } from '../render/gearModels';
 import { assembleGun, loadWeaponParts } from '../render/weaponAssembly';
 import { attachSkinned, cloneHuman } from '../render/human';
 import { CharacterView, lookFor, renderPortrait, type Appearance } from '../render/character';
+import { SHAPE_PRESETS, shapeStats } from '../render/bodyShape';
 import type { WorldUniforms } from '../render/patches';
 
 /** Dev-only lineup of characters/outfits/weapons (open /#charlab). Used for visual checks and screenshots. */
@@ -191,6 +192,26 @@ export function CharLab() {
       cam.position.set(0, 1.45, Math.max(3.2, ids.length * 0.7));
       cam.lookAt(0, 1.1, 0);
       (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
+    }
+    if (view === 'shapes') {
+      // Body shapes (bodyShape.ts): the same clothes and armour on every preset, fitted once to the neutral body and
+      // displaced with it. `&sex=f`, `&armor=0` without the vest, `&top=c_knit` other clothes, `&gun=ak74m` aiming.
+      cast.length = 0;
+      const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
+      const sex: 'm' | 'f' = q.get('sex') === 'f' ? 'f' : 'm';
+      const presets = SHAPE_PRESETS[sex];
+      const gun = q.get('gun');
+      const wear = [q.get('top') ?? 'c_bomber', 'c_trousers', 'c_shoes'].map((c) => `${c}:${getDef(c).clothing!.slot}`);
+      const kit = q.get('armor') === '0' ? [] : ['trooper:armor'];
+      for (const name of Object.keys(presets)) {
+        const base = lookFor(61, 'scav');
+        const look = { ...base, sex, hair: sex === 'f' ? ('ponytail' as const) : ('messy' as const), body: undefined, hat: null, clothed: true, shape: presets[name] };
+        cast.push({ look, eq: [...wear, ...kit, ...(gun ? [`${gun}:primary`] : [])], active: gun ? 'primary' : 'melee', speed: 0 });
+      }
+      cam.position.set(0, 1.45, Math.max(3.4, cast.length * 0.8));
+      cam.lookAt(0, 1.0, 0);
+      (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
+      (window as unknown as { __shapeStats: unknown }).__shapeStats = shapeStats;
     }
     if (view === 'gestures') {
       // Reloads and treatment by hand, looping: AK, pistol, pump gun; dressing an arm, a leg, splint, injector.
@@ -503,7 +524,7 @@ export function CharLab() {
                   : view.startsWith('melee')
                     ? 0.85
                     : 1.05
-                : view === 'armor'
+                : view === 'armor' || view === 'shapes'
                   ? 0.8
                   : 1.35),
             y: 0,
@@ -546,7 +567,8 @@ export function CharLab() {
       view === 'clothes' ||
       view === 'wear' ||
       view === 'gearlab' ||
-      view === 'armor'
+      view === 'armor' ||
+      view === 'shapes'
         ? []
         : ['lena', 'mykola', 'vera']) {
         const img = document.createElement('img');

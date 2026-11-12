@@ -26,6 +26,7 @@ import {
   type TorsoField,
 } from './gearFit';
 import { attachSkinned, cloneHuman, type HumanParts } from './human';
+import { heightFactor, shapeKey, shapeMesh, ShapeField, withNeutral, type BodyShape } from './bodyShape';
 import { fitToRest, gltfMeshNames, rebindToSkeleton } from './rebind';
 import { ease, newPalm, palmFrame, reachPalm, type Arm } from './armIK';
 
@@ -81,6 +82,8 @@ export interface Appearance {
   /** Clothes: real garments from rigged models (see clothKit.ts), fitted to this body. Unset: an outfit picked
    * for the look (kitFor). */
   kit?: Worn[];
+  /** Body shape (bodyShape.ts) on our modelled body: unset is the base mesh. */
+  shape?: BodyShape;
 }
 export type Worn = KitPiece & { slot: ClothingSlot; id: string };
 
@@ -1361,6 +1364,8 @@ export class CharacterView {
   extracting = false;
   dead = false;
   private hidden = false;
+  /** The body shape's displacement field (bodyShape.ts), built at rest on first use. */
+  private shapeField: ShapeField | null = null;
 
   constructor(
     private lib: AssetLibrary,
@@ -1412,7 +1417,7 @@ export class CharacterView {
         m.frustumCulled = false;
       }
       const bindK = heightScale(src, look.sex === 'f' ? 1.66 : 1.8);
-      this.model.scale.setScalar(bindK);
+      this.model.scale.setScalar(bindK * (outfit ? heightFactor(look.shape) : 1));
       if (outfit) this.wearKit(kitFor(look));
       if (sfBody) {
         for (const m of [human.body, human.eyes, human.brows]) if (m) m.visible = false;
@@ -1438,6 +1443,7 @@ export class CharacterView {
     );
     this.mixer = new THREE.AnimationMixer(this.model);
     this.buildBody(shadows);
+    this.applyShape();
     this.root.add(this.gear);
     this.setLower('Idle_Loop', 1, 'full');
     const pelvis = this.skinned.skeleton.getBoneByName('pelvis');
@@ -1530,13 +1536,13 @@ export class CharacterView {
       const slot = (m: THREE.SkinnedMesh) => (m.userData.worn as Worn | undefined)?.slot;
       // A rigged body stands in for ours whole, less the kit it's modelled with (that comes off, see SF_KIT).
       const own = this.sfMeshes.filter((m) => !SF_KIT.test(String(m.userData.part ?? '')) && !SF_HAT.test(String(m.userData.part ?? '')));
-      fit = measureBody(
+      fit = withNeutral([human.body, ...this.outfitMeshes], () => measureBody(
         human.body,
         this.sfBody ? own : this.outfitMeshes.filter((m) => slot(m) !== 'hat'),
         this.sfBody ? [] : this.outfitMeshes.filter((m) => slot(m) === 'hat' && (m.userData.worn as Worn).underHelmet),
         human.eyes,
         !this.sfBody,
-      );
+      ));
       BODY_FIT.set(key, fit);
     }
     return fit;
@@ -1665,6 +1671,7 @@ export class CharacterView {
     }
     meshes.forEach((m, i) => {
       m.geometry = hit.geos[i]!;
+      m.userData.rigidShape = true;
       m.castShadow = true;
       this.gearAttachments.push(m);
     });
@@ -1700,9 +1707,26 @@ export class CharacterView {
     for (const m of [...this.outfitMeshes, ...this.hairMeshes]) m.parent?.remove(m);
     this.outfitMeshes = [];
     this.hairMeshes = [];
-    this.atRest(() => this.wearKit(kitFor(next)));
+    this.atRest(() => withNeutral([this.human!.body], () => this.wearKit(kitFor(next))));
     this.buildHair();
     for (const m of this.bodyMeshes) m.material = humanBodyMaterial(this.human.srcMaterial, next, this.u, this.dead, true);
+    this.applyShape();
+  }
+
+  /**
+   * Shape the body and everything skinned to it (clothes, armour, hair) by the look's body shape (bodyShape.ts):
+   * all were fitted to the neutral body and take the same displacement, so they keep fitting. Cached per mesh
+   * geometry and shape; anything already shaped is left as it is.
+   */
+  private applyShape(): void {
+    const key = shapeKey(this.look.shape);
+    if (!this.human || this.sfBody || !key) return;
+    this.atRest(() => {
+      this.shapeField ??= ShapeField.fromBones(this.human!.body.skeleton.bones, this.model, this.look.shape!, this.look.sex);
+      const all: THREE.SkinnedMesh[] = [];
+      this.model.traverse((o) => (o as THREE.SkinnedMesh).isSkinnedMesh && all.push(o as THREE.SkinnedMesh));
+      for (const m of all) shapeMesh(m, this.model, this.shapeField, `${this.look.sex}|${key}`);
+    });
   }
 
   private addCollar(rig: RigInfo, a: Appearance): void {
@@ -1940,6 +1964,7 @@ export class CharacterView {
       hit.geos.forEach((g, i) => {
         const m = new THREE.SkinnedMesh(g, mats[i]!);
         m.bind(body.skeleton, body.bindMatrix);
+        m.userData.rigidShape = true;
         m.frustumCulled = false;
         m.castShadow = true;
         body.parent!.add(m);
@@ -2097,6 +2122,7 @@ export class CharacterView {
         this.gear.add(this.held);
       }
     }
+    this.applyShape();
   }
 
   // ── Animation ──────────────────────────────────────────────────────────────
