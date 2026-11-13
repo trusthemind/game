@@ -88,6 +88,7 @@ export function Hud({ session }: { session: GameSession }) {
         <div className="status">
           {hud.crouch && <span className="tag">Crouched</span>}
           {hud.flashlight && <span className="tag">Light</span>}
+          {hud.visor && <span className="tag" title="Faceplate down: B to raise">Visor</span>}
           <span className={`tag ${hud.weight > 40 ? 'bad' : ''}`}>{hud.weight.toFixed(1)} kg</span>
         </div>
       </div>

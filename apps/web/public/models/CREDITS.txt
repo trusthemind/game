@@ -146,6 +146,22 @@ pmc_a, pmc_heavy; items in apps/web/src/render/armorKit.ts):
                    https://sketchfab.com/3d-models/soldier-fully-rigged-character-d5ee1b51099741d2b5e4010f4f781263
   cl_alan.glb    — "Alan Survivor(rigged)" by RRB STUDIOS
                    https://sketchfab.com/3d-models/alan-survivorrigged-cca25ef7b9794d49b909022ed8e81f15
+  cl_orion_f.glb — ".Fuse Orion Female Clothes 1" by Leonardo Carvalho (shorts texture colour-graded)
+                   https://sketchfab.com/3d-models/fuse-orion-female-clothes-1-459fd7a531224f4584c6a65034f79768
+  cl_maryjane.glb — "Mary Jane [Female Charcter] Rigged | Game Ready" by Zukomazi
+                   https://sketchfab.com/3d-models/mary-jane-female-charcter-rigged-game-ready-4ed4985465c94e8f87c0f0d3b7101edf
+  cl_nancy.glb   — "Nancy - LOD Lady character" by Egunoff
+                   https://sketchfab.com/3d-models/nancy-lod-lady-character-66cb7d40cbbe4f6da346e52ddd93cf3f
+  cl_kelly.glb   — "Kelly - LOD Lady character" by Egunoff
+                   https://sketchfab.com/3d-models/kelly-lod-lady-character-b8b2c15ba88f40958c31711b3615166f
+  cl_daren.glb   — "Daren - LOD Man character" by Egunoff
+                   https://sketchfab.com/3d-models/daren-lod-man-character-682af9b4e83b4bcbba145b2596ba2abe
+  cl_david.glb   — "David - LOD Man character" by Egunoff
+                   https://sketchfab.com/3d-models/david-lod-man-character-a483b7dc67da43e0a8fefed635dd911c
+  cl_jamal.glb   — "Jamal - LOD Man character" by Egunoff
+                   https://sketchfab.com/3d-models/jamal-lod-man-character-a169a23fa24f4df39daace6c55b24194
+  cl_andrew.glb  — "Andrew - LOD Man character" by Egunoff
+                   https://sketchfab.com/3d-models/andrew-lod-man-character-3aaaf5c42dae43a1bd1ca447964f65b8
 
 Worn armour, helmets, rigs and backpacks in gear.glb — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Decimated, textures
 resized to WebP, meshopt-compressed (tools/assets/vehicles.mjs gear); scaled and fitted to the head or back, or skinned to the

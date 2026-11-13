@@ -88,6 +88,7 @@ function CharLabScene() {
       use?: string;
       part?: string;
       reload?: boolean;
+      visor?: boolean;
     }[] = [
       { look: lookFor(0, 'npc', 'lena'), eq: ['pm:secondary', 'b_daypack:backpack'], active: 'secondary', speed: 0 },
       { look: lookFor(0, 'npc', 'mykola'), eq: ['mp133:primary'], active: 'primary', speed: 1.4 },
@@ -159,6 +160,10 @@ function CharLabScene() {
         ['f', 'c_police_shirt', 'c_police_pants', 'c_police_shoes'],
         ['m', 'c_knit', 'c_ripped_jeans', 'c_sneakers'],
         ['f', 'c_bomber', 'c_desert_pants', 'c_desert_boots', 'c_balaclava_tan'],
+        ['f', 'c_crop_top', 'c_denim_shorts', 'c_hiking_boots'],
+        ['f', 'c_tank_gloves', 'c_khaki_trousers', 'c_lace_boots'],
+        ['m', 'c_leather_jacket', 'c_dark_jeans', 'c_lace_boots', 'c_baseball_cap'],
+        ['m', 'c_white_shirt', 'c_dark_jeans', 'c_white_sneakers'],
         ['m'],
       ];
       // `&gun=ak74m`: everyone aiming it, to see the clothes with the arms up. `&fits=m:c_a,c_b;f:c_c` other outfits.
@@ -245,6 +250,30 @@ function CharLabScene() {
       cam.lookAt(0, 1.0, 0);
       (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
       (window as unknown as { __shapeStats: unknown }).__shapeStats = shapeStats;
+    }
+    if (view === 'helmets') {
+      // Every helmet on one head, close up: `&sex=f`, `&ids=altyn,zsh`, `&face=<FACE_PRESETS name>`,
+      // `&shape=<SHAPE_PRESETS name>`, `&visor=1` faceplates down. `__look(i, 'front'|'side'|'top', 0.7, 'head')`.
+      cast.length = 0;
+      const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
+      const sex: 'm' | 'f' = q.get('sex') === 'f' ? 'f' : 'm';
+      const ids = (q.get('ids') ?? 'altyn,ssh68,ssh36,h_kevlar,h_fast,h_fast_headset,zsh').split(',');
+      const face = q.get('face');
+      const shape = SHAPE_PRESETS[sex][q.get('shape') ?? 'average'];
+      // `&built=1`: the built helmets (gear3d.ts), as when gear.glb failed to load.
+      if (q.get('built') === '1') for (const id of ids) delete GEAR_MODEL[id];
+      // `&faces=hawk,broad,round`: the first helmet on each of these faces instead.
+      const faces = q.get('faces')?.split(',');
+      for (const [id, fc] of faces ? faces.map((f) => [ids[0]!, f] as const) : ids.map((id) => [id, face] as const)) {
+        const look = {
+          ...lookFor(61, 'scav'), sex, hair: sex === 'f' ? ('bob' as const) : ('buzz' as const), beard: 'none', hat: null, clothed: true, shape,
+          ...(fc && FACE_PRESETS[fc] ? { face: FACE_PRESETS[fc] } : {}),
+        };
+        cast.push({ look, eq: ['c_bomber:top', 'c_trousers:pants', 'c_shoes:boots', `${id}:helmet`], active: 'melee', speed: 0, visor: q.get('visor') === '1' });
+      }
+      cam.position.set(0, 1.62, 3.2);
+      cam.lookAt(0, 1.6, 0);
+      (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
     }
     if (view === 'faceshapes') {
       // Faces (shape.ts FACE_PRESETS) side by side, bare-headed, close up: `&sex=f`, `&eq=altyn:helmet` headwear.
@@ -559,13 +588,14 @@ function CharLabScene() {
           const it = eq.slots[slot]!;
           if (c.modded && getDef(def).weapon) modAll(it);
         }
+        if (c.visor && eq.slots.helmet) eq.slots.helmet.visorDown = true;
         const v = new CharacterView(lib, c.look, u, true);
         const a = {
           pos: {
             x:
               (i - (cast.length - 1) / 2) *
-              (view === 'guns' || view === 'gear' || view.startsWith('melee') || view === 'hats' || view === 'headwear'
-                ? view === 'hats' || view === 'headwear'
+              (view === 'guns' || view === 'gear' || view.startsWith('melee') || view === 'hats' || view === 'headwear' || view === 'helmets'
+                ? view === 'hats' || view === 'headwear' || view === 'helmets'
                   ? view === 'hats' ? 0.55 : 0.6
                   : view.startsWith('melee')
                     ? 0.85
@@ -614,6 +644,7 @@ function CharLabScene() {
       view === 'wear' ||
       view === 'gearlab' ||
       view === 'armor' ||
+      view === 'helmets' ||
       view === 'shapes'
         ? []
         : ['lena', 'mykola', 'vera']) {
@@ -627,6 +658,12 @@ function CharLabScene() {
       }
       (window as unknown as { __labReady?: boolean }).__labReady = true;
       (window as unknown as { __lab: unknown }).__lab = views;
+      // `__visor(true)` lowers every helmet's faceplate, `__visor(false)` raises them (they swing on the next frames).
+      (window as unknown as { __visor: unknown }).__visor = (down: boolean) =>
+        views.forEach(({ a }) => {
+          const h = a.eq.slots.helmet;
+          if (h) h.visorDown = down || undefined;
+        });
       // Close-ups for checking gear: `__look(i, 'front'|'back'|'side'|'top', dist, y | boneName, dy)` shows only
       // the i-th figure, aimed at a height or at a bone.
       (window as unknown as { __look: unknown }).__look = (i: number, mode: string, dist = 1.5, y: number | string = 1.3, dy = 0) => {
@@ -642,11 +679,43 @@ function CharLabScene() {
           bone?.getWorldPosition(at);
         }
         at.y += dy;
-        const d = ({ front: [0, 0.1, 1], back: [0, 0.1, -1], side: [1, 0.15, 0.6], top: [0, 1.73, 1], q: [0.7, 0.6, 0.7] } as Record<string, number[]>)[mode] ?? [0, 0, 1];
+        const d = ({ front: [0, 0.1, 1], back: [0, 0.1, -1], side: [1, 0.15, 0.6], profile: [1, 0.02, 0], top: [0, 1.73, 1], q: [0.7, 0.6, 0.7] } as Record<string, number[]>)[mode] ?? [0, 0, 1];
         const n = new THREE.Vector3(d[0], d[1], d[2]).normalize().multiplyScalar(dist);
         cam.position.copy(at).add(n);
         cam.lookAt(at);
         cam.updateMatrixWorld();
+      };
+      // A contact sheet of head close-ups: every figure (a column each) from each view (a row each), drawn over the
+      // page. `__sheet(['front','side','top'], 0.62, 160)`; `__sheet(null)` removes it.
+      (window as unknown as { __sheet: unknown }).__sheet = (modes: string[] | null = ['front', 'side', 'top'], dist = 0.62, px = 150, dy = 0.14) => {
+        document.getElementById('lab-sheet')?.remove();
+        if (!modes) {
+          views.forEach((l) => l.v.root.children.forEach((ch) => (ch.visible = true)));
+          return;
+        }
+        const look = (window as unknown as { __look: (i: number, m: string, d: number, y: string, dy: number) => void }).__look;
+        const out = document.createElement('canvas');
+        out.id = 'lab-sheet';
+        out.width = views.length * px;
+        out.height = modes.length * px;
+        out.style.cssText = `position:fixed;left:0;top:0;width:${out.width}px;height:${out.height}px;z-index:9;background:#111`;
+        const x = out.getContext('2d')!;
+        const size = renderer.getSize(new THREE.Vector2());
+        const aspect = cam.aspect;
+        renderer.setSize(px, px, false);
+        cam.aspect = 1;
+        cam.updateProjectionMatrix();
+        views.forEach((_, i) =>
+          modes.forEach((m, j) => {
+            look(i, m, dist, 'head', m === 'top' ? 0.08 : dy);
+            renderer.render(scene, cam);
+            x.drawImage(renderer.domElement, 0, 0, px, px, i * px, j * px, px, px);
+          }),
+        );
+        renderer.setSize(size.x, size.y, false);
+        cam.aspect = aspect;
+        cam.updateProjectionMatrix();
+        document.body.appendChild(out);
       };
     });
     let last = performance.now();

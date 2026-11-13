@@ -3,7 +3,9 @@ import {
   carryGrids,
   findSpot,
   getDef,
+  hasVisor,
   insertPlate,
+  isVisorDown,
   plateOf,
   peekSource,
   removeItem,
@@ -27,9 +29,15 @@ import {
 import { useProfile } from '../../state/profileStore';
 import { useApp } from '../../state/appStore';
 import type { GameSession } from '../../game/GameSession';
-import { gridFromEquipment, splitGridId, toSource, type InvHost, type MenuAction, type Resolver, type SrcRef } from './host';
+import { gridFromEquipment, runVisor, splitGridId, toSource, type InvHost, type MenuAction, type Resolver, type SrcRef } from './host';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
+
+/** A helmet's faceplate down or up (B over it does the same). */
+const visorAction = (host: InvHost, item: ItemInstance, src: SrcRef): MenuAction => ({
+  label: isVisorDown(item) ? 'Raise visor (B)' : 'Lower visor (B)',
+  run: () => void runVisor(host, src),
+});
 
 function profileResolver(get: () => Profile | null): Resolver {
   return {
@@ -136,11 +144,12 @@ export function makeProfileHost(): InvHost {
       if (src.kind === 'grid' && src.gridId === 'stash') return;
       if (!host.apply((r) => quickMove(toSource(r, src)!, [r.grid('stash')!]))) toast('No room in the stash', 'bad');
     },
-    hint: 'F / double-click equip · move   X to stash   ⇧+click stash ↔ loadout   R rotate',
+    hint: 'F / double-click equip · move   X to stash   ⇧+click stash ↔ loadout   R rotate   B visor',
     menu: (item, src) => {
       const profile = store.getState().profile!;
       const price = sellPrice(item, profile);
       const out: MenuAction[] = [];
+      if (hasVisor(item)) out.push(visorAction(host, item, src));
       // Plates live inside the carrier rather than in a fake equipment slot. Keep a swap in one profile
       // mutation, so an occupied stash cannot make a plate disappear halfway through the action.
       if (getDef(item.def).category === 'plate' && src.kind === 'grid') {
@@ -306,10 +315,11 @@ export function makeRaidHost(session: GameSession): InvHost {
     onDropKey(_item, src) {
       if (fromPlayer(src)) host.dropSpecial!('ground', src);
     },
-    hint: 'F take · equip · move   X drop   ⇧+click transfer   R rotate',
+    hint: 'F take · equip · move   X drop   ⇧+click transfer   R rotate   B visor',
     menu(item, src) {
       const d = getDef(item.def);
       const out: MenuAction[] = [];
+      if (hasVisor(item)) out.push(visorAction(host, item, src));
       if (fromPlayer(src) && (d.med || d.food)) out.push({ label: d.med ? 'Use' : 'Consume', run: () => consume(item) });
       if (equippable(resolver, item, src))
         out.push({ label: d.category === 'plate' ? 'Insert plate' : 'Equip', run: () => void runEquip(host, src, () => ({ drop: (it) => raid.dropToGround(it) })) });

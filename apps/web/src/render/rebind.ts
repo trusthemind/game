@@ -146,7 +146,9 @@ const clean = (name: string) =>
  * weights. Pieces from different models then all fit the same body and skeleton, so a jacket from one and
  * trousers from another can be worn together, over our own head and hands.
  *
- * `keep` picks the pieces (by "<glTF mesh name> <material name>"); the rest of the model is left out.
+ * `keep` picks the pieces (by "<glTF mesh name> <material name>"); the rest of the model is left out. `clear` (a
+ * share of our height) lifts the piece off our skin wherever it sits closer than that or inside it: for open
+ * garments (a crop top, shorts) that are drawn over the body rather than cutting it away.
  */
 export function fitToRest(
   src: THREE.Object3D,
@@ -158,6 +160,7 @@ export function fitToRest(
   keep: (meshName: string) => boolean,
   cacheKey: string,
   stiff = false,
+  clear = 0,
 ): THREE.SkinnedMesh[] {
   if (pose) {
     const mx = new THREE.AnimationMixer(src);
@@ -320,7 +323,7 @@ export function fitToRest(
     });
     let perMesh = geoCache.get(sm.geometry);
     if (!perMesh) geoCache.set(sm.geometry, (perMesh = new Map()));
-    const key = `fit|${cacheKey}${stiff ? '|stiff' : ''}`;
+    const key = `fit|${cacheKey}${stiff ? '|stiff' : ''}${clear ? `|clear${clear}` : ''}`;
     let g = perMesh.get(key);
     if (!g) {
       g = sm.geometry.clone();
@@ -365,6 +368,7 @@ export function fitToRest(
       if (under) shoulderWeights(g, under, bones);
       const neckB = ours.get('neck_01');
       if (under && neckB && ours.get('Head')) closeNeck(g, under, bones, modelPos(neckB), modelPos(ours.get('Head')!).y);
+      if (under && clear > 0) liftOffSkin(g, under, clear * (modelPos(ours.get('Head')!).y - footT));
       // The clone kept the source's bounds (its own units): measure the fitted garment.
       g.computeBoundingBox();
       g.computeBoundingSphere();
@@ -419,6 +423,51 @@ function bodySkin(model: THREE.Object3D, bones: THREE.Bone[], toModel: THREE.Mat
     }
   }
   return { pos, nor, idx, w };
+}
+
+/**
+ * Move every vertex of a fitted piece that is inside our body, or nearer its skin than `gap`, out along the normal
+ * of the nearest body vertex to `gap` off it. Body and piece are both in model space at rest.
+ */
+function liftOffSkin(g: THREE.BufferGeometry, under: BodySkin, gap: number): void {
+  const reach = gap * 12;
+  const cell = reach;
+  const grid = new Map<string, number[]>();
+  const key = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+  const n = under.pos.length / 3;
+  for (let i = 0; i < n; i++) {
+    const k = key(under.pos[i * 3]!, under.pos[i * 3 + 1]!, under.pos[i * 3 + 2]!);
+    const list = grid.get(k);
+    if (list) list.push(i);
+    else grid.set(k, [i]);
+  }
+  const pos = g.attributes.position!;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const cx = Math.floor(x / cell);
+    const cy = Math.floor(y / cell);
+    const cz = Math.floor(z / cell);
+    let best = -1;
+    let bd = reach * reach;
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dz = -1; dz <= 1; dz++)
+          for (const j of grid.get(`${cx + dx},${cy + dy},${cz + dz}`) ?? []) {
+            const d = (under.pos[j * 3]! - x) ** 2 + (under.pos[j * 3 + 1]! - y) ** 2 + (under.pos[j * 3 + 2]! - z) ** 2;
+            if (d < bd) (bd = d), (best = j);
+          }
+    if (best < 0) continue;
+    const nx = under.nor[best * 3]!;
+    const ny = under.nor[best * 3 + 1]!;
+    const nz = under.nor[best * 3 + 2]!;
+    const off = (x - under.pos[best * 3]!) * nx + (y - under.pos[best * 3 + 1]!) * ny + (z - under.pos[best * 3 + 2]!) * nz;
+    if (off >= gap) continue;
+    const push = gap - off;
+    pos.setXYZ(i, x + nx * push, y + ny * push, z + nz * push);
+  }
+  pos.needsUpdate = true;
 }
 
 /**

@@ -163,7 +163,7 @@ export function generateLoadout(archetype: BotArchetype, rng: Rng, tier = 0): Eq
  */
 export function dressScav(eq: Equipment, rng: Rng): void {
   const pick = (ids: string[]) => rng.pick(ids);
-  const style = pickDef(rng, [['town', 4], ['survivor', 2], ['army', 2], ['bomber', 1], ['cop', 0.6]])!;
+  const style = pickDef(rng, [['town', 4], ['survivor', 2], ['army', 2], ['bomber', 1], ['cop', 0.6], ['plainclothes', 1]])!;
   let hat: string | null = null;
   let top: string;
   let pants: string;
@@ -190,6 +190,13 @@ export function dressScav(eq: Equipment, rng: Rng): void {
       top = 'c_police_shirt';
       pants = rng.chance(0.7) ? 'c_police_pants' : 'c_trousers';
       boots = pick(['c_police_shoes', 'c_shoes']);
+      break;
+    case 'plainclothes':
+      // An off-duty cop or one undercover: a jacket or a plain shirt, jeans, a cap now and then.
+      top = pick(['c_leather_jacket', 'c_brown_shirt', 'c_white_shirt']);
+      pants = pick(['c_dark_jeans', 'c_dark_jeans', 'c_police_pants']);
+      boots = pick(['c_trail_shoes', 'c_white_sneakers', 'c_lace_boots']);
+      if (rng.chance(0.4)) hat = 'c_baseball_cap';
       break;
     default:
       top = pick(['c_knit', 'c_survivor_top', 'c_knit']);
@@ -246,10 +253,10 @@ export const OUTFITS: Record<string, readonly string[]> = {
   rina: ['c_fw_top', 'c_fw_pants', 'c_fw_boots'],
   // NPCs
   lena: ['c_survivor_top', 'c_police_pants', 'c_strap_boots'],
-  mykola: ['c_bomber', 'c_work_pants', 'c_tall_boots'],
-  vera: ['c_bomber', 'c_ripped_jeans', 'c_strap_boots'],
+  mykola: ['c_leather_jacket', 'c_dark_jeans', 'c_lace_boots', 'c_baseball_cap'],
+  vera: ['c_tank_gloves', 'c_khaki_trousers', 'c_lace_boots'],
   taras: ['c_desert_top', 'c_ukr_pants', 'c_ukr_boots', 'c_green_cap'],
-  yaryna: ['c_fw_top', 'c_fw_pants', 'c_combat_boots'],
+  yaryna: ['c_crop_top', 'c_khaki_trousers', 'c_hiking_boots'],
   ostap: ['c_smock', 'c_desert_pants', 'c_desert_boots'],
 };
 

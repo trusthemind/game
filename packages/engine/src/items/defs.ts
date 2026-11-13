@@ -190,6 +190,9 @@ export interface ArmorStats {
   /** A plate carrier: takes an armour plate (see plates.ts), and leaves the factory with this one in. Its own
    * class is only the soft carrier's; the plate does the stopping over the chest. */
   plate?: string;
+  /** Helmets: a faceplate or visor on hinges, worn raised; the wearer lowers it (ItemInstance `visorDown`). Looks
+   * only: no zone of its own (the head's armour is the helmet's). */
+  visor?: boolean;
 }
 
 /** The parts an armour item covers. */
@@ -211,6 +214,8 @@ export interface ClothingStats {
   color: number;
   /** A coverall: a top that is trousers too (worn with the trousers slot empty). */
   full?: boolean;
+  /** Cut for this body (a crop top for women, a man's shirt): anyone can still wear it; NPC outfits follow it. */
+  sex?: 'f' | 'm';
 }
 
 export interface ItemDef {
@@ -687,7 +692,7 @@ const defs: ItemDef[] = [
   { id: 'h_fast_headset', name: 'FAST helmet with headset', short: 'FAST HS', category: 'helmet', w: 2, h: 2, weight: 1.9, value: 98000, rarity: 4, armor: { armorClass: 4, durability: 42, slow: 0.015, zones: ['head'], material: 'uhmwpe' } },
   { id: 'ssh68', name: 'SSh-68 steel helmet', short: 'SSh-68', category: 'helmet', w: 2, h: 2, weight: 1.5, value: 9000, rarity: 1, armor: { armorClass: 2, durability: 30, slow: 0.01, zones: ['head'], material: 'steel' } },
   { id: 'zsh', name: 'ZSh-1-2M helmet', short: 'ZSh', category: 'helmet', w: 2, h: 2, weight: 3.2, value: 45000, rarity: 3, armor: { armorClass: 4, durability: 40, slow: 0.02, zones: ['head'], material: 'titanium' } },
-  { id: 'altyn', name: 'Altyn assault helmet', short: 'ALTYN', category: 'helmet', w: 2, h: 2, weight: 4.0, value: 140000, rarity: 5, armor: { armorClass: 5, durability: 55, slow: 0.03, zones: ['head'], material: 'titanium' } },
+  { id: 'altyn', name: 'Altyn assault helmet', short: 'ALTYN', category: 'helmet', w: 2, h: 2, weight: 4.0, value: 140000, rarity: 5, armor: { armorClass: 5, durability: 55, slow: 0.03, zones: ['head'], material: 'titanium', visor: true } },
 
   // ── Clothing: worn in the hat / top / trousers / boots slots, no protection ──
   { id: 'c_green_cap', name: 'Green cap', short: 'CAP', category: 'clothing', w: 1, h: 1, weight: 0.12, value: 3500, rarity: 1, clothing: { slot: 'hat', color: 0x3d4a3a } },
@@ -732,6 +737,21 @@ const defs: ItemDef[] = [
   { id: 'c_swat_boots', name: 'Black tactical boots', short: 'TACT', category: 'clothing', w: 2, h: 2, weight: 1.4, value: 16000, rarity: 2, clothing: { slot: 'boots', color: 0x161616 } },
   { id: 'c_fw_boots', name: 'Lace-up combat boots', short: 'LACE', category: 'clothing', w: 2, h: 2, weight: 1.3, value: 13000, rarity: 2, clothing: { slot: 'boots', color: 0x2a2420 } },
   { id: 'c_strap_boots', name: 'Strap boots', short: 'STRAP', category: 'clothing', w: 2, h: 2, weight: 1.2, value: 9000, rarity: 1, clothing: { slot: 'boots', color: 0x161616 } },
+  // Adventurer set (cut for women, worn by anyone) and plainclothes set (cut for men).
+  { id: 'c_crop_top', name: 'Halter crop top', short: 'CROP', category: 'clothing', w: 1, h: 1, weight: 0.15, value: 5000, rarity: 1, clothing: { slot: 'top', color: 0x6a8a9a, sex: 'f' } },
+  { id: 'c_sports_top', name: 'Black sports top', short: 'SPORT', category: 'clothing', w: 1, h: 1, weight: 0.15, value: 6500, rarity: 1, clothing: { slot: 'top', color: 0x1e1e20, sex: 'f' } },
+  { id: 'c_denim_shorts', name: 'Denim shorts', short: 'SHORTS', category: 'clothing', w: 2, h: 1, weight: 0.3, value: 5000, rarity: 1, clothing: { slot: 'pants', color: 0x4a6a8a, sex: 'f' } },
+  { id: 'c_khaki_trousers', name: 'Khaki field trousers', short: 'KHAKI', category: 'clothing', w: 2, h: 2, weight: 0.7, value: 9000, rarity: 1, clothing: { slot: 'pants', color: 0x9a8e70, sex: 'f' } },
+  { id: 'c_hiking_boots', name: 'Hiking boots', short: 'HIKE', category: 'clothing', w: 2, h: 2, weight: 1.3, value: 12000, rarity: 2, clothing: { slot: 'boots', color: 0x7a5a3a, sex: 'f' } },
+  { id: 'c_lace_boots', name: 'Black lace-up boots', short: 'BOOTS', category: 'clothing', w: 2, h: 2, weight: 1.2, value: 11000, rarity: 2, clothing: { slot: 'boots', color: 0x1e1e1e } },
+  { id: 'c_tank_gloves', name: 'Tank top and fingerless gloves', short: 'TANK', category: 'clothing', w: 2, h: 1, weight: 0.3, value: 8000, rarity: 2, clothing: { slot: 'top', color: 0xd8d4cc, sex: 'f' } },
+  { id: 'c_leather_jacket', name: 'Black leather jacket', short: 'LEATHR', category: 'clothing', w: 2, h: 3, weight: 1.9, value: 21000, rarity: 2, clothing: { slot: 'top', color: 0x1a1a1a, sex: 'm' } },
+  { id: 'c_brown_shirt', name: 'Brown button shirt', short: 'SHIRT', category: 'clothing', w: 2, h: 2, weight: 0.35, value: 6000, rarity: 1, clothing: { slot: 'top', color: 0x4a3a2a, sex: 'm' } },
+  { id: 'c_white_shirt', name: 'White shirt', short: 'SHIRT', category: 'clothing', w: 2, h: 2, weight: 0.35, value: 5500, rarity: 1, clothing: { slot: 'top', color: 0xd8d8d4, sex: 'm' } },
+  { id: 'c_dark_jeans', name: 'Dark jeans', short: 'JEANS', category: 'clothing', w: 2, h: 2, weight: 0.8, value: 6000, rarity: 1, clothing: { slot: 'pants', color: 0x2a3446, sex: 'm' } },
+  { id: 'c_baseball_cap', name: 'Baseball cap', short: 'CAP', category: 'clothing', w: 1, h: 1, weight: 0.12, value: 3000, rarity: 1, clothing: { slot: 'hat', color: 0x3a4a30, sex: 'm' } },
+  { id: 'c_trail_shoes', name: 'Trail shoes', short: 'TRAIL', category: 'clothing', w: 2, h: 1, weight: 0.8, value: 7000, rarity: 1, clothing: { slot: 'boots', color: 0x4a4a3a, sex: 'm' } },
+  { id: 'c_white_sneakers', name: 'White trainers', short: 'TRAIN', category: 'clothing', w: 2, h: 1, weight: 0.7, value: 5000, rarity: 1, clothing: { slot: 'boots', color: 0xd0d0cc, sex: 'm' } },
   // ── Rigs & backpacks ─────────────────────────────────────
   { id: 'r_scav', name: 'Scav vest', short: 'VEST', category: 'rig', w: 2, h: 2, weight: 0.4, value: 6000, rarity: 1, grid: { w: 4, h: 1 } },
   { id: 'r_mbss', name: 'Belt-A chest rig', short: 'BELT-A', category: 'rig', w: 2, h: 2, weight: 0.6, value: 18000, rarity: 2, grid: { w: 4, h: 2 } },

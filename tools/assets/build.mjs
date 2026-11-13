@@ -568,6 +568,22 @@ const BODIES = {
   cl_soldier: ['cl_soldier_rigged', 7000, /^(Body|Eyes|Eyelashes|Moustaches|Beards|Eyewear)_/],
   cl_man: ['cl_just_man', 10000, /^(body|eye_|topjaw|lowerjaw|tongue|head)/],
   cl_alan: ['char_f_alan_survivor', 8000, /^Wolf3D_(Eye|Body|Hair|Skin|Teeth)$/],
+  // Adventurer (women's) and plainclothes (men's) sets. The "LOD" characters ship three levels of detail
+  // (Tops001_, Tops002_…): only the first is kept.
+  // Its shorts are a toy-bright blue: graded down to worn denim (GRADE below).
+  cl_orion_f: ['cl_orion_f1', 9000, /^(Body|Hair)\.002$/],
+  cl_maryjane: ['cl_maryjane', 6000, /^(Body|Hair)mat/],
+  cl_nancy: ['cl_nancy', 8000, /^(default|Eyelashes|Body|Hair)\d*_|\d\d\d_/],
+  cl_kelly: ['cl_kelly', 8000, /^(default|Eyelashes|Body|Hair)_/],
+  cl_daren: ['cl_daren', 9000, /^(default|Eyes|Body)_/],
+  cl_david: ['cl_david', 8000, /^(default|Eyes|Body)_/],
+  cl_jamal: ['cl_jamal', 8000, /^(default|Eyelashes|Body)_/],
+  cl_andrew: ['cl_andrew', 8000, /^(default|Eyelashes|Body|Hair)_/],
+};
+
+/** Colour grades (sharp modulate) of a body's base colour textures, by material name: toy-bright pieces toned down. */
+const GRADE = {
+  cl_orion_f: [[/^Bottom\.002$/, { saturation: 0.45, brightness: 0.8 }]],
 };
 
 async function buildBodies() {
@@ -627,6 +643,13 @@ async function buildBodies() {
       quantize({ quantizeNormal: 10, quantizePosition: 14, quantizeTexcoord: 12 }),
       meshopt({ encoder: MeshoptEncoder, level: 'medium' }),
     );
+    // After metalRough: spec-gloss exports only have a base colour texture from here on.
+    for (const [re, mod] of GRADE[id] ?? []) {
+      for (const mt of root.listMaterials()) {
+        const tex = re.test(mt.getName()) ? mt.getBaseColorTexture() : null;
+        if (tex?.getImage()) tex.setImage(new Uint8Array(await sharp(tex.getImage()).modulate(mod).webp({ quality: 82 }).toBuffer())).setMimeType('image/webp');
+      }
+    }
     const out = path.join(OUT, 'bodies', `${id}.glb`);
     await io.write(out, doc);
     console.log(`  → ${path.relative(ROOT, out)} ${Math.round(tris)}→~${Math.round(tris * ratio)} tris (${(fs.statSync(out).size / 1024).toFixed(0)} KB)`);

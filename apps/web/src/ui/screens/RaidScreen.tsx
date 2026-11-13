@@ -150,7 +150,7 @@ function FirstRaidHints() {
           ['LMB', 'fire · R reload · 1/2/3 weapons'],
           ['E', 'search / loot / climb windows'],
           ['Quick RMB', 'actions on anything you click'],
-          ['Tab', 'inventory · hold Q heal · V eat/drink'],
+          ['Tab', 'inventory · hold Q heal · V eat/drink · B visor'],
           ['M', 'map — find a green exit and stay in it'],
         ].map(([k, v]) => (
           <div key={k}>
@@ -372,6 +372,7 @@ function PauseMenu({ session }: { session: GameSession }) {
               ['Tab', 'Inventory'],
               ['Q / V', 'Heal / eat'],
               ['F', 'Flashlight'],
+              ['B', 'Helmet visor down / up'],
               ['M', 'Map'],
               ['F3', 'Performance overlay'],
             ].map(([k, v]) => (

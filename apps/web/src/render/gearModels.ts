@@ -64,8 +64,11 @@ export interface GearSpec {
   /** Helmets: a hinged faceplate (a node of the model), swung up by `open` radians about the X axis through its
    * hinge pins (`hinge`: y, z in the model's own frame, before `turn`). It is left out of the fit (fitHelmet
    * measures and trims the shell alone: `userData.fitSkip`). `seat`: then moved by (y, z) to rest on the shell
-   * (the model's plate stands well off it; raised as is, it read as a box on the head). */
-  visor?: { node: string; open: number; hinge: [number, number]; seat?: [number, number] };
+   * (the model's plate stands well off it; raised as is, it read as a box on the head). Lowered, it swings `shut`
+   * radians on past the model's own pose and moves by `down` (y, z), to sit on the face (window at the eyes, chin
+   * over the mouth): on our heads the export's pose had the window over the brow. Worn raised by default; the item's
+   * `visorDown` (engine) lowers it, and the renderer swings it live (poseVisor). */
+  visor?: { node: string; open: number; hinge: [number, number]; seat?: [number, number]; shut?: number; down?: [number, number] };
 }
 
 /** Connected pieces of a mesh (welded by position: exports split vertices at UV seams): each triangle's piece. */
@@ -295,7 +298,7 @@ export const GEAR_MODEL: Record<string, GearSpec> = {
   // (Exported facing all ways: the Altyn backwards, the SSh-40 and both FASTs with their front to +X.)
   // The Altyn comes with its faceplate down: worn raised (swung up on its side pins over the shell's front), so
   // the face and eyes show, and the shell is fitted alone, its front rim on the brow like any other.
-  altyn: { model: 'altyn', turn: Math.PI, liner: 0x394934, visor: { node: 'visor_1', open: 1.05, hinge: [0.004, 0.014], seat: [-0.025, 0] } },
+  altyn: { model: 'altyn', turn: Math.PI, liner: 0x394934, visor: { node: 'visor_1', open: 1.25, hinge: [0.004, 0.014], seat: [-0.045, 0.01], shut: 0.38, down: [0, 0.025] } },
   ssh68: { model: 'ssh40', turn: -Math.PI / 2, trim: true },
   ssh36: { model: 'ssh36' },
   h_kevlar: { model: 'wz2005', shell: 0.6 },
@@ -378,6 +381,48 @@ function shadeRelief(root: THREE.Object3D): void {
   }
 }
 
+/** A hinged visor or faceplate's swing, in its parent's frame (plain arrays: it survives clone()). Rest pose
+ * (`p0`, `q0`) is down; `open` radians about X through `pin` raise it, `seat` moves it on (raised) and `drop`
+ * (lowered) so it rests on the shell or the face. */
+export interface VisorRig {
+  pin: number[];
+  p0: number[];
+  q0: number[];
+  open: number;
+  /** Lowered: swung this far on past the rest pose (the other way from `open`). */
+  shut: number;
+  seat: number[];
+  drop: number[];
+}
+
+const _vq = new THREE.Quaternion();
+const _vp = new THREE.Vector3();
+const _vpin = new THREE.Vector3();
+const _vo = new THREE.Vector3();
+const _vx = new THREE.Vector3(1, 0, 0);
+
+/** Pose a hinged visor (`userData.visor`, a VisorRig): `t` 0 lowered, 1 raised. */
+export function poseVisor(node: THREE.Object3D, t: number): void {
+  const r = node.userData.visor as VisorRig | undefined;
+  if (!r) return;
+  _vq.setFromAxisAngle(_vx, r.open * t - (r.shut ?? 0) * Math.sign(r.open) * (1 - t));
+  _vpin.fromArray(r.pin);
+  _vp.fromArray(r.p0).sub(_vpin).applyQuaternion(_vq).add(_vpin);
+  _vp.addScaledVector(_vo.fromArray(r.seat), t).addScaledVector(_vo.fromArray(r.drop), 1 - t);
+  node.position.copy(_vp);
+  node.quaternion.fromArray(r.q0).premultiply(_vq);
+  node.userData.visorT = t;
+}
+
+/** The hinged visor under `root`, if it has one. */
+export function findVisor(root: THREE.Object3D): THREE.Object3D | null {
+  let v: THREE.Object3D | null = null;
+  root.traverse((n) => {
+    if (!v && n.userData.visor) v = n;
+  });
+  return v;
+}
+
 const made = new Map<string, THREE.Object3D | null>();
 
 /**
@@ -415,11 +460,20 @@ export function wornGear(lib: AssetLibrary, itemId: string): THREE.Object3D | nu
           o.updateMatrixWorld(true);
           const toParent = new THREE.Matrix4().copy(vz.parent.matrixWorld).invert().multiply(o.matrixWorld);
           const pin = new THREE.Vector3(0, spec.visor.hinge[0], spec.visor.hinge[1]).applyMatrix4(toParent);
-          const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), spec.visor.open);
-          vz.position.sub(pin).applyQuaternion(q).add(pin);
-          vz.quaternion.premultiply(q);
-          const [sy, sz] = spec.visor.seat ?? [0, 0];
-          vz.position.add(new THREE.Vector3(0, sy, sz).transformDirection(toParent).multiplyScalar(Math.hypot(sy, sz)));
+          // (y, z) offsets in the model's frame, as offsets in the parent's.
+          const off = (yz: [number, number] | undefined) =>
+            new THREE.Vector3(0, yz?.[0] ?? 0, yz?.[1] ?? 0).transformDirection(toParent).multiplyScalar(Math.hypot(yz?.[0] ?? 0, yz?.[1] ?? 0)).toArray();
+          const rig: VisorRig = {
+            pin: pin.toArray(),
+            p0: vz.position.toArray(),
+            q0: vz.quaternion.toArray() as number[],
+            open: spec.visor.open,
+            shut: spec.visor.shut ?? 0,
+            seat: off(spec.visor.seat),
+            drop: off(spec.visor.down),
+          };
+          vz.userData.visor = rig;
+          poseVisor(vz, 1);
           vz.traverse((n) => (n.userData.fitSkip = true));
         }
       }

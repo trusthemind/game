@@ -17,6 +17,8 @@ export interface ItemInstance {
   uses?: number;
   /** Found in raid. */
   fir?: boolean;
+  /** A helmet with a hinged faceplate (ArmorStats `visor`): lowered over the face. Unset: raised. */
+  visorDown?: boolean;
   /**
    * Installed parts by socket id. A part can carry parts of its own (a handguard's foregrip), so a gun built
    * from parts is a tree; older guns use the attachment slot names (muzzle, scope, …) as socket ids.

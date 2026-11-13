@@ -1,5 +1,7 @@
 import {
   canMove,
+  peekSource,
+  toggleVisor,
   type Equipment,
   type GridContainer,
   type ItemInstance,
@@ -80,4 +82,12 @@ export function canDrop(host: InvHost, src: SrcRef, dst: DstRef): boolean {
   const s = toSource(host.resolver, src);
   const d = toTarget(host.resolver, dst);
   return !!s && !!d && canMove(s, d);
+}
+
+/** Lower or raise a helmet's visor where it lies (a slot or a grid), as one host mutation. */
+export function runVisor(host: InvHost, src: SrcRef): boolean {
+  return host.apply((r) => {
+    const s = toSource(r, src);
+    return !!s && toggleVisor(peekSource(s));
+  });
 }

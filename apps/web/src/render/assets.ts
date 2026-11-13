@@ -56,7 +56,7 @@ export const BODY_IDS = [
 ] as const;
 export type BodyId = (typeof BODY_IDS)[number];
 /** Rigged models kept only for their clothes (models/bodies/cl_*.glb, see CLOTH_KIT). */
-export const CLOTH_SOURCES = ['cl_man', 'cl_civ', 'cl_soldier', 'cl_tim', 'cl_alan'] as const;
+export const CLOTH_SOURCES = ['cl_man', 'cl_civ', 'cl_soldier', 'cl_tim', 'cl_alan', 'cl_orion_f', 'cl_maryjane', 'cl_nancy', 'cl_kelly', 'cl_daren', 'cl_david', 'cl_jamal', 'cl_andrew'] as const;
 
 const BASE = `${import.meta.env.BASE_URL}models/`;
 /** Content hash of each model file (vite.config.ts), so a changed gear.glb is never served from an old cache. */

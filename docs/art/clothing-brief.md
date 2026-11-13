@@ -31,6 +31,11 @@ Follows the `create-game-assets` skill (gamedev-skills/awesome-gamedev-agent-ski
   different models combine on one body. Our body is hidden under each worn piece (region mask).
 - Budget: ≤ 10k triangles per source file after decimation; colour textures 1K, others 512.
 - Item ↔ garment mapping: `apps/web/src/render/clothKit.ts` (CLOTH_KIT).
+- Open garments (`KitPiece.open`: crop tops, tank tops, shorts) leave skin bare in their own region, so the body
+  stays drawn under them and the piece is lifted ~5 mm clear of the skin at fit time (rebind.ts liftOffSkin).
+- Sets: adventurer (women's cut: crop/sports/tank tops, denim shorts, khaki trousers, hiking and lace-up boots) and
+  plainclothes (men's cut: leather jacket, shirts, dark jeans, cap, trainers); `clothing.sex` in the item defs only
+  steers NPC outfits, anyone can wear anything.
 
 ## Visual target
 

@@ -61,6 +61,21 @@ describe('clothing', () => {
     expect(encounterLoadout('taras').slots.top?.def).toBe('c_desert_top');
   });
 
+  it('the adventurer and plainclothes sets: tagged, in loot and on people', async () => {
+    const { CONTAINERS } = await import('../src/items/loot');
+    const adventurer = ['c_crop_top', 'c_sports_top', 'c_tank_gloves', 'c_denim_shorts', 'c_khaki_trousers', 'c_hiking_boots'];
+    const plain = ['c_baseball_cap', 'c_leather_jacket', 'c_brown_shirt', 'c_white_shirt', 'c_dark_jeans', 'c_trail_shoes', 'c_white_sneakers'];
+    for (const id of adventurer) expect(getDef(id).clothing?.sex).toBe('f');
+    for (const id of plain) expect(getDef(id).clothing?.sex).toBe('m');
+    const wardrobe = new Set(CONTAINERS.wardrobe.table.map(([id]) => id));
+    for (const id of [...adventurer, ...plain, 'c_lace_boots']) expect(wardrobe.has(id)).toBe(true);
+    expect(OUTFITS.vera).toContain('c_tank_gloves');
+    expect(OUTFITS.mykola).toContain('c_leather_jacket');
+    const tops = new Set<string>();
+    for (let seed = 1; seed < 200; seed++) tops.add(generateLoadout('scav', new Rng(seed)).slots.top!.def);
+    expect(plain.some((id) => tops.has(id))).toBe(true);
+  });
+
   it('an old save gets the new slots and clothes on', () => {
     const p = createProfile() as unknown as { version: number; equipment: { slots: Record<string, unknown> }; companionEq: Record<string, unknown> };
     for (const s of CLOTHING_SLOTS) delete p.equipment.slots[s];

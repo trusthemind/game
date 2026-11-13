@@ -28,7 +28,11 @@ const CLOTHES: Table = [['c_green_cap', 1.2], ['c_patrol_cap', 0.3], ['c_balacla
   ['c_shoes', 1.2], ['c_sneakers', 1.2], ['c_tall_boots', 1], ['c_police_shoes', 0.6], ['c_kirza', 1], ['c_combat_boots', 0.4], ['c_desert_boots', 0.4],
   ['c_survivor_boots', 0.4], ['c_officer_boots', 0.15],
   ['c_ukr_jacket', 0.12], ['c_desert_top', 0.25], ['c_mil_suit', 0.1], ['c_swat_uniform', 0.1], ['c_fsb_uniform', 0.08], ['c_fw_top', 0.25],
-  ['c_ukr_pants', 0.25], ['c_fw_pants', 0.25], ['c_ukr_boots', 0.25], ['c_swat_boots', 0.25], ['c_fw_boots', 0.3], ['c_strap_boots', 0.5]];
+  ['c_ukr_pants', 0.25], ['c_fw_pants', 0.25], ['c_ukr_boots', 0.25], ['c_swat_boots', 0.25], ['c_fw_boots', 0.3], ['c_strap_boots', 0.5],
+  // Adventurer and plainclothes sets.
+  ['c_crop_top', 0.6], ['c_sports_top', 0.6], ['c_tank_gloves', 0.4], ['c_denim_shorts', 0.6], ['c_khaki_trousers', 0.6], ['c_hiking_boots', 0.4],
+  ['c_lace_boots', 0.5], ['c_baseball_cap', 1], ['c_leather_jacket', 0.4], ['c_brown_shirt', 0.9], ['c_white_shirt', 0.9], ['c_dark_jeans', 1.2],
+  ['c_trail_shoes', 0.8], ['c_white_sneakers', 0.8]];
 const SMALL_VAL: Table = [['chain', 6], ['rolex', 2], ['cpu', 2], ['flash', 2], ['bitcoin', 0.5], ['roubles', 8]];
 
 export const CONTAINERS: Record<ContainerKind, ContainerSpec> = {

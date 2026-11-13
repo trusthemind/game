@@ -728,5 +728,45 @@
   "uid": "ba27cdd5f588444aa70f3d7fe571dbbf",
   "slug": "ar_spetsnaz",
   "use": "armour: heavy armour with shoulder pads (gzhel), cut from the Spetsnaz SOLIDER character"
+ },
+ {
+  "uid": "459fd7a531224f4584c6a65034f79768",
+  "slug": "cl_orion_f1",
+  "use": "clothing (cl_orion_f): halter crop top, denim shorts, hiking boots (adventurer set)"
+ },
+ {
+  "uid": "4ed4985465c94e8f87c0f0d3b7101edf",
+  "slug": "cl_maryjane",
+  "use": "clothing: black sports top (adventurer set)"
+ },
+ {
+  "uid": "66cb7d40cbbe4f6da346e52ddd93cf3f",
+  "slug": "cl_nancy",
+  "use": "clothing: tank top and fingerless gloves (adventurer set)"
+ },
+ {
+  "uid": "b8b2c15ba88f40958c31711b3615166f",
+  "slug": "cl_kelly",
+  "use": "clothing: khaki trousers, black lace-up boots (adventurer set)"
+ },
+ {
+  "uid": "682af9b4e83b4bcbba145b2596ba2abe",
+  "slug": "cl_daren",
+  "use": "clothing: black leather jacket, dark jeans (plainclothes set)"
+ },
+ {
+  "uid": "a483b7dc67da43e0a8fefed635dd911c",
+  "slug": "cl_david",
+  "use": "clothing: brown button shirt, trail shoes (plainclothes set)"
+ },
+ {
+  "uid": "a169a23fa24f4df39daace6c55b24194",
+  "slug": "cl_jamal",
+  "use": "clothing: baseball cap (plainclothes set)"
+ },
+ {
+  "uid": "3aaaf5c42dae43a1bd1ca447964f65b8",
+  "slug": "cl_andrew",
+  "use": "clothing: white shirt, white trainers (plainclothes set)"
  }
 ]

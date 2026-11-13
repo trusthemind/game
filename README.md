@@ -68,6 +68,7 @@ infected, and reach an exit before the timer runs out. If you die, everything yo
 | Q | Quick heal (picks the right med for your worst injury) |
 | V | Eat / drink |
 | F | Flashlight |
+| B | Helmet visor down / up (Altyn); also B over the helmet in the inventory |
 | M | Map |
 | Esc | Pause |
 | F3 or ` | Performance overlay |

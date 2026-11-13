@@ -33,6 +33,8 @@ export interface HudState {
   interact: Interactable | null;
   crouch: boolean;
   flashlight: boolean;
+  /** The helmet's faceplate is down. */
+  visor: boolean;
   weight: number;
   facing: number;
   status: 'active' | 'extracted' | 'dead' | 'mia';

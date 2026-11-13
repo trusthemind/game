@@ -1500,6 +1500,440 @@
     "technical_checks_passed": true,
     "approved_by": "pending review (added 2026-11-11)"
    }
+  },
+  {
+   "id": "c_crop_top",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_orion_f.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose; open garment (KitPiece.open): drawn over the skin, lifted clear of it",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/fuse-orion-female-clothes-1-459fd7a531224f4584c6a65034f79768",
+    "creator": "Leonardo Carvalho",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\".Fuse Orion Female Clothes 1\" by Leonardo Carvalho, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
+  },
+  {
+   "id": "c_sports_top",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_maryjane.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose; open garment (KitPiece.open): drawn over the skin, lifted clear of it",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/mary-jane-female-charcter-rigged-game-ready-4ed4985465c94e8f87c0f0d3b7101edf",
+    "creator": "Zukomazi",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\"Mary Jane [Female Charcter] Rigged | Game Ready\" by Zukomazi, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
+  },
+  {
+   "id": "c_tank_gloves",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_nancy.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose; open garment (KitPiece.open): drawn over the skin, lifted clear of it",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/nancy-lod-lady-character-66cb7d40cbbe4f6da346e52ddd93cf3f",
+    "creator": "Egunoff",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\"Nancy - LOD Lady character\" by Egunoff, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
+  },
+  {
+   "id": "c_denim_shorts",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_orion_f.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose; open garment (KitPiece.open): drawn over the skin, lifted clear of it",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/fuse-orion-female-clothes-1-459fd7a531224f4584c6a65034f79768",
+    "creator": "Leonardo Carvalho",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\".Fuse Orion Female Clothes 1\" by Leonardo Carvalho, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
+  },
+  {
+   "id": "c_khaki_trousers",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_kelly.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/kelly-lod-lady-character-b8b2c15ba88f40958c31711b3615166f",
+    "creator": "Egunoff",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\"Kelly - LOD Lady character\" by Egunoff, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
+  },
+  {
+   "id": "c_hiking_boots",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_orion_f.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/fuse-orion-female-clothes-1-459fd7a531224f4584c6a65034f79768",
+    "creator": "Leonardo Carvalho",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\".Fuse Orion Female Clothes 1\" by Leonardo Carvalho, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
+  },
+  {
+   "id": "c_lace_boots",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_kelly.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/kelly-lod-lady-character-b8b2c15ba88f40958c31711b3615166f",
+    "creator": "Egunoff",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\"Kelly - LOD Lady character\" by Egunoff, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
+  },
+  {
+   "id": "c_baseball_cap",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_jamal.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/jamal-lod-man-character-a169a23fa24f4df39daace6c55b24194",
+    "creator": "Egunoff",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\"Jamal - LOD Man character\" by Egunoff, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
+  },
+  {
+   "id": "c_leather_jacket",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_daren.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/daren-lod-man-character-682af9b4e83b4bcbba145b2596ba2abe",
+    "creator": "Egunoff",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\"Daren - LOD Man character\" by Egunoff, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
+  },
+  {
+   "id": "c_brown_shirt",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_david.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/david-lod-man-character-a483b7dc67da43e0a8fefed635dd911c",
+    "creator": "Egunoff",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\"David - LOD Man character\" by Egunoff, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
+  },
+  {
+   "id": "c_white_shirt",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_andrew.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/andrew-lod-man-character-3aaaf5c42dae43a1bd1ca447964f65b8",
+    "creator": "Egunoff",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\"Andrew - LOD Man character\" by Egunoff, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
+  },
+  {
+   "id": "c_dark_jeans",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_daren.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/daren-lod-man-character-682af9b4e83b4bcbba145b2596ba2abe",
+    "creator": "Egunoff",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\"Daren - LOD Man character\" by Egunoff, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
+  },
+  {
+   "id": "c_trail_shoes",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_david.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/david-lod-man-character-a483b7dc67da43e0a8fefed635dd911c",
+    "creator": "Egunoff",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\"David - LOD Man character\" by Egunoff, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
+  },
+  {
+   "id": "c_white_sneakers",
+   "role": "clothing item (engine def)",
+   "path": "apps/web/public/models/bodies/cl_andrew.glb",
+   "status": "review",
+   "technical": {
+    "fit": "fitToRest onto our rest pose",
+    "budget": "<=10k tris per source file",
+    "textures": "WebP, colour 1K, others 512"
+   },
+   "visual_locks": [
+    "realistic PBR cloth",
+    "drab palette roles",
+    "our skeleton proportions"
+   ],
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "https://sketchfab.com/3d-models/andrew-lod-man-character-3aaaf5c42dae43a1bd1ca447964f65b8",
+    "creator": "Egunoff",
+    "created_at": "2026-11-13",
+    "license": "CC BY 4.0",
+    "attribution": "\"Andrew - LOD Man character\" by Egunoff, CC BY 4.0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/sketchfab.json"
+   },
+   "verification": {
+    "native_scale_reviewed": true,
+    "in_engine_reviewed": true,
+    "technical_checks_passed": true,
+    "approved_by": "pending (Fedir)"
+   }
   }
  ]
 }

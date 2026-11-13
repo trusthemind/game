@@ -5,6 +5,7 @@ export type Action =
   | 'reload'
   | 'inventory'
   | 'flashlight'
+  | 'visor'
   | 'crouch'
   | 'heal'
   | 'eat'
@@ -21,6 +22,7 @@ const KEYMAP: Record<string, Action> = {
   Tab: 'inventory',
   KeyI: 'inventory',
   KeyF: 'flashlight',
+  KeyB: 'visor',
   KeyC: 'crouch',
   KeyQ: 'heal',
   KeyV: 'eat',

@@ -1187,16 +1187,27 @@ export function fitHelmet(obj: THREE.Object3D, head: HeadFit, k: number, opt: He
   const pts: number[] = [];
   const v = new THREE.Vector3();
   // A raised faceplate (gearModels.ts `visor`) is left out: the shell alone is measured and trimmed.
+  // Its triangles too (x, y, z of each corner), for sections through it.
+  const tris: number[] = [];
   (named ?? obj).traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh || m.userData.fitSkip) return;
     const p = m.geometry.attributes.position!;
+    const at: number[] = [];
     for (let i = 0; i < p.count; i++) {
       v.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld);
+      at.push(v.x, v.y, v.z);
       if (v.y < cut) continue;
       shell.expandByPoint(v);
       pts.push(v.x, v.y, v.z);
     }
+    const idx = m.geometry.index;
+    const n = idx ? idx.count : p.count;
+    for (let t = 0; t + 2 < n; t += 3)
+      for (let c = 0; c < 3; c++) {
+        const i = idx ? idx.getX(t + c) : t + c;
+        tris.push(at[i * 3]!, at[i * 3 + 1]!, at[i * 3 + 2]!);
+      }
   });
   const ss = shell.getSize(new THREE.Vector3());
   const sc = shell.getCenter(new THREE.Vector3());
@@ -1212,31 +1223,46 @@ export function fitHelmet(obj: THREE.Object3D, head: HeadFit, k: number, opt: He
   const top = shell.max.y;
   // The dome itself, not its bounds: a faceplate, goggles or a night-vision mount stand off its front and would
   // push it back off the forehead. Its centre from the cap (well above anything hung on the front), its width
-  // and depth from the band between rim and cap, the depth taken from the back (nothing hangs there).
+  // and depth from sections through it between rim and cap.
   // (Measured over the dome's own depth, whatever the rim landmark says: a visor-down Altyn's brow is high up.)
   const base = Math.min(rim, top - (top - shell.min.y) * 0.45);
   const capY = base + (top - base) * 0.7;
-  const band0 = base + (top - base) * 0.2;
   const cap = new THREE.Box3();
   for (let i = 0; i < pts.length; i += 3) if (pts[i + 1]! >= capY) cap.expandByPoint(v.set(pts[i]!, pts[i + 1]!, pts[i + 2]!));
   const cx = cap.isEmpty() ? sc.x : (cap.min.x + cap.max.x) / 2;
-  const inBand = (i: number) => pts[i + 1]! >= band0 && pts[i + 1]! <= capY;
-  let halfX = 0;
-  for (let i = 0; i < pts.length; i += 3) if (inBand(i)) halfX = Math.max(halfX, Math.abs(pts[i]! - cx));
-  // Front to back, the dome is widest at its middle: that is where its centre is (the cap's own centre is pulled
-  // forward by a visor hinge or a night-vision mount).
-  let zs = 0;
-  let zn = 0;
-  for (let i = 0; i < pts.length; i += 3)
-    if (inBand(i) && Math.abs(pts[i]! - cx) > halfX * 0.88) {
-      zs += pts[i + 2]!;
-      zn++;
+  // Width and depth from sections through the shell (its triangles: a low-poly bowl has a few rings of vertices,
+  // and between them the vertices say nothing of its surface), a quarter to over half way from the rim to the top:
+  // where the skull is widest, above a brim's flare. Measured on the outside of the shell.
+  const levels = [0.25, 0.4, 0.55].map((f) => rim + (top - rim) * f);
+  const sect = levels.map(() => [] as number[]);
+  for (let t = 0; t < tris.length; t += 9)
+    for (let e = 0; e < 3; e++) {
+      const a = t + e * 3;
+      const b = t + ((e + 1) % 3) * 3;
+      const ya = tris[a + 1]!;
+      const yb = tris[b + 1]!;
+      if (ya < cut || yb < cut) continue;
+      for (let l = 0; l < levels.length; l++) {
+        const L = levels[l]!;
+        if ((ya - L) * (yb - L) >= 0) continue;
+        const s = (L - ya) / (yb - ya);
+        sect[l]!.push(tris[a]! + (tris[b]! - tris[a]!) * s, tris[a + 2]! + (tris[b + 2]! - tris[a + 2]!) * s);
+      }
     }
-  const cz = zn ? zs / zn : cap.isEmpty() ? sc.z : (cap.min.z + cap.max.z) / 2;
-  let back = 0;
-  for (let i = 0; i < pts.length; i += 3) if (inBand(i)) back = Math.max(back, cz - pts[i + 2]!);
+  let halfX = 0;
+  for (const q of sect) for (let i = 0; i < q.length; i += 2) halfX = Math.max(halfX, Math.abs(q[i]! - cx));
+  // Front to back: its depth through the same sections, and its middle (on the sections, not the shell's bounds:
+  // a hung-on visor, goggles or a mount reach out of them).
+  let depth = 0;
+  let cz = cap.isEmpty() ? sc.z : (cap.min.z + cap.max.z) / 2;
+  for (const q of sect) {
+    let z0 = Infinity;
+    let z1 = -Infinity;
+    for (let i = 1; i < q.length; i += 2) (z0 = Math.min(z0, q[i]!)), (z1 = Math.max(z1, q[i]!));
+    if (z1 - z0 > depth) (depth = z1 - z0), (cz = (z0 + z1) / 2);
+  }
   const domeW = halfX > 0 ? halfX * 2 : ss.x;
-  const domeD = back > 0 ? back * 2 : ss.z;
+  const domeD = depth > 0 ? depth : ss.z;
   // Nothing of it hangs in front of the face: a chin strap's loop, a goggle band or a headset's boom below the
   // front rim crossed the eyes (more so from the raid camera above, and as the head turns). What is below the rim,
   // ahead of the ears and over the face is cut away; a faceplate meant to be down (`brow` given) stays.
@@ -1300,7 +1326,8 @@ export function fitHelmet(obj: THREE.Object3D, head: HeadFit, k: number, opt: He
     });
   }
   const f = opt.fit ?? {};
-  const pad = 0.035 * k;
+  // Liner and shell: the outside of a helmet stands 2-3 cm off the skull all round.
+  const pad = 0.028 * k;
   const wide = (head.halfW * 2 + pad * 2) * (f.w ?? 1);
   const deep = (head.front - head.back + pad * 2) * (f.d ?? 1);
   // One scale where it can be: a helmet squashed to the head's proportions stops looking like itself.
@@ -1309,7 +1336,7 @@ export function fitHelmet(obj: THREE.Object3D, head: HeadFit, k: number, opt: He
   const kz = Math.max(deep / domeD, k0 * 0.9);
   const kxz = Math.sqrt(kx * kz);
   // Height: from the brow to just over the crown, as far as the model's own proportions allow.
-  const clear = 0.03 * k;
+  const clear = 0.024 * k;
   // The dome's own top, over its centre: a knob, a visor hinge or a mount can stand higher than the shell.
   let crown = -Infinity;
   const rr = Math.max(domeW, domeD) * 0.14;
@@ -1321,7 +1348,7 @@ export function fitHelmet(obj: THREE.Object3D, head: HeadFit, k: number, opt: He
   const ky = THREE.MathUtils.clamp((head.crown + clear - browY) / Math.max(1e-6, crown - rim), kxz * 0.78, kxz * 1.12) * (f.h ?? 1);
   // Rim on the brow; if the model is too deep for that, it rides a little high rather than over the eyes, and if
   // too shallow it rests on the crown.
-  const yCrown = THREE.MathUtils.clamp(browY + (crown - rim) * ky, head.crown + 0.028 * k, head.crown + 0.05 * k);
+  const yCrown = THREE.MathUtils.clamp(browY + (crown - rim) * ky, head.crown + 0.02 * k, head.crown + 0.038 * k);
   const yTop = yCrown + (top - crown) * ky;
   const wrap = new THREE.Group();
   wrap.add(obj);

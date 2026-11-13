@@ -134,3 +134,11 @@
 "Body armor" by count_zero (https://sketchfab.com/3d-models/body-armor-5a16b507ea484458aa956a3bc3548412) — CC BY 4.0 — armour: body armour (6b23 candidate)
 "Tactic vest" by miguel_fernandez159 (https://sketchfab.com/3d-models/tactic-vest-df1adf59dbe24c68be1e08d78a9fc0e2) — CC BY 4.0 — armour: tactic vest (6b23 candidate)
 "Spetsnaz SOLIDER" by Long Nguyễn (https://sketchfab.com/3d-models/spetsnaz-solider-ba27cdd5f588444aa70f3d7fe571dbbf) — CC BY 4.0 — armour: heavy armour with shoulder pads (gzhel), cut from the Spetsnaz SOLIDER character
+".Fuse Orion Female Clothes 1" by Leonardo Carvalho (https://sketchfab.com/3d-models/fuse-orion-female-clothes-1-459fd7a531224f4584c6a65034f79768) — CC BY 4.0 — clothing (cl_orion_f): halter crop top, denim shorts, hiking boots (adventurer set)
+"Mary Jane [Female Charcter] Rigged | Game Ready" by Zukomazi (https://sketchfab.com/3d-models/mary-jane-female-charcter-rigged-game-ready-4ed4985465c94e8f87c0f0d3b7101edf) — CC BY 4.0 — clothing: black sports top (adventurer set)
+"Nancy - LOD Lady character" by Egunoff (https://sketchfab.com/3d-models/nancy-lod-lady-character-66cb7d40cbbe4f6da346e52ddd93cf3f) — CC BY 4.0 — clothing: tank top and fingerless gloves (adventurer set)
+"Kelly - LOD Lady character" by Egunoff (https://sketchfab.com/3d-models/kelly-lod-lady-character-b8b2c15ba88f40958c31711b3615166f) — CC BY 4.0 — clothing: khaki trousers, black lace-up boots (adventurer set)
+"Daren - LOD Man character" by Egunoff (https://sketchfab.com/3d-models/daren-lod-man-character-682af9b4e83b4bcbba145b2596ba2abe) — CC BY 4.0 — clothing: black leather jacket, dark jeans (plainclothes set)
+"David - LOD Man character" by Egunoff (https://sketchfab.com/3d-models/david-lod-man-character-a483b7dc67da43e0a8fefed635dd911c) — CC BY 4.0 — clothing: brown button shirt, trail shoes (plainclothes set)
+"Jamal - LOD Man character" by Egunoff (https://sketchfab.com/3d-models/jamal-lod-man-character-a169a23fa24f4df39daace6c55b24194) — CC BY 4.0 — clothing: baseball cap (plainclothes set)
+"Andrew - LOD Man character" by Egunoff (https://sketchfab.com/3d-models/andrew-lod-man-character-3aaaf5c42dae43a1bd1ca447964f65b8) — CC BY 4.0 — clothing: white shirt, white trainers (plainclothes set)

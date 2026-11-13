@@ -102,10 +102,10 @@ describe('faces and the bust (v13)', () => {
     expect(m.version).toBe(PROFILE_VERSION);
     expect(m.look.beard).toBe('none');
     expect(m.look.beardColor).toBeUndefined();
-    const face = m.look.face as Record<string, number>;
+    const face = m.look.face as unknown as Record<string, number>;
     expect(face.brow).toBe(0.5);
     for (const k of FACE_KEYS) expect(typeof face[k]).toBe('number');
-    expect((m.look.shape as Record<string, number>).bust).toBe(0.6);
+    expect((m.look.shape as unknown as Record<string, number>).bust).toBe(0.6);
     expect(resolveFace('soft').eyeSize).toBe(0);
   });
 });

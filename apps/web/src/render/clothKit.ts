@@ -5,13 +5,15 @@
  *
  * `short`: the sleeves stop above the elbow, so the forearms stay drawn. `keepHair`: worn with the hair showing
  * (a cap with a headset over short hair still hides it). `underHelmet`: stays on under a helmet (a balaclava);
- * other headwear comes off when one goes on.
+ * other headwear comes off when one goes on. `open`: leaves skin bare in its own region (a crop top's midriff and
+ * shoulders, shorts' thighs), so the body stays drawn under it instead of being cut away.
  */
 export interface KitPiece {
   body: string;
   part: string;
   short?: boolean;
   underHelmet?: boolean;
+  open?: boolean;
 }
 
 export const CLOTH_KIT: Record<string, KitPiece> = {
@@ -60,9 +62,28 @@ export const CLOTH_KIT: Record<string, KitPiece> = {
   c_swat_boots: { body: 'swat', part: ' boots$' },
   c_fw_boots: { body: 'pmc_a', part: '^Mil_Suit_R5\\.002_Mil_Suit_R5_0' },
   c_strap_boots: { body: 'fem_leather', part: '^Punk_Strap_Boots' },
+  // Adventurer set (women's cut)
+  c_crop_top: { open: true, body: 'cl_orion_f', part: ' Top\\.002$', short: true },
+  c_sports_top: { open: true, body: 'cl_maryjane', part: '^Tops_', short: true },
+  c_tank_gloves: { open: true, body: 'cl_nancy', part: '^(Tops|Gloves)_', short: true },
+  c_denim_shorts: { open: true, body: 'cl_orion_f', part: ' Bottom\\.002$' },
+  c_khaki_trousers: { body: 'cl_kelly', part: '^Bottoms_' },
+  c_hiking_boots: { body: 'cl_orion_f', part: ' Shoes\\.002$' },
+  c_lace_boots: { body: 'cl_kelly', part: '^Shoes_' },
+  // Plainclothes set (men's cut)
+  c_baseball_cap: { body: 'cl_jamal', part: '^Hats_' },
+  c_leather_jacket: { body: 'cl_daren', part: '^Tops_' },
+  c_brown_shirt: { body: 'cl_david', part: '^Tops_' },
+  c_white_shirt: { body: 'cl_andrew', part: '^Tops_' },
+  c_dark_jeans: { body: 'cl_daren', part: '^Bottoms_' },
+  c_trail_shoes: { body: 'cl_david', part: '^Shoes_' },
+  c_white_sneakers: { body: 'cl_andrew', part: '^Shoes_' },
 };
 
-/** Outfits for people whose clothes don't come from items (NPCs, bosses, the infected): picked by a seed. */
+/**
+ * Outfits for people whose clothes don't come from items (NPCs, bosses, the infected): picked by a seed, among those
+ * whose pieces aren't cut for the other sex (ItemDef clothing.sex).
+ */
 export const DEFAULT_OUTFITS: string[][] = [
   ['c_knit', 'c_trousers', 'c_shoes'],
   ['c_bomber', 'c_work_pants', 'c_sneakers'],
@@ -72,4 +93,10 @@ export const DEFAULT_OUTFITS: string[][] = [
   ['c_police_shirt', 'c_police_pants', 'c_police_shoes'],
   ['c_bomber', 'c_trousers', 'c_shoes'],
   ['c_survivor_top', 'c_work_pants', 'c_kirza'],
+  ['c_crop_top', 'c_denim_shorts', 'c_hiking_boots'],
+  ['c_tank_gloves', 'c_khaki_trousers', 'c_lace_boots'],
+  ['c_sports_top', 'c_khaki_trousers', 'c_hiking_boots'],
+  ['c_leather_jacket', 'c_dark_jeans', 'c_lace_boots', 'c_baseball_cap'],
+  ['c_brown_shirt', 'c_dark_jeans', 'c_trail_shoes'],
+  ['c_white_shirt', 'c_dark_jeans', 'c_white_sneakers'],
 ];

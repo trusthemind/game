@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { poseVisor, type VisorRig } from './gearModels';
 
 /**
  * Procedural 3D models for everything the CC0 packs don't cover: helmets, body armour, plate carriers,
@@ -31,7 +32,7 @@ export function gearMat(color: number, rough = 0.8, metal = 0, emissive = 0): TH
 
 const FABRIC = 0.92;
 /** How far the built Altyn's faceplate is swung up on its pins (radians): worn raised, the face showing. */
-const ALTYN_RAISE = 1.75;
+const ALTYN_RAISE = 1.5;
 const BRASS = 0xb88a3c;
 const STEEL = 0x8a8f92;
 
@@ -238,28 +239,26 @@ export function helmetModel(id: string): THREE.Group {
         shell,
       )),
     );
+    // The faceplate on its side pins (at the temples, just over the rim): down, a curved plate over the face with
+    // the vision slit at the eyes; raised, swung up over the shell's front. Left out of the fit (fitHelmet
+    // measures the shell alone); posed by the wearer's item (poseVisor, `visorDown`).
+    const PIN: V3 = [0, 0.035, 0.0];
     const plate = new THREE.Group();
-    plate.add(
-      part(
-        new THREE.CylinderGeometry(0.155, 0.155, 0.17, 24, 1, true, -0.85, 1.7),
-        gearMat(0x454d34, 0.45, 0.45),
-        [0, 0, 0],
-      ),
-    );
-    plate.add(part(box(0.15, 0.016, 0.02), gearMat(0x0e0f0f, 0.3, 0.2), [0, 0.03, 0.15]));
-    // Worn raised (as the real model, gearModels.ts `visor`): swung up on its side pins over the shell's front,
-    // so the face and eyes show; left out of the fit (fitHelmet measures the shell alone).
-    plate.position.set(0, 0.06 - 0.13, -0.04);
+    plate.add(part(new THREE.CylinderGeometry(0.166, 0.158, 0.16, 24, 1, true, -0.95, 1.9), gearMat(0x454d34, 0.45, 0.45)));
+    // The slit, a little above the plate's middle (the eyes are above the face's), and the arms back to the pins.
+    plate.add(part(box(0.15, 0.014, 0.02), gearMat(0x0e0f0f, 0.3, 0.2), [0, 0.035, 0.16]));
+    for (const sx of [-1, 1]) plate.add(part(box(0.012, 0.03, 0.12), gearMat(0x454d34, 0.45, 0.45), [sx * 0.15, 0.06, 0.06]));
+    // Down: centred over the nose (the rim, the brow, is at y 0.01).
+    plate.position.set(0, -0.065 - PIN[1], 0.0);
     const hinge = new THREE.Group();
-    hinge.position.set(0, 0.13, 0.04);
-    hinge.rotation.x = -ALTYN_RAISE;
+    hinge.position.set(...PIN);
     hinge.add(plate);
+    hinge.userData.visor = { pin: [...PIN], p0: [...PIN], q0: [0, 0, 0, 1], open: -ALTYN_RAISE, shut: 0, seat: [0, 0.005, -0.01], drop: [0, 0, 0] } satisfies VisorRig;
+    poseVisor(hinge, 1);
     plate.traverse((n) => (n.userData.fitSkip = true));
     g.add(hinge);
     for (const sx of [-1, 1])
-      g.add(
-        part(cyl(0.012, 0.012, 0.012, 32), gearMat(0x1a1a1a, 0.4, 0.6), [sx * 0.14, 0.13, 0.04], [0, 0, Math.PI / 2]),
-      );
+      g.add(part(cyl(0.014, 0.014, 0.012, 32), gearMat(0x1a1a1a, 0.4, 0.6), [sx * 0.152, PIN[1], PIN[2]], [0, 0, Math.PI / 2]));
   } else {
     g.add(
       (g.userData.shell = part(

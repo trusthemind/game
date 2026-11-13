@@ -9,9 +9,12 @@ import {
   footprint,
   PART_LABEL,
   getDef,
+  hasVisor,
+  isVisorDown,
   itemValue,
   itemWeight,
   moveItem,
+  peekSource,
   plateOf,
   quickMove,
   RARITY_COLORS,
@@ -19,7 +22,7 @@ import {
   type Slot,
 } from '@ashfall/engine';
 import { ItemArt } from './ItemArt';
-import { canDrop, splitGridId, toSource, toTarget, type DstRef, type InvHost, type MenuAction, type SrcRef } from './host';
+import { canDrop, runVisor, splitGridId, toSource, toTarget, type DstRef, type InvHost, type MenuAction, type SrcRef } from './host';
 import { useDrag, zones } from './drag';
 import { audio } from '../../audio/AudioEngine';
 import './inventory.css';
@@ -85,6 +88,7 @@ export function itemLines(item: ItemInstance): [string, string][] {
       const pd = getDef(plate.def);
       lines.push(['Installed plate', `${pd.short} · ${Math.round(plate.dur ?? 0)}/${pd.armor!.durability}`]);
     } else if (d.armor.plate) lines.push(['Installed plate', 'Empty']);
+    if (hasVisor(item)) lines.push(['Visor', isVisorDown(item) ? 'Down · B to raise' : 'Up · B to lower']);
   }
   if (d.grid) lines.push(['Capacity', `${d.grid.w}×${d.grid.h}`]);
   if (d.med) {
@@ -479,21 +483,36 @@ export function InvHint() {
   );
 }
 
-/** ABI-style hover keys: F = the double-click action, X = drop (raid) / to stash (hideout). */
+/** ABI-style hover keys: F = the double-click action, X = drop (raid) / to stash (hideout), B = a helmet's visor
+ * down / up. */
 function useHoverKeys(host: InvHost) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if ((e.code !== 'KeyF' && e.code !== 'KeyX') || e.ctrlKey || e.metaKey || e.altKey) return;
+      if ((e.code !== 'KeyF' && e.code !== 'KeyX' && e.code !== 'KeyB') || e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       const h = useHoverSrc.getState();
       if (!h.item || !h.src || h.host !== host) return;
       if (useMenu.getState().actions.length || useModder.getState().src || useDrag.getState().drag) return;
+      if (e.code === 'KeyB' && !hasVisor(h.item)) return;
       // The key is ours while an item is under the pointer (don't toggle the flashlight too).
       e.preventDefault();
       e.stopPropagation();
       if (e.repeat) return;
       const { item, src } = h;
+      if (e.code === 'KeyB') {
+        // The tile stays where it is: its tooltip shows the new state (the item as it is now, after the change).
+        if (!runVisor(host, src)) return;
+        audio.ui('equip');
+        const s = toSource(host.resolver, src);
+        const now = s && peekSource(s);
+        if (now) {
+          useHoverSrc.setState({ item: now });
+          const t = useTip.getState();
+          if (t.item) t.set(now, t.x, t.y);
+        }
+        return;
+      }
       // The tile may move away without a pointerleave: forget it, the next pointer move picks up what's there.
       useHoverSrc.setState({ item: null, src: null, host: null });
       useTip.getState().set(null);

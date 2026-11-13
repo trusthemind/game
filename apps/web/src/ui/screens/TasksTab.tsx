@@ -177,7 +177,7 @@ function Onboarding({ profile }: { profile: Profile }) {
           <b>Sell</b> what you don't need to Vera, <b>mod</b> your guns (right-click a gun → Modify) and go again, better equipped.
         </li>
       </ol>
-      <p className="faint small">Controls: WASD move · Shift sprint · RMB hold aim · LMB fire · R reload · E interact · quick RMB on anything for actions · Tab inventory · hold Q heal · V eat · M map · C crouch · F flashlight</p>
+      <p className="faint small">Controls: WASD move · Shift sprint · RMB hold aim · LMB fire · R reload · E interact · quick RMB on anything for actions · Tab inventory · hold Q heal · V eat · M map · C crouch · F flashlight · B helmet visor</p>
     </section>
   );
 }

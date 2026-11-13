@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { CLOTHING_SLOTS, Rng, faceFromSeed, getDef, beardId, HAIR_PALETTE, NATURAL_HAIR, npcBeard, npcHair, humanFace, humanShape, NEUTRAL_SHAPE, npcShape, OUTFITS, resolveFace, resolveShape, SHAPE_PRESETS, type Actor, type ClothingSlot, type Corpse, type Equipment, type ItemInstance, type PlayerLook } from '@ashfall/engine';
+import { actorVisorDown, CLOTHING_SLOTS, Rng, faceFromSeed, getDef, beardId, HAIR_PALETTE, NATURAL_HAIR, npcBeard, npcHair, humanFace, humanShape, NEUTRAL_SHAPE, npcShape, OUTFITS, resolveFace, resolveShape, SHAPE_PRESETS, type Actor, type ClothingSlot, type Corpse, type Equipment, type ItemInstance, type PlayerLook } from '@ashfall/engine';
 import { bodySettled, loadBodies, type AssetLibrary } from './assets';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
 import { faceTexture, type FaceSpec } from './facePainter';
@@ -13,7 +13,7 @@ import { HEAVY_MELEE, meleeModel, REVERSE_GRIP } from './melee3d';
 import { ARMOR_SPECS, details, RIG_SPECS, shellParts, shellShader, type ArmorSpec } from './armorShell';
 import { itemModel } from './thumbnails';
 import { offscreenRenderer } from './offscreen';
-import { GEAR_MODEL, toneMap, wornGear } from './gearModels';
+import { findVisor, GEAR_MODEL, poseVisor, toneMap, wornGear } from './gearModels';
 import {
   fitHelmet,
   fitPack,
@@ -377,6 +377,9 @@ export function playerAppearance(look: PlayerLook): Appearance {
 /** Nothing in a slot: the colours the mannequin fallback (no human pack) paints there; human bodies stay bare skin. */
 const BARE = { top: 0x5a5a52, pants: 0x3a3a38, boots: 0x2a2420 } as const;
 
+/** How far an open garment (KitPiece.open) stands off the skin under it, as a share of our height (~5 mm). */
+const OPEN_CLEAR = 0.003;
+
 const worn = (id: string): Worn | null => {
   const piece = CLOTH_KIT[id];
   const slot = getDef(id).clothing?.slot;
@@ -405,6 +408,10 @@ export function wearClothes(look: Appearance, eq: Equipment | null): Appearance 
   };
 }
 
+const outfitsFor = (sex: 'm' | 'f') => DEFAULT_OUTFITS.filter((o) => o.every((id) => (getDef(id).clothing?.sex ?? sex) === sex));
+const FEMALE_OUTFITS = outfitsFor('f');
+const MALE_OUTFITS = outfitsFor('m');
+
 /** Unset kit (an outfit picked for the look) differs from an empty one (nothing worn). */
 const clothesKey = (a: Appearance) => (a.kit ? a.kit.map((k) => k.id).join('|') : '*');
 
@@ -412,7 +419,8 @@ const clothesKey = (a: Appearance) => (a.kit ? a.kit.map((k) => k.id).join('|') 
 export function kitFor(look: Appearance): Worn[] {
   if (look.kit) return look.kit;
   const h = Math.abs((look.top * 31 + look.pants * 17 + look.skin) | 0);
-  return DEFAULT_OUTFITS[h % DEFAULT_OUTFITS.length]!.flatMap((id) => worn(id) ?? []);
+  const fits = look.sex === 'f' ? FEMALE_OUTFITS : MALE_OUTFITS;
+  return fits[h % fits.length]!.flatMap((id) => worn(id) ?? []);
 }
 
 /** Fog-of-war uniforms that switch it off: clothing pictures are drawn outside the world. */
@@ -1026,7 +1034,8 @@ function humanBodyMaterial(
   if (dead) tint.multiplyScalar(0.7);
   // Bare skin everywhere: no painted base layer (shirt, trousers, gloves, shoes). Clothes come only from the
   // garments worn (clothKit); under them the body isn't drawn (uHide): what it would show is inside them.
-  const on = (slot: ClothingSlot) => clothed && kitFor(a).some((k) => k.slot === slot);
+  // An open garment (a crop top, shorts) leaves the body drawn under it: it doesn't cover its whole region.
+  const on = (slot: ClothingSlot) => clothed && kitFor(a).some((k) => k.slot === slot && !k.open);
   const top = kitFor(a).find((k) => k.slot === 'top');
   // vRegion is a flat varying: interpolated, the face (0) to scalp (8) border ran through 1..7 and drew (or,
   // under a top, discarded: a see-through strip) a thin band of other regions across the forehead.
@@ -1472,6 +1481,10 @@ export class CharacterView {
   private shapeField: ShapeField | null = null;
   /** Rigid gear on bones and where each meets the body (see applyShape). */
   private rigidGear: { holder: THREE.Group; at: THREE.Vector3 }[] = [];
+  /** The worn helmet's hinged faceplate (gearModels.ts poseVisor), and how far raised it is (0 down, 1 up),
+   * swung towards the wearer's state (engine actorVisorDown); null t: snap on the next update. */
+  private visor: THREE.Object3D | null = null;
+  private visorT: number | null = null;
 
   constructor(
     private lib: AssetLibrary,
@@ -1635,7 +1648,8 @@ export class CharacterView {
     if (a.topStyle === 'hoodie' || a.topStyle === 'coat') this.addCollar(rig, a);
   }
 
-  /** Real clothes from rigged models (see fitToRest), on our own body: it shows only its head and hands. */
+  /** Real clothes from rigged models (see fitToRest), on our own body: it shows only its head and hands. Open
+   * garments (crop tops, shorts) are drawn over the skin, lifted just clear of it. */
   private wearKit(kit: Worn[]): void {
     const human = this.human!;
     for (const w of kit) {
@@ -1652,6 +1666,8 @@ export class CharacterView {
         (m) => clothMat(m as THREE.MeshStandardMaterial, this.u),
         (n) => re.test(n),
         `${body}|${part}|${this.look.sex}`,
+        false,
+        w.open ? OPEN_CLEAR : 0,
       );
       for (const m of meshes) {
         m.castShadow = this.shadows;
@@ -1891,8 +1907,13 @@ export class CharacterView {
     this.gearAttachments = [];
     const rig = this.rig;
     this.rigidGear = [];
+    this.visor = null;
+    this.visorT = null;
     const add = (bone: RegExp, obj: THREE.Object3D) => {
-      bakeRigid(obj);
+      // A hinged faceplate stays its own node (not merged into the rest), to swing it live.
+      const vz = findVisor(obj);
+      if (vz) this.visor = vz;
+      bakeRigid(obj, vz ? new Set([vz]) : undefined);
       const holder = new THREE.Group();
       holder.add(obj);
       // Where it meets the body, in the holder's own (bind) space: the body shape moves it by as much (applyShape).
@@ -2393,6 +2414,15 @@ export class CharacterView {
     this.root.visible = visible;
     this.hidden = !visible;
     this.syncGear(a.eq, a.active);
+    if (this.visor) {
+      // Lowered or raised: a quarter-second swing on its pins (snapped when the helmet is first put on).
+      const want = actorVisorDown(a) ? 0 : 1;
+      if (this.visorT !== want) {
+        this.visorT = this.visorT === null ? want : want > this.visorT ? Math.min(want, this.visorT + dt / 0.25) : Math.max(want, this.visorT - dt / 0.25);
+        const t = this.visorT;
+        poseVisor(this.visor, t * t * (3 - 2 * t));
+      }
+    }
 
     const speed = Math.hypot(a.vel.x, a.vel.y);
     const zombie = !!this.look.zombie;

@@ -17,10 +17,13 @@ import {
   encounterLoadout,
   equipmentWeight,
   getDef,
+  hasVisor,
+  isVisorDown,
   NPCS,
   npcEncounterEligible,
   Raid,
   Rng,
+  toggleVisor,
   type ExtractRule,
   type Interactable,
   type MapId,
@@ -384,6 +387,16 @@ export class GameSession {
         case 'flashlight':
           p.flashlight = !p.flashlight;
           break;
+        case 'visor': {
+          // The helmet's faceplate down or up (the renderer swings it; the item keeps it, into the profile).
+          const h = p.eq.slots.helmet;
+          if (toggleVisor(h)) {
+            audio.ui('equip');
+            ui.pushMessage(isVisorDown(h) ? 'Visor down' : 'Visor up', 'info');
+          }
+          else ui.pushMessage(h ? 'This helmet has no visor' : 'No helmet', 'bad');
+          break;
+        }
         case 'crouch':
           this.input.toggleCrouch();
           break;
@@ -475,6 +488,7 @@ export class GameSession {
       opts.push({ label: 'Eat or drink (V)', run: () => this.input.queueAction('eat') });
       opts.push({ label: 'Open inventory', run: () => this.openOverlay('inventory') });
       opts.push({ label: p.flashlight ? 'Flashlight off' : 'Flashlight on', run: () => (p.flashlight = !p.flashlight) });
+      if (hasVisor(p.eq.slots.helmet)) opts.push({ label: isVisorDown(p.eq.slots.helmet) ? 'Raise visor (B)' : 'Lower visor (B)', run: () => this.input.queueAction('visor') });
       opts.push({ label: p.crouching ? 'Stand up' : 'Crouch', run: () => this.input.toggleCrouch() });
     } else {
       const near = raid.interactablesAt(w.x, w.y, 1.1);
@@ -623,6 +637,7 @@ export class GameSession {
       interact: this.interact,
       crouch: p.crouching,
       flashlight: p.flashlight,
+      visor: isVisorDown(p.eq.slots.helmet),
       weight: equipmentWeight(p.eq),
       facing: p.facing,
       status: raid.status,
