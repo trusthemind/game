@@ -177,11 +177,11 @@ function CharLabScene() {
     }
     if (view === 'headwear') {
       // Hair and beards under headwear: each look bare, in a cap, a helmet and a balaclava.
-      // `&looks=m:afro:full,f:wavy:none` (sex:hair:beard).
+      // `&looks=m:afro:full,f:wavy:none` (sex:hair:beard), `&helmet=altyn` another helmet.
       cast.length = 0;
       const hq = new URLSearchParams(location.hash.split('?')[1] ?? '');
       const looks = (hq.get('looks') ?? 'm:afro:full,f:wavy:none,f:ponytail:none').split(',').map((l) => l.split(':'));
-      const heads = ['', 'c_green_cap:hat', 'zsh:helmet', 'c_balaclava:hat'];
+      const heads = ['', 'c_green_cap:hat', `${hq.get('helmet') ?? 'zsh'}:helmet`, 'c_balaclava:hat'];
       for (const [sex, hair, beard] of looks)
         for (const h of heads)
           cast.push({
@@ -231,7 +231,9 @@ function CharLabScene() {
       const sex: 'm' | 'f' = q.get('sex') === 'f' ? 'f' : 'm';
       const presets = SHAPE_PRESETS[sex];
       const gun = q.get('gun');
-      const wear = [q.get('top') ?? 'c_bomber', 'c_trousers', 'c_shoes'].map((c) => `${c}:${getDef(c).clothing!.slot}`);
+      // `&wear=c_mil_suit,c_combat_boots` exactly these clothes (`&wear=` nothing: the bare body).
+      const wearIds = q.has('wear') ? q.get('wear')!.split(',').filter(Boolean) : [q.get('top') ?? 'c_bomber', 'c_trousers', 'c_shoes'];
+      const wear = wearIds.map((c) => `${c}:${getDef(c).clothing!.slot}`);
       // `&eq=b_attack:backpack,ssh68:helmet` more kit (rigid gear rides on the shaped body).
       const kit = [...(q.get('armor') === '0' ? [] : ['trooper:armor']), ...(q.get('eq') ?? '').split(',').filter(Boolean)];
       for (const name of Object.keys(presets)) {
@@ -245,13 +247,13 @@ function CharLabScene() {
       (window as unknown as { __shapeStats: unknown }).__shapeStats = shapeStats;
     }
     if (view === 'faceshapes') {
-      // Faces (shape.ts FACE_PRESETS) side by side, bare-headed, close up: `&sex=f`.
+      // Faces (shape.ts FACE_PRESETS) side by side, bare-headed, close up: `&sex=f`, `&eq=altyn:helmet` headwear.
       cast.length = 0;
       const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
       const sex: 'm' | 'f' = q.get('sex') === 'f' ? 'f' : 'm';
       for (const name of Object.keys(FACE_PRESETS)) {
         const look = { ...lookFor(61, 'scav'), sex, hair: sex === 'f' ? ('bob' as const) : ('buzz' as const), beard: 'none', hat: null, clothed: true, shape: SHAPE_PRESETS[sex].average, face: FACE_PRESETS[name] };
-        cast.push({ look, eq: ['c_bomber:top', 'c_trousers:pants', 'c_shoes:boots'], active: 'melee', speed: 0 });
+        cast.push({ look, eq: ['c_bomber:top', 'c_trousers:pants', 'c_shoes:boots', ...(q.get('eq') ?? '').split(',').filter(Boolean)], active: 'melee', speed: 0 });
       }
       cam.position.set(0, 1.62, 2.6);
       cam.lookAt(0, 1.6, 0);

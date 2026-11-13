@@ -1186,9 +1186,10 @@ export function fitHelmet(obj: THREE.Object3D, head: HeadFit, k: number, opt: He
   const shell = new THREE.Box3();
   const pts: number[] = [];
   const v = new THREE.Vector3();
+  // A raised faceplate (gearModels.ts `visor`) is left out: the shell alone is measured and trimmed.
   (named ?? obj).traverse((o) => {
     const m = o as THREE.Mesh;
-    if (!m.isMesh) return;
+    if (!m.isMesh || m.userData.fitSkip) return;
     const p = m.geometry.attributes.position!;
     for (let i = 0; i < p.count; i++) {
       v.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld);
@@ -1245,7 +1246,7 @@ export function fitHelmet(obj: THREE.Object3D, head: HeadFit, k: number, opt: He
     const a = new THREE.Vector3();
     obj.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (!m.isMesh) return;
+      if (!m.isMesh || m.userData.fitSkip) return;
       const g = m.geometry;
       const p = g.attributes.position!;
       const idx = g.index;
@@ -1275,7 +1276,7 @@ export function fitHelmet(obj: THREE.Object3D, head: HeadFit, k: number, opt: He
     const w = new THREE.Vector3();
     obj.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (!m.isMesh) return;
+      if (!m.isMesh || m.userData.fitSkip) return;
       const inv = new THREE.Matrix4().copy(m.matrixWorld).invert();
       const p = m.geometry.attributes.position!;
       let ng: THREE.BufferGeometry | null = null;

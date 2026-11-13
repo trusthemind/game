@@ -374,7 +374,7 @@ export function playerAppearance(look: PlayerLook): Appearance {
   };
 }
 
-/** Nothing in a slot: the body's own painted base layer in these colours (a vest, plain trousers, shoes). */
+/** Nothing in a slot: the colours the mannequin fallback (no human pack) paints there; human bodies stay bare skin. */
 const BARE = { top: 0x5a5a52, pants: 0x3a3a38, boots: 0x2a2420 } as const;
 
 const worn = (id: string): Worn | null => {
@@ -1003,9 +1003,8 @@ function heightScale(src: THREE.Object3D, target: number): number {
 const humanMatCache = new Map<string, THREE.MeshStandardMaterial>();
 
 /**
- * PBR skin + painted clothes. Head/neck (and bare hands / tee sleeves) keep the photographic texture,
- * re-tinted to the actor's skin tone; everything else becomes fabric in the outfit colours, keeping a
- * little of the texture's shading so folds and muscles still read under the lights.
+ * PBR skin: the photographic texture re-tinted to the actor's skin tone, all over (a body with nothing on is
+ * bare). Parts under worn garments are cut away along the smooth hem lines (markCuts).
  */
 function humanBodyMaterial(
   src: THREE.MeshStandardMaterial,
@@ -1020,29 +1019,26 @@ function humanBodyMaterial(
   m = src.clone();
   m.userData.src = src;
   m.roughness = 0.75;
-  const pal = palette(a, dead);
-  pal.push(pal[0]!, pal[0]!);
   const tint = new THREE.Color(a.skin);
   tint.r /= TEX_SKIN.r;
   tint.g /= TEX_SKIN.g;
   tint.b /= TEX_SKIN.b;
   if (dead) tint.multiplyScalar(0.7);
-  const skinMask = [1, a.gloves === null ? 1 : 0, 0, a.topStyle === 'tee' ? 1 : 0, 0, 0, 0, 1, 1];
-  // Under real clothes (clothKit) the body isn't drawn: what it would show is inside them. Head, neck and hands
-  // always show, forearms under short sleeves, and any part with no garment on it (the painted base layer).
+  // Bare skin everywhere: no painted base layer (shirt, trousers, gloves, shoes). Clothes come only from the
+  // garments worn (clothKit); under them the body isn't drawn (uHide): what it would show is inside them.
   const on = (slot: ClothingSlot) => clothed && kitFor(a).some((k) => k.slot === slot);
   const top = kitFor(a).find((k) => k.slot === 'top');
   // vRegion is a flat varying: interpolated, the face (0) to scalp (8) border ran through 1..7 and drew (or,
   // under a top, discarded: a see-through strip) a thin band of other regions across the forehead.
-  const hide = [0, 0, on('top') ? 1 : 0, on('top') && !top?.short ? 1 : 0, on('pants') ? 1 : 0, on('boots') ? 1 : 0, 0, 0, kitFor(a).some((k) => k.slot === 'hat' && k.underHelmet) && clothed ? 1 : 0];
+  // A coverall (clothing.full) is the trousers too.
+  const legs = on('pants') || (clothed && !!top && !!getDef(top.id).clothing?.full);
+  const hide = [0, 0, on('top') ? 1 : 0, on('top') && !top?.short ? 1 : 0, legs ? 1 : 0, on('boots') ? 1 : 0, 0, 0, kitFor(a).some((k) => k.slot === 'hat' && k.underHelmet) && clothed ? 1 : 0];
   patchWorldMaterial(m, u, {
     pre: (shader) => {
       shader.uniforms.uHide = { value: hide };
       // The back of the neck sinks forward under a collar (along its normals it would open at the UV seam there).
       shader.uniforms.uNapeIn = { value: on('top') ? 0.025 : 0 };
-      shader.uniforms.uPal = { value: pal };
       shader.uniforms.uSkinTint = { value: tint };
-      shader.uniforms.uSkinMask = { value: skinMask };
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -1055,7 +1051,7 @@ function humanBodyMaterial(
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform vec3 uPal[9];\nuniform vec3 uSkinTint;\nuniform float uSkinMask[9];\nuniform float uHide[9];\nflat varying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vCutA;\nvarying vec2 vCutB;',
+          '#include <common>\nuniform vec3 uSkinTint;\nuniform float uHide[9];\nflat varying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vCutA;\nvarying vec2 vCutB;',
         )
         .replace(
           '#include <map_fragment>',
@@ -1072,16 +1068,7 @@ function humanBodyMaterial(
             else ri = 5;
           }
           for (int i = 0; i < 9; i++) if (i == ri && uHide[i] > 0.5) discard;
-          float skin = 0.0;
-          vec3 cloth = uPal[0];
-          for (int i = 0; i < 9; i++) if (i == ri) { skin = uSkinMask[i]; cloth = uPal[i]; }
-          if (skin > 0.5) {
-            diffuseColor.rgb = min(diffuseColor.rgb * uSkinTint, vec3(1.0));
-          } else {
-            float l = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
-            float n = fract(sin(dot(floor(vObjPos * 60.0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-            diffuseColor.rgb = cloth * (0.86 + 0.32 * l) * (0.94 + n * 0.08);
-          }`,
+          diffuseColor.rgb = min(diffuseColor.rgb * uSkinTint, vec3(1.0));`,
         );
     },
     key: 'human',
@@ -1634,10 +1621,8 @@ export class CharacterView {
     const a = this.look;
     const head = this.bone(/^head$/i);
     if (this.human) {
-      const clothed = this.outfitMeshes.length > 0;
       this.buildHair();
       this.buildBeard();
-      if (!clothed && (a.topStyle === 'hoodie' || a.topStyle === 'coat')) this.addCollar(rig, a);
       return;
     }
     const hairMat = flatMat(a.hairColor, { rough: 0.9, side: true }, this.u);

@@ -61,6 +61,11 @@ export interface GearSpec {
   cutBelow?: number;
   /** Backpacks: drop the thin loose pieces when worn (a messenger bag's strap). */
   dropLoose?: boolean;
+  /** Helmets: a hinged faceplate (a node of the model), swung up by `open` radians about the X axis through its
+   * hinge pins (`hinge`: y, z in the model's own frame, before `turn`). It is left out of the fit (fitHelmet
+   * measures and trims the shell alone: `userData.fitSkip`). `seat`: then moved by (y, z) to rest on the shell
+   * (the model's plate stands well off it; raised as is, it read as a box on the head). */
+  visor?: { node: string; open: number; hinge: [number, number]; seat?: [number, number] };
 }
 
 /** Connected pieces of a mesh (welded by position: exports split vertices at UV seams): each triangle's piece. */
@@ -288,8 +293,9 @@ function liftMap(tex: THREE.Texture, base: number, gain: number): THREE.Texture 
 export const GEAR_MODEL: Record<string, GearSpec> = {
   // Helmets
   // (Exported facing all ways: the Altyn backwards, the SSh-40 and both FASTs with their front to +X.)
-  // The Altyn comes with its faceplate down: its rim is the top of the faceplate, not the plate's lower edge.
-  altyn: { model: 'altyn', turn: Math.PI, brow: 0.33, liner: 0x394934, fit: { w: 0.96, d: 0.88, h: 1.1, y: 0 } },
+  // The Altyn comes with its faceplate down: worn raised (swung up on its side pins over the shell's front), so
+  // the face and eyes show, and the shell is fitted alone, its front rim on the brow like any other.
+  altyn: { model: 'altyn', turn: Math.PI, liner: 0x394934, visor: { node: 'visor_1', open: 1.05, hinge: [0.004, 0.014], seat: [-0.025, 0] } },
   ssh68: { model: 'ssh40', turn: -Math.PI / 2, trim: true },
   ssh36: { model: 'ssh36' },
   h_kevlar: { model: 'wz2005', shell: 0.6 },
@@ -401,6 +407,21 @@ export function wornGear(lib: AssetLibrary, itemId: string): THREE.Object3D | nu
           if ((n as THREE.Mesh).isMesh && !keep.has(n)) drop.push(n);
         });
         for (const n of drop) n.parent?.remove(n);
+      }
+      if (spec.visor) {
+        const vz = o.getObjectByName(spec.visor.node);
+        if (vz?.parent) {
+          // Swung about the hinge pins in its parent's frame (the model's own, up to the export's wrappers).
+          o.updateMatrixWorld(true);
+          const toParent = new THREE.Matrix4().copy(vz.parent.matrixWorld).invert().multiply(o.matrixWorld);
+          const pin = new THREE.Vector3(0, spec.visor.hinge[0], spec.visor.hinge[1]).applyMatrix4(toParent);
+          const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), spec.visor.open);
+          vz.position.sub(pin).applyQuaternion(q).add(pin);
+          vz.quaternion.premultiply(q);
+          const [sy, sz] = spec.visor.seat ?? [0, 0];
+          vz.position.add(new THREE.Vector3(0, sy, sz).transformDirection(toParent).multiplyScalar(Math.hypot(sy, sz)));
+          vz.traverse((n) => (n.userData.fitSkip = true));
+        }
       }
       if (spec.trim) trimLoose(o);
       if (spec.cutBelow) cutBelow(o, spec.cutBelow);
