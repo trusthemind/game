@@ -43,9 +43,9 @@ describe('body shapes', () => {
     const m = migrateProfile(p);
     expect(m.version).toBe(PROFILE_VERSION);
     expect(m.look.shape).toBe('average');
-    const q = createProfile('x', 'y', { sex: 'f', skin: 0, hair: 'bob', hairColor: 0, beard: false, shape: 'pear' });
+    const q = createProfile('x', 'y', { sex: 'f', skin: 0, hair: 'bob', hairColor: 0, beard: 'none', shape: 'pear' });
     expect(migrateProfile(JSON.parse(JSON.stringify(q))).look.shape).toBe('pear');
-    const r = createProfile('x', 'y', { sex: 'f', skin: 0, hair: 'bob', hairColor: 0, beard: false, shape: 'stocky' });
+    const r = createProfile('x', 'y', { sex: 'f', skin: 0, hair: 'bob', hairColor: 0, beard: 'none', shape: 'stocky' });
     expect(migrateProfile(JSON.parse(JSON.stringify(r))).look.shape).toBe('average');
   });
 

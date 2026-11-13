@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { CLOTHING_SLOTS, Rng, faceFromSeed, getDef, NEUTRAL_SHAPE, npcShape, OUTFITS, resolveFace, resolveShape, SHAPE_PRESETS, type Actor, type ClothingSlot, type Corpse, type Equipment, type ItemInstance, type PlayerLook } from '@ashfall/engine';
+import { CLOTHING_SLOTS, Rng, faceFromSeed, getDef, beardId, HAIR_PALETTE, NATURAL_HAIR, npcBeard, npcHair, humanFace, humanShape, NEUTRAL_SHAPE, npcShape, OUTFITS, resolveFace, resolveShape, SHAPE_PRESETS, type Actor, type ClothingSlot, type Corpse, type Equipment, type ItemInstance, type PlayerLook } from '@ashfall/engine';
 import { bodySettled, loadBodies, type AssetLibrary } from './assets';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
 import { faceTexture, type FaceSpec } from './facePainter';
@@ -28,13 +28,17 @@ import {
 import { attachSkinned, cloneHuman, type HumanParts } from './human';
 import { heightFactor, restPoints, shapeKey, shapeMesh, ShapeField, withNeutral, type BodyShape, type FaceShape } from './bodyShape';
 import { fitToRest, gltfMeshNames } from './rebind';
+import { beardGeometry, disposeHairGen, hairGenMaterial, hairGeometry as proceduralHair } from './hairGen';
+import { BEARD_SPECS, GLB_HAIR, HAIR_SPECS } from './hairStyles';
 import { ease, newPalm, palmFrame, reachPalm, type Arm } from './armIK';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Appearance
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type HairStyle = 'bald' | 'buzz' | 'short' | 'messy' | 'long' | 'ponytail' | 'bob' | 'bun';
+/** A hairstyle id (engine hair.ts). */
+export type HairStyle = string;
+type LegacyHair = 'bald' | 'buzz' | 'short' | 'messy' | 'long' | 'ponytail' | 'bob' | 'bun';
 export type TopStyle = 'tee' | 'jacket' | 'hoodie' | 'coat';
 /** Fabric print, drawn in the outfit shader from object-space position (no textures). */
 export type Pattern = 'plain' | 'woodland' | 'flora' | 'digital' | 'stripes' | 'plaid' | 'tracksuit' | 'denim';
@@ -55,7 +59,10 @@ export interface Appearance {
   skin: number;
   hair: HairStyle;
   hairColor: number;
-  beard: boolean;
+  /** A facial hair id (engine hair.ts); 'none' is clean shaven. */
+  beard: string;
+  /** Unset: the hair's colour. */
+  beardColor?: number;
   top: number;
   topStyle: TopStyle;
   pants: number;
@@ -87,9 +94,7 @@ export interface Appearance {
 export type Worn = KitPiece & { slot: ClothingSlot; id: string };
 
 export const SKIN_TONES = [0xf1c8a8, 0xe3b08e, 0xc99069, 0x9a6544, 0x6b4430];
-export const HAIR_COLORS = [0x1c1612, 0x3a281b, 0x5b3d25, 0x7c3b21, 0xb08a52, 0x8c8a86, 0xd8cfb8];
-const HAIR_M: HairStyle[] = ['bald', 'buzz', 'short', 'short', 'messy', 'messy'];
-const HAIR_F: HairStyle[] = ['long', 'ponytail', 'bob', 'bun', 'long', 'ponytail'];
+export const HAIR_COLORS = HAIR_PALETTE.map((c) => c.hex);
 
 const DRAB_TOPS = [0x4f553a, 0x5a4632, 0x55595b, 0x2b3346, 0x6b5b45, 0x3d4a3a, 0x7a6a50, 0x4a3b3b];
 const DRAB_PANTS = [0x3a4558, 0x2e3324, 0x45403a, 0x2b2b2e, 0x524634];
@@ -105,9 +110,9 @@ export function lookFor(seed: number, archetype: string, npcId?: string, bossId?
   const base: Appearance = {
     sex,
     skin: rng.pick(SKIN_TONES),
-    hair: rng.pick(sex === 'm' ? HAIR_M : HAIR_F),
-    hairColor: rng.pick(HAIR_COLORS.slice(0, 6)),
-    beard: sex === 'm' && rng.chance(0.4),
+    hair: npcHair(sex, seed * 13 + archetype.length),
+    hairColor: rng.pick(NATURAL_HAIR),
+    beard: npcBeard(sex, seed * 29 + archetype.length),
     top: rng.pick(DRAB_TOPS),
     topStyle: rng.pick(['tee', 'jacket', 'hoodie', 'jacket'] as TopStyle[]),
     pants: rng.pick(DRAB_PANTS),
@@ -218,7 +223,7 @@ export function lookFor(seed: number, archetype: string, npcId?: string, bossId?
         boots: 0x1a1816,
       };
     case 'boss':
-      return { ...base, top: 0x3b2622, topStyle: 'coat', pants: 0x1f1f22, beard: true, hair: 'buzz', gloves: 0x1a1a1a };
+      return { ...base, top: 0x3b2622, topStyle: 'coat', pants: 0x1f1f22, beard: 'full', hair: 'buzz', gloves: 0x1a1a1a };
     case 'infected': {
       const c = civ();
       return {
@@ -352,9 +357,11 @@ export function playerAppearance(look: PlayerLook): Appearance {
   const { shape, face, ...rest } = look;
   return {
     ...rest,
-    hair: look.hair as HairStyle,
-    shape: resolveShape(look.sex, shape),
-    face: resolveFace(face),
+    hair: look.hair,
+    beard: look.sex === 'f' ? 'none' : beardId(look.beard),
+    // Kept to human proportions whatever was saved (older saves could stack every slider to the end).
+    shape: humanShape(resolveShape(look.sex, shape)),
+    face: humanFace(resolveFace(face)),
     top: 0x4b5138,
     topStyle: 'jacket',
     pants: 0x3a3a30,
@@ -483,7 +490,7 @@ const BOSS_LOOKS: Record<string, Appearance> = {
     skin: 0xe3b08e,
     hair: 'buzz',
     hairColor: 0x2a201a,
-    beard: true,
+    beard: 'full',
     top: 0x3b2622,
     topStyle: 'coat',
     pants: 0x1f1f22,
@@ -500,7 +507,7 @@ const BOSS_LOOKS: Record<string, Appearance> = {
     skin: 0xc99069,
     hair: 'short',
     hairColor: 0x8c8a86,
-    beard: true,
+    beard: 'full',
     top: 0x3e4a2e,
     topStyle: 'jacket',
     pants: 0x3a3a2c,
@@ -516,7 +523,7 @@ const BOSS_LOOKS: Record<string, Appearance> = {
     skin: 0xf1c8a8,
     hair: 'long',
     hairColor: 0x7c3b21,
-    beard: false,
+    beard: 'none',
     top: 0x1c1c20,
     topStyle: 'jacket',
     pants: 0x26262c,
@@ -535,7 +542,7 @@ const NPC_LOOKS: Record<string, Appearance> = {
     skin: 0xf1c8a8,
     hair: 'ponytail',
     hairColor: 0x7c3b21,
-    beard: false,
+    beard: 'none',
     top: 0xd8dcd4,
     topStyle: 'coat',
     pants: 0x2f4f5a,
@@ -551,7 +558,7 @@ const NPC_LOOKS: Record<string, Appearance> = {
     skin: 0xe3b08e,
     hair: 'short',
     hairColor: 0x8c8a86,
-    beard: true,
+    beard: 'full',
     top: 0xb5622e,
     topStyle: 'jacket',
     pants: 0x3a4558,
@@ -567,7 +574,7 @@ const NPC_LOOKS: Record<string, Appearance> = {
     skin: 0xe3b08e,
     hair: 'bob',
     hairColor: 0x1c1612,
-    beard: false,
+    beard: 'none',
     top: 0x4a2f55,
     topStyle: 'coat',
     pants: 0x1f1f22,
@@ -583,7 +590,7 @@ const NPC_LOOKS: Record<string, Appearance> = {
     skin: 0xd9a582,
     hair: 'buzz',
     hairColor: 0x3a2a1c,
-    beard: false,
+    beard: 'none',
     top: 0x55603e,
     topStyle: 'jacket',
     pants: 0x4a5236,
@@ -600,7 +607,7 @@ const NPC_LOOKS: Record<string, Appearance> = {
     skin: 0xf3d0b4,
     hair: 'bun',
     hairColor: 0x2a1a12,
-    beard: false,
+    beard: 'none',
     top: 0x6a5a8a,
     topStyle: 'hoodie',
     pants: 0x2a3040,
@@ -616,7 +623,7 @@ const NPC_LOOKS: Record<string, Appearance> = {
     skin: 0xc68a62,
     hair: 'short',
     hairColor: 0xb8b4ac,
-    beard: true,
+    beard: 'full',
     top: 0x5a4632,
     topStyle: 'coat',
     pants: 0x3a3428,
@@ -892,28 +899,6 @@ function shellMat(spec: ArmorSpec, color: number, k: number, u: WorldUniforms): 
 /** Average skin colour of the pack's body textures (sRGB #a67350); skin tones are applied relative to it. */
 const TEX_SKIN = new THREE.Color(0xa67350);
 
-const HAIR_MODEL: Record<'m' | 'f', Record<HairStyle, string | null>> = {
-  m: {
-    bald: null,
-    buzz: 'Hair_Buzzed',
-    short: 'Hair_SimpleParted',
-    messy: 'Hair_SimpleParted',
-    long: 'Hair_Long',
-    ponytail: 'Hair_Long',
-    bob: 'Hair_BuzzedFemale',
-    bun: 'Hair_Buns',
-  },
-  f: {
-    bald: null,
-    buzz: 'Hair_BuzzedFemale',
-    short: 'Hair_BuzzedFemale',
-    messy: 'Hair_BuzzedFemale',
-    long: 'Hair_Long',
-    ponytail: 'Hair_Long',
-    bob: 'Hair_BuzzedFemale',
-    bun: 'Hair_Buns',
-  },
-};
 
 const heightCache = new Map<THREE.Object3D, number>();
 /** Scale so the bind-pose model is `target` metres tall. */
@@ -1139,7 +1124,20 @@ function bangs(head: THREE.Box3): THREE.BufferGeometry {
   return g;
 }
 
-function hairGeometry(style: HairStyle, head: THREE.Box3): THREE.BufferGeometry[] {
+/** The old mannequin's eight shapes, for any style id. */
+function legacyHair(id: string): LegacyHair {
+  if (['bald', 'buzz', 'short', 'messy', 'long', 'ponytail', 'bob', 'bun'].includes(id)) return id as LegacyHair;
+  if (id === 'shaved' || id === 'fade') return 'buzz';
+  if (/tail|braid/.test(id)) return 'ponytail';
+  if (/bun|knot/.test(id)) return 'bun';
+  if (/long|straight|wavy|bangs|shoulder/.test(id)) return 'long';
+  if (/bob|lob|pixie|shag/.test(id)) return 'bob';
+  if (/messy|spiky|curl|afro|mohawk|quiff/.test(id)) return 'messy';
+  return 'short';
+}
+
+function hairGeometry(id: HairStyle, head: THREE.Box3): THREE.BufferGeometry[] {
+  const style = legacyHair(id);
   const s = head.getSize(new THREE.Vector3());
   const c = head.getCenter(new THREE.Vector3());
   switch (style) {
@@ -1221,7 +1219,7 @@ export function faceSpecFor(a: Appearance): FaceSpec {
     hairColor: a.hair === 'bald' ? 0x3a281b : a.hairColor,
     eyes: a.eyes ?? 0x4a3020,
     age: a.age ?? 1,
-    beard: a.beard,
+    beard: a.beard !== 'none',
     scars: !!a.scars,
     zombie: !!a.zombie,
     seed: a.skin ^ a.hairColor ^ (a.top << 1),
@@ -1516,9 +1514,7 @@ export class CharacterView {
     if (this.human) {
       const clothed = this.outfitMeshes.length > 0;
       this.buildHair();
-      const hm = hairMaterialFor(this.lib, a.zombie ? 0x3a3530 : a.hairColor, this.u);
-      if (a.beard && a.sex === 'm' && this.lib.hair.get('Hair_Beard'))
-        attachSkinned(this.lib.hair.get('Hair_Beard')!, this.human.body, hm);
+      this.buildBeard();
       if (!clothed && (a.topStyle === 'hoodie' || a.topStyle === 'coat')) this.addCollar(rig, a);
       return;
     }
@@ -1639,12 +1635,46 @@ export class CharacterView {
   private buildHair(): void {
     const a = this.look;
     const human = this.human!;
-    const style = HAIR_MODEL[a.sex][a.hair];
-    if (!style || !this.lib.hair.get(style)) return;
-    const hm = hairMaterialFor(this.lib, a.zombie ? 0x3a3530 : a.hairColor, this.u);
-    const h = attachSkinned(this.lib.hair.get(style)!, human.body, hm);
-    h.castShadow = this.shadows;
-    this.hairMeshes.push(h);
+    const color = a.zombie ? 0x3a3530 : a.hairColor;
+    const glb = GLB_HAIR[a.sex][a.hair];
+    if (glb && this.lib.hair.get(glb)) {
+      const h = attachSkinned(this.lib.hair.get(glb)!, human.body, hairMaterialFor(this.lib, color, this.u));
+      h.castShadow = this.shadows;
+      this.hairMeshes.push(h);
+      return;
+    }
+    const spec = HAIR_SPECS[a.hair] ?? HAIR_SPECS[a.sex === 'f' ? 'ponytail' : 'short']!;
+    const built = proceduralHair(human.body, a.sex, a.hair, spec);
+    const mat = hairGenMaterial(color, this.u);
+    // The scalp part goes under hats and helmets; what hangs below them (Long) stays.
+    for (const [geo, name] of [[built.scalp, `Hair_${a.hair}`], [built.long, `HairLong_${a.hair}`]] as const) {
+      if (!geo) continue;
+      this.hairMeshes.push(this.mountSkinned(geo, mat, name));
+    }
+  }
+
+  /** Facial hair (procedural, hairGen.ts): only on the male body. */
+  private buildBeard(): void {
+    const a = this.look;
+    if (a.sex !== 'm' || !a.beard || a.beard === 'none') return;
+    const spec = BEARD_SPECS[a.beard];
+    if (!spec) return;
+    const geo = beardGeometry(this.human!.body, a.sex, a.beard, spec);
+    if (!geo) return;
+    const color = a.zombie ? 0x3a3530 : (a.beardColor ?? a.hairColor);
+    this.mountSkinned(geo, hairGenMaterial(color, this.u), `Beard_${a.beard}`);
+  }
+
+  /** A mesh built in the body's bind space, skinned to the body's own skeleton. */
+  private mountSkinned(geo: THREE.BufferGeometry, mat: THREE.Material, name: string): THREE.SkinnedMesh {
+    const body = this.human!.body;
+    const m = new THREE.SkinnedMesh(geo, mat);
+    m.name = name;
+    m.bind(body.skeleton, body.bindMatrix);
+    m.frustumCulled = false;
+    m.castShadow = this.shadows;
+    body.parent!.add(m);
+    return m;
   }
 
   /**
@@ -3070,6 +3100,7 @@ export function disposeCharacterCaches(): void {
   BODY_FIT.clear();
   bodyMatCache.clear();
   flatMatCache.clear();
+  disposeHairGen();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3078,8 +3109,9 @@ export function disposeCharacterCaches(): void {
 
 const portraitCache = new Map<string, string>();
 
-export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256): string {
-  const key = JSON.stringify(look) + size;
+/** A head shot ('head') or the whole figure ('body', for build pictures), as a PNG data URL (cached). */
+export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, framing: 'head' | 'face' | 'body' | 'hair' | 'back' = 'head'): string {
+  const key = JSON.stringify(look) + size + framing;
   const hit = portraitCache.get(key);
   if (hit) return hit;
   // Shared with the item pictures (offscreen.ts), so everything they change is set here too.
@@ -3088,7 +3120,7 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256):
   r.setSize(size, size, false);
   r.outputColorSpace = THREE.SRGBColorSpace;
   r.toneMapping = THREE.ACESFilmicToneMapping;
-  r.toneMappingExposure = 1;
+  r.toneMappingExposure = framing === 'body' ? 1.35 : 1;
   r.setClearColor(0x000000, 0);
   const scene = new THREE.Scene();
   const u: WorldUniforms = {
@@ -3102,7 +3134,8 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256):
   const fake = {
     pos: { x: 0, y: 0 },
     vel: { x: 0, y: 0 },
-    facing: Math.PI / 2 - 0.3,
+    // Hair pictures turn the head to show its side and back (ponytails, length); 'back' shows the back.
+    facing: framing === 'hair' ? Math.PI / 2 - 1.05 : framing === 'back' ? -Math.PI / 2 + 0.3 : Math.PI / 2 - 0.3,
     crouching: false,
     sprinting: false,
     eq: { slots: {}, pockets: { w: 0, h: 0, items: [] } },
@@ -3124,11 +3157,26 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256):
   );
   const hp = headBone ? headBone.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(0, 1.6, 0);
   const cam = new THREE.PerspectiveCamera(26, 1, 0.05, 10);
-  cam.position.set(hp.x + 0.12, hp.y + 0.1, hp.z + 0.95);
-  cam.lookAt(hp.x, hp.y + 0.02, hp.z);
+  if (framing === 'body') {
+    // Feet to crown, whatever the height slider says (the head bone sets the frame).
+    const mid = hp.y * 0.53;
+    cam.position.set(0.5, mid + 0.25, (hp.y + 0.25) * 2.3);
+    cam.lookAt(0, mid, 0);
+  } else if (framing === 'hair' || framing === 'back') {
+    cam.position.set(hp.x + 0.1, hp.y + 0.24, hp.z + 0.78);
+    cam.lookAt(hp.x, hp.y + 0.06, hp.z);
+  } else if (framing === 'face') {
+    // Tighter: the face fills the picture (the creator's face and hair tiles).
+    cam.position.set(hp.x + 0.1, hp.y + 0.08, hp.z + 0.68);
+    cam.lookAt(hp.x, hp.y + 0.04, hp.z);
+  } else {
+    cam.position.set(hp.x + 0.12, hp.y + 0.1, hp.z + 0.95);
+    cam.lookAt(hp.x, hp.y + 0.02, hp.z);
+  }
   r.render(scene, cam);
   const url = r.domElement.toDataURL('image/png');
   portraitCache.set(key, url);
   view.dispose();
+  (u.uFow.value as THREE.DataTexture).dispose();
   return url;
 }

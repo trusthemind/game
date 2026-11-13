@@ -24,6 +24,7 @@ import { actorLook, CharacterView, lookFor, renderPortrait, type Appearance } fr
 import { SHAPE_PRESETS, shapeStats } from '../render/bodyShape';
 import { FACE_PRESETS } from '@ashfall/engine';
 import type { WorldUniforms } from '../render/patches';
+import { RandomLooks, StyleGrid } from './RandomLooks';
 
 /** Dev-only lineup of characters/outfits/weapons (open /#charlab). Used for visual checks and screenshots. */
 /** Fill every empty socket with the first part that fits (rails a part brings get filled too). */
@@ -37,6 +38,11 @@ function modAll(it: ItemInstance): void {
 }
 
 export function CharLab() {
+  const view = new URLSearchParams(location.hash.split('?')[1] ?? '').get('view');
+  return view === 'randoms' ? <RandomLooks /> : view === 'hair' || view === 'beards' ? <StyleGrid /> : <CharLabScene />;
+}
+
+function CharLabScene() {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     let raf = 0;
@@ -169,6 +175,25 @@ export function CharLab() {
       cam.lookAt(0, 1.0, 0);
       (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
     }
+    if (view === 'headwear') {
+      // Hair and beards under headwear: each look bare, in a cap, a helmet and a balaclava.
+      // `&looks=m:afro:full,f:wavy:none` (sex:hair:beard).
+      cast.length = 0;
+      const hq = new URLSearchParams(location.hash.split('?')[1] ?? '');
+      const looks = (hq.get('looks') ?? 'm:afro:full,f:wavy:none,f:ponytail:none').split(',').map((l) => l.split(':'));
+      const heads = ['', 'c_green_cap:hat', 'zsh:helmet', 'c_balaclava:hat'];
+      for (const [sex, hair, beard] of looks)
+        for (const h of heads)
+          cast.push({
+            look: { ...lookFor(61, 'scav'), sex: sex === 'f' ? 'f' : 'm', hair: hair!, beard: beard ?? 'none', hat: null, clothed: true },
+            eq: ['c_knit:top', 'c_trousers:pants', 'c_shoes:boots', ...(h ? [h] : [])],
+            active: 'melee',
+            speed: 0,
+          });
+      cam.position.set(0, 2.0, 6.5);
+      cam.lookAt(0, 1.45, 0);
+      (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
+    }
     if (view === 'armor') {
       // Every body armour and rig (armorKit.ts) on the same body in the same clothes, so the fit of each piece
       // can be compared: `&ids=trooper,paca` picks some, `&sex=f` a woman, `&top=c_bomber` other clothes,
@@ -225,7 +250,7 @@ export function CharLab() {
       const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
       const sex: 'm' | 'f' = q.get('sex') === 'f' ? 'f' : 'm';
       for (const name of Object.keys(FACE_PRESETS)) {
-        const look = { ...lookFor(61, 'scav'), sex, hair: sex === 'f' ? ('bob' as const) : ('buzz' as const), beard: false, hat: null, clothed: true, shape: SHAPE_PRESETS[sex].average, face: FACE_PRESETS[name] };
+        const look = { ...lookFor(61, 'scav'), sex, hair: sex === 'f' ? ('bob' as const) : ('buzz' as const), beard: 'none', hat: null, clothed: true, shape: SHAPE_PRESETS[sex].average, face: FACE_PRESETS[name] };
         cast.push({ look, eq: ['c_bomber:top', 'c_trousers:pants', 'c_shoes:boots'], active: 'melee', speed: 0 });
       }
       cam.position.set(0, 1.62, 2.6);
@@ -537,9 +562,9 @@ export function CharLab() {
           pos: {
             x:
               (i - (cast.length - 1) / 2) *
-              (view === 'guns' || view === 'gear' || view.startsWith('melee') || view === 'hats'
-                ? view === 'hats'
-                  ? 0.55
+              (view === 'guns' || view === 'gear' || view.startsWith('melee') || view === 'hats' || view === 'headwear'
+                ? view === 'hats' || view === 'headwear'
+                  ? view === 'hats' ? 0.55 : 0.6
                   : view.startsWith('melee')
                     ? 0.85
                     : 1.05

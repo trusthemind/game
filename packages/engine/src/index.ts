@@ -24,6 +24,7 @@ export * from './dialogue/runner';
 export * from './dialogue/npcs';
 export * from './profile';
 export * from './shape';
+export * from './hair';
 export * from './companions';
 export * from './economy';
 export * from './sim/health';

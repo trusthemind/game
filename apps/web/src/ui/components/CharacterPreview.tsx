@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { getDef, type Actor, type Equipment } from '@ashfall/engine';
+import { getDef, type Actor, type Equipment, type PlayerLook } from '@ashfall/engine';
 import { bodySettled, loadAssets, loadBodies } from '../../render/assets';
 import { actorLook, CharacterView, lookBodies, playerAppearance } from '../../render/character';
 import type { WorldUniforms } from '../../render/patches';
@@ -11,10 +11,24 @@ import { useHoverItem } from '../inventory/components';
  * Your survivor in 3D, wearing exactly what's in the loadout slots. Turns slowly on its own; drag to spin.
  * One small WebGL canvas, paused while the tab is hidden.
  */
-export function CharacterPreview({ framing = 'body', bareHead = false, className }: { framing?: 'body' | 'face'; bareHead?: boolean; className?: string } = {}) {
+export type PreviewFraming = 'body' | 'face' | 'back';
+
+/** `look`: show this look instead of the saved one (the character creator's draft or a hovered option). */
+export function CharacterPreview({
+  framing = 'body',
+  bareHead = false,
+  className,
+  look,
+}: { framing?: PreviewFraming; bareHead?: boolean; className?: string; look?: PlayerLook } = {}) {
   const ref = useRef<HTMLDivElement>(null);
   const frame = useRef(framing);
   frame.current = framing;
+  const lookRef = useRef(look);
+  const resync = useRef<() => void>(() => {});
+  if (lookRef.current !== look) {
+    lookRef.current = look;
+    queueMicrotask(() => resync.current());
+  }
   const bare = useRef(bareHead);
   bare.current = bareHead;
   useEffect(() => {
@@ -60,13 +74,16 @@ export function CharacterPreview({ framing = 'body', bareHead = false, className
       (u.uFow.value as THREE.DataTexture).needsUpdate = true;
 
       let view: CharacterView | null = null;
+      let headBone: THREE.Bone | null = null;
+      const headPos = new THREE.Vector3(0, 1.6, 0);
       let lookKey = '';
       const actor = { pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 }, facing: Math.PI / 2 - 0.5, crouching: false, sprinting: false, eq: null as Equipment | null, active: 'primary', faction: 'player', alive: true } as unknown as Actor;
       const sync = () => {
         const p = useProfile.getState().profile;
         if (!p) return;
-        const key = JSON.stringify(p.look);
-        const look = actorLook(playerAppearance(p.look), p.equipment);
+        const pl = lookRef.current ?? p.look;
+        const key = JSON.stringify(pl);
+        const look = actorLook(playerAppearance(pl), p.equipment);
         if (key !== lookKey && !lookBodies(look).every((b) => bodySettled(lib, b))) {
           // Keep showing the old look until the models its clothes come from have loaded.
           void loadBodies(lib, lookBodies(look)).then(() => !disposed && sync());
@@ -77,6 +94,7 @@ export function CharacterPreview({ framing = 'body', bareHead = false, className
           }
           view = new CharacterView(lib, look, u, true);
           scene.add(view.root);
+          headBone = (view as unknown as { skinned: THREE.SkinnedMesh }).skinned.skeleton.bones.find((b) => /^head$/i.test(b.name)) ?? null;
           lookKey = key;
         }
         // Pointing at a piece of clothing tries it on: the preview wears it instead of what's in that slot.
@@ -89,27 +107,43 @@ export function CharacterPreview({ framing = 'body', bareHead = false, className
         actor.active = s.primary ? 'primary' : s.secondary ? 'secondary' : 'melee';
       };
       sync();
+      resync.current = sync;
       const unsub = useProfile.subscribe(sync);
       const unsubHover = useHoverItem.subscribe(sync);
 
       // Drag to turn; otherwise a slow idle turn.
+      // Each framing turns the figure to its own angle (face: three-quarter front; back: from behind); after a
+      // drag it stays where you left it until the framing changes; the full body idles round slowly.
       let dragging = false;
       let lastX = 0;
-      let spin = 0.25;
+      let held = false;
+      let shownFrame = frame.current;
+      let spinVel = 0;
       const down = (e: PointerEvent) => {
         dragging = true;
+        held = true;
         lastX = e.clientX;
         canvas.setPointerCapture(e.pointerId);
       };
       const move = (e: PointerEvent) => {
         if (!dragging) return;
-        actor.facing -= (e.clientX - lastX) * 0.012;
+        const d = (e.clientX - lastX) * 0.012;
+        actor.facing -= d;
+        spinVel = -d * 30;
         lastX = e.clientX;
       };
       const up = () => {
         dragging = false;
-        spin = 0;
       };
+      const keyTurn = (e: KeyboardEvent) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault();
+        held = true;
+        spinVel = e.key === 'ArrowLeft' ? -4 : 4;
+      };
+      canvas.tabIndex = 0;
+      canvas.setAttribute('aria-label', 'Character preview: drag or use the arrow keys to turn');
+      canvas.addEventListener('keydown', keyTurn);
       canvas.addEventListener('pointerdown', down);
       canvas.addEventListener('pointermove', move);
       canvas.addEventListener('pointerup', up);
@@ -126,32 +160,54 @@ export function CharacterPreview({ framing = 'body', bareHead = false, className
       resize();
 
       let last = performance.now();
-      let camT = frame.current === 'face' ? 1 : 0;
+      const AIM: Record<PreviewFraming, number> = { face: Math.PI / 2 - 0.35, body: Math.PI / 2 - 0.5, back: -Math.PI / 2 + 0.3 };
+      // Camera rigs [height, distance, look-at height]; eased between.
+      const RIG: Record<PreviewFraming, [number, number, number]> = { face: [1.65, 1.3, 1.61], body: [1.25, 4.6, 0.95], back: [1.35, 4.2, 1.05] };
+      const cur = [...RIG[frame.current]];
       const tick = (now: number) => {
         raf = requestAnimationFrame(tick);
         if (document.hidden) return;
         const dt = Math.min(0.05, (now - last) / 1000);
         last = now;
-        // Close on the face it turns to the camera (a three-quarter view) unless you've turned it yourself.
-        if (frame.current === 'face' && spin) {
-          const d = Math.atan2(Math.sin(Math.PI / 2 - 0.35 - actor.facing), Math.cos(Math.PI / 2 - 0.35 - actor.facing));
-          actor.facing += d * Math.min(1, dt * 4);
+        const f = frame.current;
+        if (f !== shownFrame) {
+          shownFrame = f;
+          held = false;
+          spinVel = 0;
         }
-        else if (!dragging) actor.facing += spin * dt;
+        if (dragging) {
+          /* following the pointer */
+        } else if (Math.abs(spinVel) > 0.02) {
+          // A flick keeps turning for a moment.
+          actor.facing += spinVel * dt;
+          spinVel *= Math.exp(-dt * 5);
+        } else if (!held) {
+          const d = Math.atan2(Math.sin(AIM[f] - actor.facing), Math.cos(AIM[f] - actor.facing));
+          if (f === 'body' && Math.abs(d) < 0.05) held = true;
+          actor.facing += d * Math.min(1, dt * 4);
+        } else if (f === 'body') actor.facing += 0.22 * dt;
         if (view && actor.eq) view.update(actor, dt, true, false);
-        // Body (whole figure) or face (head and shoulders), eased between.
-        const face = frame.current === 'face' ? 1 : 0;
-        camT += (face - camT) * Math.min(1, dt * 6);
-        cam.position.set(0, 1.25 + 0.4 * camT, 4.6 - 3.3 * camT);
-        cam.lookAt(0, 0.95 + 0.66 * camT, 0);
+        const rig: [number, number, number] = [...RIG[f]];
+        // The close-up frames the head wherever it is (a tall man, a short woman, a crouch in the idle).
+        if (f === 'face' && headBone) {
+          headBone.getWorldPosition(headPos);
+          rig[0] = headPos.y + 0.02;
+          rig[2] = headPos.y - 0.03;
+        }
+        const k = Math.min(1, dt * 5);
+        for (let i = 0; i < 3; i++) cur[i]! += (rig[i]! - cur[i]!) * k;
+        cam.position.set(0, cur[0]!, cur[1]!);
+        cam.lookAt(0, cur[2]!, 0);
         renderer.render(scene, cam);
       };
       raf = requestAnimationFrame(tick);
       cleanup = () => {
+        resync.current = () => {};
         cancelAnimationFrame(raf);
         unsub();
         unsubHover();
         ro.disconnect();
+        canvas.removeEventListener('keydown', keyTurn);
         canvas.removeEventListener('pointerdown', down);
         canvas.removeEventListener('pointermove', move);
         canvas.removeEventListener('pointerup', up);

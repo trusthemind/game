@@ -216,9 +216,12 @@ export class ShapeField {
           const top = bump(t, 0, 0.3);
           const lat = Math.max(0, dir.x * outward);
           const bk = Math.max(0, -dir.z);
-          const thigh = t < tK ? 1 - 0.5 * (t / tK) ** 2 : 0.5 * bump(t, tK, 0.12);
+          // Fullest at the top, tapering steadily to the knee (a thigh that stayed full to mid-length read as breeches).
+          const thigh = t < tK ? 1 - 0.65 * (t / tK) : 0.35 * bump(t, tK, 0.12);
           const calf = bump(t, tK + (1 - tK) * 0.35, (1 - tK) * 0.55) * (0.5 + 0.5 * bk);
-          return s.thighs * 0.03 * thigh + s.calves * 0.016 * calf + s.hips * 0.03 * top * lat ** 1.5 + s.glutes * 0.035 * top * bk ** 1.5;
+          // Hips carry on down the thigh's outside at two thirds strength: at full strength wide hips stacked on
+          // thick thighs ballooned the top of the leg out ~16 cm a side (riding breeches, not a person).
+          return s.thighs * 0.02 * thigh + s.calves * 0.016 * calf + s.hips * 0.02 * top * lat ** 1.5 + s.glutes * 0.03 * top * bk ** 1.5;
         }, out);
       }
     }

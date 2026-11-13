@@ -9,9 +9,10 @@ import type { Difficulty, Grave, RaidResult } from './sim/raid';
 import { applyRaidToTasks, type TaskState } from './tasks';
 import { newHideout, type HideoutState } from './hideout';
 import { SHAPE_PRESETS, type FaceSpec, type ShapeSpec } from './shape';
+import { beardId, DEFAULT_HAIR, HAIR_BY_ID } from './hair';
 import { companionLevel, companionRaidXp, companionState, gearTierFor, upgradeCompanionGear, type CompanionState } from './companions';
 
-export const PROFILE_VERSION = 11;
+export const PROFILE_VERSION = 12;
 
 export interface ProfileStats {
   raids: number;
@@ -36,16 +37,20 @@ export interface Settings {
 export interface PlayerLook {
   sex: 'm' | 'f';
   skin: number;
+  /** A hairstyle id (hair.ts HAIR_STYLES). */
   hair: string;
   hairColor: number;
-  beard: boolean;
+  /** A facial hair id (hair.ts BEARD_STYLES); 'none' is clean shaven. Saves before v12 had true/false. */
+  beard: string;
+  /** Beard colour when it isn't the hair's (unset: matches the hair). */
+  beardColor?: number;
   /** Body shape (shape.ts): a preset's id or the sliders. Unset reads as the sex's 'average'. */
   shape?: ShapeSpec;
   /** Face (shape.ts): a preset's id or the sliders. Unset reads as 'classic' (the modelled face). */
   face?: FaceSpec;
 }
 
-export const DEFAULT_LOOK: PlayerLook = { sex: 'm', skin: 0xe3b08e, hair: 'short', hairColor: 0x3a281b, beard: true, shape: 'average' };
+export const DEFAULT_LOOK: PlayerLook = { sex: 'm', skin: 0xe3b08e, hair: 'short', hairColor: 0x3a281b, beard: 'full', shape: 'average' };
 
 export interface Profile {
   version: number;
@@ -75,6 +80,15 @@ export interface Profile {
   tasks: Record<string, TaskState>;
   /** Base stations, running crafts, bitcoin farm clock. */
   hideout: HideoutState;
+}
+
+/** Hair and beard ids that exist (an unknown style is the sex's default); colours are numbers. In place. */
+export function tidyLook(look: PlayerLook): PlayerLook {
+  if (typeof look.hair !== 'string' || !HAIR_BY_ID[look.hair]) look.hair = DEFAULT_HAIR[look.sex === 'f' ? 'f' : 'm'];
+  if (typeof look.hairColor !== 'number') look.hairColor = DEFAULT_LOOK.hairColor;
+  look.beard = look.sex === 'f' ? 'none' : beardId(look.beard);
+  if (look.beardColor !== undefined && typeof look.beardColor !== 'number') delete look.beardColor;
+  return look;
 }
 
 export function createProfile(name = 'Survivor', id = randomId(), look: PlayerLook = DEFAULT_LOOK): Profile {
@@ -233,6 +247,12 @@ export function migrateProfile(raw: unknown): Profile {
     out.look ??= { ...DEFAULT_LOOK };
     out.version = 11;
   }
+  if (out.version < 12) {
+    // v11 → v12: many hairstyles and beards. The beard was true/false (true: the full beard).
+    out.look ??= { ...DEFAULT_LOOK };
+    out.look.beard = beardId(out.look.beard);
+    out.version = 12;
+  }
   dropUnknownItems(out);
   out.companions ??= {};
   out.settings.difficulty ??= 'normal';
@@ -241,6 +261,7 @@ export function migrateProfile(raw: unknown): Profile {
   out.look ??= { ...DEFAULT_LOOK };
   if (out.look.sex !== 'f') out.look.sex = 'm';
   if (out.look.shape === undefined || (typeof out.look.shape === 'string' && !SHAPE_PRESETS[out.look.sex][out.look.shape])) out.look.shape = 'average';
+  tidyLook(out.look);
   return out;
 }
 
