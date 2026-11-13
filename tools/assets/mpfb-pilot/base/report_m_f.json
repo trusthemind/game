@@ -1,0 +1,24 @@
+{
+ "m": {
+  "tris": {
+   "anatomy": 944,
+   "body": 20264,
+   "brows": 560,
+   "eyes": 172,
+   "underwear": 728
+  },
+  "total_without_underwear": 21940,
+  "bones": 65
+ },
+ "f": {
+  "tris": {
+   "anatomy": 128,
+   "body": 21080,
+   "brows": 560,
+   "eyes": 172,
+   "underwear": 3674
+  },
+  "total_without_underwear": 21940,
+  "bones": 65
+ }
+}

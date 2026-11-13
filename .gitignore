@@ -10,3 +10,9 @@ test-results
 # Graphify: local code graph and its config
 graphify-out/
 .graphifyignore
+
+# MPFB2 pilot outputs (generated GLBs, ~85 MB)
+tools/assets/mpfb-pilot/out/
+tools/assets/mpfb-pilot/out_nodec/
+
+tools/assets/mpfb-pilot/cast_*.png

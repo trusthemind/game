@@ -79,7 +79,7 @@ interface Verts {
 }
 
 /** A skinned mesh's vertices in the body's bind space (the space gear is placed and skinned in). */
-function bindVerts(mesh: THREE.SkinnedMesh, body: THREE.SkinnedMesh): Verts {
+export function bindVerts(mesh: THREE.SkinnedMesh, body: THREE.SkinnedMesh): Verts {
   const g = mesh.geometry;
   const p = g.attributes.position!;
   const si = g.attributes.skinIndex!;

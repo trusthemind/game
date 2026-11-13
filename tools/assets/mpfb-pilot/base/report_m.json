@@ -1,0 +1,13 @@
+{
+ "m": {
+  "tris": {
+   "anatomy": 364,
+   "body": 20844,
+   "brows": 560,
+   "eyes": 172,
+   "underwear": 728
+  },
+  "total_without_underwear": 21940,
+  "bones": 65
+ }
+}

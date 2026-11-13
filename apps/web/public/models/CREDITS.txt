@@ -187,3 +187,19 @@ torso at load (apps/web/src/render/gearModels.ts, character.ts):
     bp_camping (b_pilgrim) — "Large Camping BackPack (Free/GameReady)" by Sebastian Webster (https://sketchfab.com/3d-models/large-camping-backpack-freegameready-a7086b50dae84706b81bb3ce14ad9094)
     bp_tactical (b_attack) — "Low Poly Game Ready Military Tactical Backpack" by DanlyVostok (https://sketchfab.com/3d-models/low-poly-game-ready-military-tactical-backpack-95a4fc7300584384b56ce3add58dbc9f)
     bp_messenger (b_sling) — "messenger bag" by N1008650 (https://sketchfab.com/3d-models/messenger-bag-99787b78b1d24e3aa10bc14fe0b33d60)
+
+MPFB / MakeHuman base bodies human_m_mpfb.glb, human_f_mpfb.glb (tools/assets/mpfb-pilot/build_base.py; in development):
+  Body, eyes, brows, lashes, skins, rig weights — MakeHuman system assets / hm08 base mesh (CC0 1.0) — http://www.makehumancommunity.org
+  Underwear (group `underwear`):
+    wolgade_female_panties_01, wolgade_female_top_01 — wolgade (CC0 1.0), underwear01 pack — http://www.makehumancommunity.org
+    "Male swimming trunks 01" (mindfront_male_swimming_trunks_01) — Mindfront (Sweden), CC BY 4.0
+      (https://creativecommons.org/licenses/by/4.0/), pants03 pack — http://www.makehumancommunity.org/node/329
+      (recoloured solid fabric, offset a few mm off the skin)
+  Optional nude anatomy (group `anatomy`), retrieved 2026-11-13 from files.makehumancommunity.org (provenance and
+  licence check: tools/assets/mpfb-pilot/anatomy/PROVENANCE.json):
+    male   — "man genital" by ukiyoe, CC0 1.0, nid 3223
+             http://files.makehumancommunity.org/sites/default/files/clothes/7580/1366233569/man_genital.mhclo
+             (fitted to our body, body UVs / skin, flange sunk into the skin)
+    female — "Female generic with simplified genitals (fixed)" by spamrakuen, CC0 1.0, nid 3396
+             http://files.makehumancommunity.org/sites/default/files/proxies/6454/1683292766/female_generic_with_simplified_genitals_fixed.proxy
+             (derived from wolgade's CC0 nid 757 and the official CC0 female_generic proxy; only the genital patch used)

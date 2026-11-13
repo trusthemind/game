@@ -1,0 +1,47 @@
+{
+ "schema_version": 1,
+ "note": "Optional nude setting of the MPFB base bodies: matter-of-fact, non-sexualised adult anatomy as the toggleable mesh group `anatomy` (CharLab: #charlab?view=mpfbbase&sex=m|f&anatomy=1&solo=1).",
+ "assets": [
+  {
+   "id": "anatomy_m",
+   "role": "body anatomy group (nude toggle)",
+   "path": "tools/assets/mpfb-pilot/base/human_m_mpfb.glb#anatomy",
+   "status": "review",
+   "technical": {"tris": 944, "skin": "body skin material + body UVs (data transfer)", "weights": "MPFB mhclo weight interpolation from hm08", "fit": "MPFB mhclo fit; flange within 6 mm (40 mm at the sides) of the skin sunk 1 mm under it, buried faces dropped"},
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "http://files.makehumancommunity.org/sites/default/files/clothes/7580/1366233569/man_genital.mhclo",
+    "creator": "ukiyoe (file header: author unknown)",
+    "created_at": "2022-11-05",
+    "retrieved_at": "2026-11-13",
+    "nid": 3223,
+    "license": "CC0 1.0",
+    "attribution": "\"man genital\" by ukiyoe, CC0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/mpfb-pilot/anatomy/PROVENANCE.json"
+   },
+   "verification": {"licence_header_checked": true, "agpl_derivation_diff": "independent of AGPL nid 86 (2.5% coincident verts)", "in_engine_reviewed": true, "approved_by": null}
+  },
+  {
+   "id": "anatomy_f",
+   "role": "body anatomy group (nude toggle)",
+   "path": "tools/assets/mpfb-pilot/base/human_f_mpfb.glb#anatomy",
+   "status": "review",
+   "technical": {"tris": 128, "skin": "body skin material + body UVs (data transfer)", "weights": "MPFB proxy weight interpolation from hm08", "fit": "genital-region faces of the full-body proxy (surface deviation > 1.5 mm in the crotch box + 2 rings), 1.2 mm outward offset"},
+   "source": {
+    "kind": "sourced",
+    "url_or_tool": "http://files.makehumancommunity.org/sites/default/files/proxies/6454/1683292766/female_generic_with_simplified_genitals_fixed.proxy",
+    "creator": "spamrakuen (derived from wolgade nid 757, itself from the official CC0 female_generic proxy)",
+    "created_at": "2023-05-05",
+    "retrieved_at": "2026-11-13",
+    "nid": 3396,
+    "license": "CC0 1.0",
+    "attribution": "\"Female generic with simplified genitals (fixed)\" by spamrakuen, CC0 (apps/web/public/models/CREDITS.txt)",
+    "prompt_or_source_record": "tools/assets/mpfb-pilot/anatomy/PROVENANCE.json"
+   },
+   "verification": {"licence_header_checked": true, "agpl_derivation_diff": "0/83 genital verts match AGPL nid 85/98", "in_engine_reviewed": true, "approved_by": null}
+  }
+ ],
+ "rejected": [
+  {"nid": 735, "title": "Adult Male Genitalia (XSuprem3X)", "reason": "byte-identical re-upload of AGPL MHteam nid 86; header says AGPL3 while listing says CC0"}
+ ]
+}

@@ -15,6 +15,7 @@ import { itemModel } from './thumbnails';
 import { offscreenRenderer } from './offscreen';
 import { findVisor, GEAR_MODEL, poseVisor, toneMap, wornGear } from './gearModels';
 import {
+  bindVerts,
   fitHelmet,
   fitPack,
   fitVest,
@@ -848,7 +849,116 @@ function markCuts(mesh: THREE.SkinnedMesh): void {
     B[i * 2] = pos.getY(i) - waistAt;
     B[i * 2 + 1] = pos.getY(i) - ankleAt;
   }
-  geo.userData.cuts = { neckAt, elbowAt, wristAt, waistAt, ankleAt };
+  const footR = at(/^foot_r$/i) ?? foot.clone().setX(-foot.x);
+  geo.userData.cuts = { neckAt, elbowAt, wristAt, waistAt, ankleAt, cx: s1.x, cz: s1.z, sh, feet: [foot.x, foot.z, footR.x, footR.z] };
+}
+
+/**
+ * Where the worn garments really end (COVER_BINS directions round an axis, in the body's bind space, relative to
+ * markCuts' lines): the skin is cut away under the trousers only below their waistband (`pants`, a little under
+ * its top edge), under a top only above its hem (`top`), under shoes only below their collar (`boots`: round each
+ * ankle, left then right). The bones' own waist and ankle lines are only where the body's regions meet, not where
+ * a garment does: low-rise jeans under a plate carrier and no shirt left a hollow belly between the two, low shoes
+ * a hollow ankle. Unmeasured (all 0): the old split at the bones' lines.
+ */
+interface Cover {
+  pants: Float32Array;
+  top: Float32Array;
+  boots: Float32Array;
+  c: THREE.Vector2;
+  feet: THREE.Vector2[];
+  done: boolean;
+}
+const COVER_BINS = 16;
+const kitKey = (a: Appearance) => kitFor(a).map((k) => k.id).join('|');
+const COVER = new Map<string, Cover>();
+function coverFor(src: THREE.Material, kitKey: string): Cover {
+  const key = `${src.uuid}|${kitKey}`;
+  let c = COVER.get(key);
+  if (!c)
+    COVER.set(key, (c = {
+      pants: new Float32Array(COVER_BINS),
+      top: new Float32Array(COVER_BINS),
+      boots: new Float32Array(COVER_BINS * 2),
+      c: new THREE.Vector2(),
+      feet: [new THREE.Vector2(), new THREE.Vector2()],
+      done: false,
+    }));
+  return c;
+}
+
+interface Cuts {
+  waistAt: number;
+  ankleAt: number;
+  cx: number;
+  cz: number;
+  sh: number;
+  feet: number[];
+}
+
+/** Measure `cover` from the garments as fitted (neutral shape, at rest). */
+function measureCover(cover: Cover, body: THREE.SkinnedMesh, worn: THREE.SkinnedMesh[]): void {
+  const cuts = body.geometry.userData.cuts as Cuts | undefined;
+  if (!cuts) return;
+  const bones = (re: RegExp) => new Set(body.skeleton.bones.map((b, i) => (re.test(b.name) ? i : -1)).filter((i) => i >= 0));
+  const torso = bones(/^(spine_0\d|pelvis|thigh_[lr])$/i);
+  const feet = bones(/^(foot|ball|calf)_[lr]$/i);
+  const bin = (x: number, z: number, cx: number, cz: number) =>
+    Math.min(COVER_BINS - 1, Math.floor((((Math.atan2(z - cz, x - cx) / (2 * Math.PI)) % 1) + 1) % 1 * COVER_BINS));
+  /** The highest (`hi`) or lowest point of `meshes` per direction round (cx, cz), among the vertices `keep` takes. */
+  const edge = (meshes: THREE.SkinnedMesh[], hi: boolean, cx: number, cz: number, keep: (b: number, x: number) => boolean): Float32Array | null => {
+    const e = new Float32Array(COVER_BINS).fill(NaN);
+    for (const m of meshes) {
+      const v = bindVerts(m, body);
+      for (let i = 0; i < v.bone.length; i++) {
+        const x = v.pos[i * 3]!;
+        if (!keep(v.bone[i]!, x)) continue;
+        const y = v.pos[i * 3 + 1]!;
+        const k = bin(x, v.pos[i * 3 + 2]!, cx, cz);
+        if (Number.isNaN(e[k]!) || (hi ? y > e[k]! : y < e[k]!)) e[k] = y;
+      }
+    }
+    if (e.every((y) => Number.isNaN(y))) return null;
+    // A direction with nothing in it: the nearer of the nearest either side that have (the less covering one).
+    const out = Float32Array.from(e);
+    for (let k = 0; k < COVER_BINS; k++) {
+      if (!Number.isNaN(e[k]!)) continue;
+      for (let d = 1; d < COVER_BINS; d++) {
+        const a = e[(k + d) % COVER_BINS]!;
+        const b = e[(k - d + COVER_BINS) % COVER_BINS]!;
+        if (!Number.isNaN(a) || !Number.isNaN(b)) {
+          out[k] = Number.isNaN(a) ? b : Number.isNaN(b) ? a : hi ? Math.min(a, b) : Math.max(a, b);
+          break;
+        }
+      }
+    }
+    return out;
+  };
+  const kind = (m: THREE.SkinnedMesh) => m.userData.worn as Worn | undefined;
+  const legs = worn.filter((m) => {
+    const w = kind(m);
+    return !!w && !w.open && (w.slot === 'pants' || (w.slot === 'top' && !!getDef(w.id).clothing?.full));
+  });
+  const tops = worn.filter((m) => kind(m)?.slot === 'top' && !kind(m)!.open);
+  const shoes = worn.filter((m) => kind(m)?.slot === 'boots');
+  // How far the skin goes on under a garment's edge: past the edge it would show through the gap at the hem.
+  const ov = cuts.sh * 0.12;
+  const pants = edge(legs, true, cuts.cx, cuts.cz, (b) => torso.has(b));
+  const top = edge(tops, false, cuts.cx, cuts.cz, (b) => torso.has(b));
+  for (let k = 0; k < COVER_BINS; k++) {
+    cover.pants[k] = pants ? pants[k]! - ov - cuts.waistAt : 0;
+    cover.top[k] = top ? top[k]! + ov - cuts.waistAt : 0;
+  }
+  const [lx, lz, rx, rz] = cuts.feet as [number, number, number, number];
+  const mid = (lx + rx) / 2;
+  [[lx, lz], [rx, rz]].forEach(([fx, fz], s) => {
+    const left = fx! >= mid;
+    const e = edge(shoes, true, fx!, fz!, (b, x) => feet.has(b) && x >= mid === left);
+    for (let k = 0; k < COVER_BINS; k++) cover.boots[s * COVER_BINS + k] = e ? e[k]! - ov * 0.6 - cuts.ankleAt : 0;
+    cover.feet[s]!.set(fx!, fz!);
+  });
+  cover.c.set(cuts.cx, cuts.cz);
+  cover.done = true;
 }
 
 function analyseMesh(mesh: THREE.SkinnedMesh, boxes: RigInfo['boxes']): void {
@@ -1042,9 +1152,16 @@ function humanBodyMaterial(
   // A coverall (clothing.full) is the trousers too.
   const legs = on('pants') || (clothed && !!top && !!getDef(top.id).clothing?.full);
   const hide = [0, 0, on('top') ? 1 : 0, on('top') && !top?.short ? 1 : 0, legs ? 1 : 0, on('boots') ? 1 : 0, 0, 0, kitFor(a).some((k) => k.slot === 'hat' && k.underHelmet) && clothed ? 1 : 0];
+  // Round the waist: where the garments really end (measureCover; filled in once they're fitted).
+  const cover = coverFor(src, clothed ? kitKey(a) : '');
   patchWorldMaterial(m, u, {
     pre: (shader) => {
       shader.uniforms.uHide = { value: hide };
+      shader.uniforms.uPantsCut = { value: cover.pants };
+      shader.uniforms.uTopCut = { value: cover.top };
+      shader.uniforms.uCoverC = { value: cover.c };
+      shader.uniforms.uBootCut = { value: cover.boots };
+      shader.uniforms.uFootC = { value: cover.feet };
       // The back of the neck sinks forward under a collar (along its normals it would open at the UV seam there).
       shader.uniforms.uNapeIn = { value: on('top') ? 0.025 : 0 };
       shader.uniforms.uSkinTint = { value: tint };
@@ -1060,7 +1177,7 @@ function humanBodyMaterial(
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform vec3 uSkinTint;\nuniform float uHide[9];\nflat varying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vCutA;\nvarying vec2 vCutB;',
+          '#include <common>\nuniform vec3 uSkinTint;\nuniform float uHide[9];\nuniform float uPantsCut[16];\nuniform float uTopCut[16];\nuniform vec2 uCoverC;\nuniform float uBootCut[32];\nuniform vec2 uFootC[2];\nflat varying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vCutA;\nvarying vec2 vCutB;',
         )
         .replace(
           '#include <map_fragment>',
@@ -1076,7 +1193,26 @@ function humanBodyMaterial(
             else if (vCutB.y > 0.0) ri = 4;
             else ri = 5;
           }
-          for (int i = 0; i < 9; i++) if (i == ri && uHide[i] > 0.5) discard;
+          if (ri == 2 || ri == 4) {
+            // Torso and hips: cut where the trousers' waistband and the top's hem really are (measureCover),
+            // round the body, so bare skin shows between a low waistband and a short top (or none).
+            vec2 cd = vObjPos.xz - uCoverC;
+            float ct = mod((atan(cd.y, cd.x) / 6.2831853 + 1.0) * 16.0 - 0.5, 16.0);
+            int c0 = int(floor(ct));
+            int c1 = c0 == 15 ? 0 : c0 + 1;
+            float cf = fract(ct);
+            bool hp = uHide[4] > 0.5 && vCutB.x < mix(uPantsCut[c0], uPantsCut[c1], cf);
+            bool ht = uHide[2] > 0.5 && vCutB.x > mix(uTopCut[c0], uTopCut[c1], cf);
+            if (hp || (ri == 2 && ht)) discard;
+          } else if (ri == 5) {
+            // Feet: cut below the shoes' collar (round each ankle), not at the ankle line.
+            int fs = distance(vObjPos.xz, uFootC[0]) < distance(vObjPos.xz, uFootC[1]) ? 0 : 1;
+            vec2 fd = vObjPos.xz - uFootC[fs];
+            float ft = mod((atan(fd.y, fd.x) / 6.2831853 + 1.0) * 16.0 - 0.5, 16.0);
+            int f0 = int(floor(ft));
+            int f1 = f0 == 15 ? 0 : f0 + 1;
+            if (uHide[5] > 0.5 && vCutB.y < mix(uBootCut[fs * 16 + f0], uBootCut[fs * 16 + f1], fract(ft))) discard;
+          } else for (int i = 0; i < 9; i++) if (i == ri && uHide[i] > 0.5) discard;
           diffuseColor.rgb = min(diffuseColor.rgb * uSkinTint, vec3(1.0));`,
         );
     },
@@ -1534,7 +1670,7 @@ export class CharacterView {
       }
       const bindK = heightScale(src, look.sex === 'f' ? 1.66 : 1.8);
       this.model.scale.setScalar(bindK * (outfit ? heightFactor(look.shape) : 1));
-      if (outfit) this.wearKit(kitFor(look));
+      if (outfit) (this.wearKit(kitFor(look)), this.measureCover());
     } else this.model.scale.setScalar(CHAR_SCALE);
     this.root.add(this.model);
     this.handR = this.skinned.skeleton.getBoneByName('hand_r') ?? null;
@@ -1675,6 +1811,17 @@ export class CharacterView {
         this.outfitMeshes.push(m);
       }
     }
+  }
+
+  /** Where the clothes just put on end round the waist, for the body's mask (measureCover): once per body and kit. */
+  private measureCover(): void {
+    const human = this.human;
+    if (!human) return;
+    const cover = coverFor(human.srcMaterial, kitKey(this.look));
+    // A garment whose model isn't in yet: measure once it is (the old waist line meanwhile).
+    const have = new Set(this.outfitMeshes.map((m) => (m.userData.worn as Worn).id));
+    if (cover.done || kitFor(this.look).some((k) => !have.has(k.id))) return;
+    withNeutral([human.body, ...this.outfitMeshes], () => measureCover(cover, human.body, this.outfitMeshes));
   }
 
   /**
@@ -1818,6 +1965,7 @@ export class CharacterView {
     this.outfitMeshes = [];
     this.hairMeshes = [];
     this.atRest(() => withNeutral([this.human!.body], () => this.wearKit(kitFor(next))));
+    this.measureCover();
     this.buildHair();
     for (const m of this.bodyMeshes) m.material = humanBodyMaterial(this.human.srcMaterial, next, this.u, this.dead, true);
     this.applyShape();

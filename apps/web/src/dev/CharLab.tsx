@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { CLOTH_KIT } from '../render/clothKit';
+import { fitToRest, gltfMeshNames } from '../render/rebind';
 import {
   ALL_ITEMS,
   createEquipment,
@@ -481,6 +484,70 @@ function CharLabScene() {
         cam.position.set(0, 1.5, 7);
         cam.lookAt(0, 1.2, 0);
       }
+      if (view === 'mpfbbase') {
+        // MPFB base bodies (tools/assets/mpfb-pilot: build_base.py + fix_skeleton.mjs, copied to public/_wtmp) next to
+        // ours, front and 3/4, on our clips. `&sex=f`, `&anatomy=1` (nude: CC0 anatomy group, both sexes), `&underwear=1`,
+        // `&solo=1`, `&clip=Walk_Loop`,
+        // `&wear=c_bomber` (a CLOTH_KIT piece fitted with fitToRest onto both).
+        cast.length = 0;
+        const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
+        const sex = q.get('sex') === 'f' ? 'f' : 'm';
+        const base = lib.clips.get(q.get('clip') ?? 'Idle_Loop')!;
+        const kit = q.get('wear') ? CLOTH_KIT[q.get('wear')!] : undefined;
+        const g = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}_wtmp/human_${sex}_mpfb.glb?r=${Date.now()}`);
+        const charPelvis = cloneHuman(lib, sex)!.body.skeleton.getBoneByName('pelvis')!.position.length();
+        const out: Record<string, unknown> = {};
+        let i = 0;
+        for (const turn of [0, -Math.PI / 4])
+          for (const which of ['ours', 'mpfb'] as const) {
+            let model: THREE.Object3D;
+            let body: THREE.SkinnedMesh;
+            if (which === 'ours') {
+              const h = cloneHuman(lib, sex)!;
+              model = h.model;
+              body = h.body;
+            } else {
+              model = SkeletonUtils.clone(g.scene);
+              model.traverse((o) => {
+                if (o.name === 'anatomy') o.visible = q.get('anatomy') === '1';
+                if (o.name === 'underwear') o.visible = q.get('underwear') === '1';
+              });
+              body = model.getObjectByName('body') as THREE.SkinnedMesh;
+            }
+            model.traverse((o) => (o.castShadow = true));
+            // The clips key the pelvis's position for our body's hip height: scale it to this one's (ours: k = 1).
+            const pel = body.skeleton.getBoneByName('pelvis')!;
+            const k = pel.position.length() / charPelvis;
+            const clip = base.clone();
+            for (const t of clip.tracks) if (t.name === 'pelvis.position') t.values = t.values.map((v) => v * k);
+            if (kit && i < 2) {
+              const src = lib.bodies.get(kit.body);
+              const re = new RegExp(kit.part, 'i');
+              try {
+                const fitted = src ? fitToRest(src.scene, gltfMeshNames(src as never), src.animations[0], model, body.skeleton.bones, (m) => m, (n) => re.test(n), `${kit.body}|${kit.part}|lab-${which}-${sex}`, false, kit.open ? 0.003 : 0) : [];
+                out[`wear_${which}`] = fitted.length;
+              } catch (e) {
+                out[`wear_${which}`] = String(e);
+              }
+            }
+            model.rotation.y = turn;
+            model.position.set((i - 1.5) * 0.85, 0, 0);
+            scene.add(model);
+            const mixer = new THREE.AnimationMixer(model);
+            mixer.clipAction(clip).play();
+            mixers.push(mixer);
+            out[`${which}${i}`] = { pelvisK: +k.toFixed(3), bones: body.skeleton.bones.length, missing: clip.tracks.filter((t) => !body.skeleton.getBoneByName(t.name.split('.')[0]!)).map((t) => t.name) };
+            i++;
+          }
+        (window as unknown as { __mpfb: unknown }).__mpfb = out;
+        cam.position.set(0, 1.15, 6.8);
+        cam.lookAt(0, 0.95, 0);
+        // `&solo=1`: frame only the front-facing MPFB body (e.g. to check the `anatomy` / `underwear` groups).
+        if (q.get('solo') === '1') {
+          cam.position.set(-0.425, 0.95, 2.6);
+          cam.lookAt(-0.425, 0.85, 0);
+        }
+      }
       if (view === 'faces') {
         cast.length = 0;
         let i = 0;
@@ -645,7 +712,8 @@ function CharLabScene() {
       view === 'gearlab' ||
       view === 'armor' ||
       view === 'helmets' ||
-      view === 'shapes'
+      view === 'shapes' ||
+      view === 'mpfbbase'
         ? []
         : ['lena', 'mykola', 'vera']) {
         const img = document.createElement('img');

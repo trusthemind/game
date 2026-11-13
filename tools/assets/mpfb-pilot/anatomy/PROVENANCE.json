@@ -1,0 +1,190 @@
+{
+ "snapshot_date": "2026-11-13",
+ "index": "https://files.makehumancommunity.org/sites/default/files/assets.json (3406 entries)",
+ "assets_json_entries": {
+  "85": {
+   "username": "wolgade",
+   "category": "General/Unsorted",
+   "changed": "2017-03-10",
+   "uid": 14,
+   "license": "AGPL",
+   "title": "Adult Female Genitalia",
+   "created": "2015-09-15",
+   "nid": 85,
+   "skins": "Partially",
+   "faces": 13642,
+   "type": "proxy",
+   "files": {
+    "obj_file": "http://files.makehumancommunity.org/sites/default/files/proxies/14/adult_female_genitalia.obj",
+    "thumb": "http://files.makehumancommunity.org/sites/default/files/clothes/14/adult_female_genitalia.thumb",
+    "file": "http://files.makehumancommunity.org/sites/default/files/proxies/14/adult_female_genitalia.proxy"
+   },
+   "description": "This is the latest and only version of this proxy I own. Unfortunately the genital section uses the default uv layout instead of the genital graphics."
+  },
+  "86": {
+   "username": "wolgade",
+   "category": "General/Unsorted",
+   "changed": "2017-03-10",
+   "uid": 14,
+   "license": "AGPL",
+   "title": "Adult Male Genitalia",
+   "created": "2015-09-15",
+   "nid": 86,
+   "skins": "Yes",
+   "faces": 13772,
+   "type": "proxy",
+   "files": {
+    "obj_file": "http://files.makehumancommunity.org/sites/default/files/proxies/14/adult_male_genitalia.obj",
+    "thumb": "http://files.makehumancommunity.org/sites/default/files/clothes/14/adult_male_genitalia.thumb",
+    "file": "http://files.makehumancommunity.org/sites/default/files/proxies/14/adult_male_genitalia.proxy"
+   },
+   "description": "The latest version of this proxy."
+  },
+  "98": {
+   "username": "wolgade",
+   "category": "General/Unsorted",
+   "changed": "2017-03-10",
+   "uid": 14,
+   "license": "AGPL",
+   "title": "Adult Female Genitalia (old)",
+   "created": "2015-09-27",
+   "nid": 98,
+   "skins": "Yes",
+   "faces": 14956,
+   "type": "proxy",
+   "files": {
+    "obj_file": "http://files.makehumancommunity.org/sites/default/files/proxies/14/adult_female_genitalia_old.obj",
+    "thumb": "http://files.makehumancommunity.org/sites/default/files/clothes/14/adult_female_genitalia_old.thumb",
+    "file": "http://files.makehumancommunity.org/sites/default/files/proxies/14/adult_female_genitalia_old.proxy"
+   },
+   "description": "Some nice guy sent me a copy of this older proxy with correct uv mapping."
+  },
+  "735": {
+   "username": "XSuprem3X",
+   "category": "General/Unsorted",
+   "changed": "2017-03-26",
+   "uid": 2078,
+   "license": "CC0",
+   "title": "Adult Male Genitalia",
+   "created": "2017-03-26",
+   "nid": 735,
+   "skins": "Yes",
+   "faces": 0,
+   "type": "proxy",
+   "files": {
+    "obj_file": "http://files.makehumancommunity.org/sites/default/files/proxies/2078/1490553077/adult_male_genitalia.obj",
+    "thumb": "http://files.makehumancommunity.org/sites/default/files/clothes/2078/1490552716/adult_male_genitalia.thumb",
+    "file": "http://files.makehumancommunity.org/sites/default/files/proxies/2078/1490552950/adult_male_genitalia.proxy"
+   },
+   "description": "Adult Male Genitalia"
+  },
+  "757": {
+   "username": "wolgade",
+   "category": "General/Unsorted",
+   "changed": "2019-02-18",
+   "uid": 14,
+   "license": "CC0",
+   "title": "Female generic with simplified genitals",
+   "created": "2017-04-04",
+   "nid": 757,
+   "skins": "Yes",
+   "faces": 13914,
+   "type": "proxy",
+   "files": {
+    "obj_file": "http://files.makehumancommunity.org/sites/default/files/proxies/14/1550512384/female_generic_with_simplified_genitals.obj",
+    "render": "http://files.makehumancommunity.org/sites/default/files/proxies/14/1491331019/demo.jpg",
+    "file": "http://files.makehumancommunity.org/sites/default/files/proxies/14/1550512358/female_generic_with_simplified_genitals.proxy",
+    "thumb": "http://files.makehumancommunity.org/sites/default/files/clothes/14/1491331008/female_generic_with_simplified_genitals.thumb"
+   },
+   "description": "This is derivative work of the female generic topology from the official distribution. Simplified genitals are similar to http://www.makehumancommunity.org/proxy/female_muscular_with_simplified_genitals.html.\nUpdate 02/18/2019: Weight issue fixed."
+  },
+  "3223": {
+   "username": "ukiyoe",
+   "category": "Genitalia",
+   "changed": "2022-11-05",
+   "uid": 7580,
+   "license": "CC0",
+   "title": "man genital",
+   "created": "2022-11-05",
+   "nid": 3223,
+   "type": "clothes",
+   "compatibility": "1.1.x",
+   "files": {
+    "mhclo": "http://files.makehumancommunity.org/sites/default/files/clothes/7580/1366233569/man_genital.mhclo",
+    "mhmat": "http://files.makehumancommunity.org/sites/default/files/clothes/7580/128345475/man_genital.mhmat",
+    "obj": "http://files.makehumancommunity.org/sites/default/files/clothes/7580/1518244446/man_genital.obj"
+   },
+   "description": "man's genital that I think more realistic"
+  },
+  "3396": {
+   "username": "spamrakuen",
+   "category": "General/Unsorted",
+   "changed": "2023-05-05",
+   "uid": 6454,
+   "license": "CC0",
+   "title": "Female generic with simplified genitals (fixed)",
+   "created": "2023-05-05",
+   "nid": 3396,
+   "skins": "Yes",
+   "faces": 13914,
+   "type": "proxy",
+   "files": {
+    "obj_file": "http://files.makehumancommunity.org/sites/default/files/proxies/6454/1683293144/female_generic_with_simplified_genitals_fixed.obj",
+    "thumb": "http://files.makehumancommunity.org/sites/default/files/clothes/6454/1683293157/female_generic_with_simplified_genitals_fixed.thumb",
+    "file": "http://files.makehumancommunity.org/sites/default/files/proxies/6454/1683292766/female_generic_with_simplified_genitals_fixed.proxy"
+   },
+   "description": "This is wolgade's topology with a little fix on the lips."
+  }
+ },
+ "downloaded": {
+  "3396": {
+   "files": {
+    "female_generic_with_simplified_genitals_fixed.proxy": {
+     "url": "http://files.makehumancommunity.org/sites/default/files/proxies/6454/1683292766/female_generic_with_simplified_genitals_fixed.proxy",
+     "sha256": "300a50b7311d3a3b61a49184afb3c88d8468a8202b39e137d7a81b1320df39ef"
+    },
+    "female_generic_with_simplified_genitals_fixed.obj": {
+     "url": "http://files.makehumancommunity.org/sites/default/files/proxies/6454/1683293144/female_generic_with_simplified_genitals_fixed.obj",
+     "sha256": "faa9be936002d2f3cfe7c19c6755e8ce50f9d69b9fc1fd968e6190ac6b1745f3"
+    }
+   },
+   "headers": {
+    "proxy": "# Exported from MakeClothes (TM) / # author spamrakuen / # license CC0 / basemesh hm08 / tag female / tag genitals",
+    "obj": "# Exported from MakeClothes (TM) / # author wolgade / # license CC0"
+   },
+   "listing_description": "This is wolgade's topology with a little fix on the lips.",
+   "decision": "ACCEPTED (CC0). Used: only the genital-region faces (78 verts / 128 tris), cut out and fitted to our hm08 body.",
+   "derivation_check": "Chain per listings + headers: official MakeHuman female_generic proxy (CC0, 'explicitly released as CC0 in september 2020') -> wolgade nid 757 (CC0, 'derivative work of the female generic topology from the official distribution') -> spamrakuen nid 3396 (CC0, 'a little fix on the lips'). Geometry diff (nearest-vertex, MH units): 83 pelvic vertices of 3396 that are not in the official female_generic have 0 exact matches (<1e-4) in AGPL MHteam nid 85 'Adult Female Genitalia' or nid 98 '(old)' (median distance 0.04 dm), so the simplified genitals are not copied from the AGPL meshes (nid 982/1026 are re-projections of 98/85 with the same geometry, not fetched). No header/licence conflict."
+  },
+  "3223": {
+   "files": {
+    "man_genital.mhclo": {
+     "url": "http://files.makehumancommunity.org/sites/default/files/clothes/7580/1366233569/man_genital.mhclo",
+     "sha256": "9457e4d46470a9790f47c9a0fdd7856a3c9ae874408f7d50b43610e6af86eaaf"
+    },
+    "man_genital.obj": {
+     "url": "http://files.makehumancommunity.org/sites/default/files/clothes/7580/1518244446/man_genital.obj",
+     "sha256": "8e9441b050350d588cb1e5415861f3939138354cc83ef13d5932eee59b9b8f13"
+    }
+   },
+   "headers": {
+    "mhclo": "# This is a clothes file for MakeHuman Community, exported by MakeClothes 2 / # author: unknown / # license: CC0 / # description: (empty) / basemesh hm08 / name man genital",
+    "obj": "same MakeClothes 2 header: author: unknown, license: CC0"
+   },
+   "listing_description": "man's genital that I think more realistic",
+   "decision": "ACCEPTED (CC0, uploader ukiyoe; file header author 'unknown' is MakeClothes 2's default, not a conflict). .mhmat not downloaded (not needed: body skin material + body UVs used).",
+   "derivation_check": "607 verts vs AGPL MHteam nid 86 'Adult Male Genitalia' (13774 verts): 2.5% within 1e-4, median distance 0.037 dm -> independent geometry, not a copy."
+  },
+  "735": {
+   "decision": "REJECTED (cross-check only, never used): byte-identical to AGPL nid 86 (obj sha256 2acc3d73..., proxy sha256 5045cf57... identical), file header '# author MHteam / # license AGPL3', i.e. the listing's CC0 is wrong. Files deleted after the check."
+  },
+  "86": {
+   "decision": "AGPL reference for the diff only; deleted after the check, never used or shipped."
+  },
+  "85, 98": {
+   "decision": "AGPL reference objs fetched only for the female diff; deleted after the check, never used or shipped."
+  }
+ },
+ "fallback_not_used": "757 (3396 was usable)",
+ "build": "tools/assets/mpfb-pilot/build_base.py (ANATOMY, finish_anatomy) -> base/human_{m,f}_mpfb.glb group `anatomy`"
+}
