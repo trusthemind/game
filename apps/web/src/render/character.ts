@@ -2032,8 +2032,8 @@ export class CharacterView {
       add(/^head$/i, built);
     } else if (s.helmet) {
       const id = s.helmet.def;
-      // Rim just above the brow, dome over the crown; the Altyn's faceplate hangs lower.
-      const brow = hc.y + hs.y * (id === 'altyn' ? -0.06 : 0.04);
+      // Rim just above the brow, dome over the crown (the Altyn's faceplate is raised, gear3d.ts: not lower).
+      const brow = hc.y + hs.y * 0.04;
       const top = head.max.y + hs.y * 0.06;
       add(
         /^head$/i,

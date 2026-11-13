@@ -30,6 +30,8 @@ export function gearMat(color: number, rough = 0.8, metal = 0, emissive = 0): TH
 }
 
 const FABRIC = 0.92;
+/** How far the built Altyn's faceplate is swung up on its pins (radians): worn raised, the face showing. */
+const ALTYN_RAISE = 1.75;
 const BRASS = 0xb88a3c;
 const STEEL = 0x8a8f92;
 
@@ -245,8 +247,15 @@ export function helmetModel(id: string): THREE.Group {
       ),
     );
     plate.add(part(box(0.15, 0.016, 0.02), gearMat(0x0e0f0f, 0.3, 0.2), [0, 0.03, 0.15]));
-    plate.position.set(0, 0.06, 0.0);
-    g.add(plate);
+    // Worn raised (as the real model, gearModels.ts `visor`): swung up on its side pins over the shell's front,
+    // so the face and eyes show; left out of the fit (fitHelmet measures the shell alone).
+    plate.position.set(0, 0.06 - 0.13, -0.04);
+    const hinge = new THREE.Group();
+    hinge.position.set(0, 0.13, 0.04);
+    hinge.rotation.x = -ALTYN_RAISE;
+    hinge.add(plate);
+    plate.traverse((n) => (n.userData.fitSkip = true));
+    g.add(hinge);
     for (const sx of [-1, 1])
       g.add(
         part(cyl(0.012, 0.012, 0.012, 32), gearMat(0x1a1a1a, 0.4, 0.6), [sx * 0.14, 0.13, 0.04], [0, 0, Math.PI / 2]),
