@@ -289,7 +289,7 @@ export const GEAR_MODEL: Record<string, GearSpec> = {
   // Helmets
   // (Exported facing all ways: the Altyn backwards, the SSh-40 and both FASTs with their front to +X.)
   // The Altyn comes with its faceplate down: its rim is the top of the faceplate, not the plate's lower edge.
-  altyn: { model: 'altyn', turn: Math.PI, brow: 0.33, liner: 0x394934, fit: { w: 0.96, d: 0.88, h: 1.1, y: -0.2 } },
+  altyn: { model: 'altyn', turn: Math.PI, brow: 0.33, liner: 0x394934, fit: { w: 0.96, d: 0.88, h: 1.1, y: 0 } },
   ssh68: { model: 'ssh40', turn: -Math.PI / 2, trim: true },
   ssh36: { model: 'ssh36' },
   h_kevlar: { model: 'wz2005', shell: 0.6 },

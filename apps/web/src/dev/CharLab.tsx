@@ -39,7 +39,7 @@ function modAll(it: ItemInstance): void {
 
 export function CharLab() {
   const view = new URLSearchParams(location.hash.split('?')[1] ?? '').get('view');
-  return view === 'randoms' ? <RandomLooks /> : view === 'hair' || view === 'beards' ? <StyleGrid /> : <CharLabScene />;
+  return view === 'randoms' ? <RandomLooks /> : view === 'hair' || view === 'beards' || view === 'facegrid' || view === 'bustgrid' ? <StyleGrid /> : <CharLabScene />;
 }
 
 function CharLabScene() {

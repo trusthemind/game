@@ -24,11 +24,12 @@ import {
   pressUnder,
   type BodyFit,
   type TorsoField,
+  type HeadFit,
 } from './gearFit';
 import { attachSkinned, cloneHuman, type HumanParts } from './human';
 import { heightFactor, restPoints, shapeKey, shapeMesh, ShapeField, withNeutral, type BodyShape, type FaceShape } from './bodyShape';
 import { fitToRest, gltfMeshNames } from './rebind';
-import { beardGeometry, disposeHairGen, hairGenMaterial, hairGeometry as proceduralHair } from './hairGen';
+import { beardGeometry, disposeHairGen, hairGenMaterial, hairGeometry as proceduralHair, type HeadClip } from './hairGen';
 import { BEARD_SPECS, GLB_HAIR, HAIR_SPECS } from './hairStyles';
 import { ease, newPalm, palmFrame, reachPalm, type Arm } from './armIK';
 
@@ -686,6 +687,7 @@ function analyseRig(meshes: THREE.SkinnedMesh[], paintedFace = true): RigInfo {
     analyseMesh(mesh, boxes);
     geometries.set(mesh.name, mesh.geometry);
     markNape(mesh);
+    markCuts(mesh);
   }
   if (!paintedFace) return { geometries, boxes, forward: new THREE.Vector3(0, 0, 1) };
   // Second pass once the head box is known: planar face UVs for head vertices on the front half.
@@ -752,6 +754,93 @@ function markNape(mesh: THREE.SkinnedMesh): void {
     if (y > brow || pos.getZ(i) < behind) reg.setX(i, Region.Scalp);
   }
   reg.needsUpdate = true;
+}
+
+/**
+ * Where the painted clothes end, as smooth lines instead of along the triangles (aCutA: neckline, elbow, wrist;
+ * aCutB: waist, ankle). Each is a signed distance-like value per vertex (positive: the near-the-end side: skin at
+ * the neck, forearm, hand, the trousers' side of the waist... see the shader), interpolated across the triangles
+ * and cut per pixel at 0, so a hem is a clean line however the mesh runs. Each line sits where the bones' own
+ * split (aRegion, by the strongest bone) puts it on average: its offset is fitted to that split.
+ */
+function markCuts(mesh: THREE.SkinnedMesh): void {
+  const geo = mesh.geometry;
+  const reg = geo.attributes.aRegion;
+  const pos = geo.attributes.position!;
+  const n = pos.count;
+  const A = new Float32Array(n * 3);
+  const B = new Float32Array(n * 2);
+  geo.setAttribute('aCutA', new THREE.BufferAttribute(A, 3));
+  geo.setAttribute('aCutB', new THREE.BufferAttribute(B, 2));
+  const bones = mesh.skeleton.bones;
+  const at = (re: RegExp) => {
+    const i = bones.findIndex((b) => re.test(b.name));
+    return i < 0 ? null : new THREE.Vector3().setFromMatrixPosition(mesh.skeleton.boneInverses[i]!.clone().invert());
+  };
+  const neck = at(/^neck_01$/i);
+  const ua = [at(/^upperarm_l$/i), at(/^upperarm_r$/i)];
+  const la = [at(/^lowerarm_l$/i), at(/^lowerarm_r$/i)];
+  const hand = [at(/^hand_l$/i), at(/^hand_r$/i)];
+  const foot = at(/^foot_l$/i);
+  const s1 = at(/^spine_01$/i);
+  if (!reg || !neck || !ua[0] || !ua[1] || !la[0] || !la[1] || !hand[0] || !hand[1] || !foot || !s1) {
+    // No usable rig: every cut on the triangles' side it already is.
+    return;
+  }
+  const r = (i: number) => Math.round(reg.getX(i));
+  const p = new THREE.Vector3();
+  // Per vertex: along the arm (0 at the shoulder joint, 1 at the wrist) on its side; the neckline's value (height,
+  // dipping lower in front); the waist's and ankle's heights.
+  const armT = new Float32Array(n);
+  const neckV = new Float32Array(n);
+  const sh = Math.abs(ua[0].x);
+  for (let i = 0; i < n; i++) {
+    p.fromBufferAttribute(pos, i);
+    const k = (p.x >= 0) === (ua[0].x >= 0) ? 0 : 1;
+    const a = ua[k]!;
+    const ab = new THREE.Vector3().subVectors(hand[k]!, a);
+    armT[i] = new THREE.Vector3().subVectors(p, a).dot(ab) / ab.lengthSq();
+    neckV[i] = p.y + 0.45 * Math.max(0, p.z - neck.z) - 0.15 * Math.max(0, neck.z - p.z);
+  }
+  /** The offset that best splits `lo` (below it) from `hi` (above) among the vertices `use` picks. */
+  const fit = (val: (i: number) => number, use: (i: number) => boolean, lo: (rg: number) => boolean, hi: (rg: number) => boolean, fallback: number) => {
+    const xs: [number, number][] = [];
+    for (let i = 0; i < n; i++) {
+      if (!use(i)) continue;
+      const rg = r(i);
+      if (lo(rg)) xs.push([val(i), 0]);
+      else if (hi(rg)) xs.push([val(i), 1]);
+    }
+    if (xs.length < 8) return fallback;
+    xs.sort((a, b) => a[0] - b[0]);
+    // Errors with the cut just above xs[j]: his below it plus los above it.
+    let hiBelow = 0;
+    let loAbove = xs.filter((x) => x[1] === 0).length;
+    let best = Infinity;
+    let at = fallback;
+    for (let j = 0; j < xs.length; j++) {
+      if (xs[j]![1] === 1) hiBelow++;
+      else loAbove--;
+      const err = hiBelow + loAbove;
+      if (err < best && j + 1 < xs.length) (best = err), (at = (xs[j]![0] + xs[j + 1]![0]) / 2);
+    }
+    return at;
+  };
+  const inArm = (i: number) => Math.abs(pos.getX(i)) > sh * 0.9;
+  const core = (i: number) => Math.abs(pos.getX(i)) < sh * 0.8;
+  const neckAt = fit((i) => neckV[i]!, (i) => core(i) && Math.abs(pos.getY(i) - neck.y) < 0.2 * sh * 4, (g) => g === Region.Top, (g) => g === Region.Skin, neck.y);
+  const elbowAt = fit((i) => armT[i]!, inArm, (g) => g === Region.Top, (g) => g === Region.Sleeve, la[0].distanceTo(ua[0]) / hand[0].distanceTo(ua[0]));
+  const wristAt = fit((i) => armT[i]!, inArm, (g) => g === Region.Sleeve, (g) => g === Region.Hands, 0.98);
+  const waistAt = fit((i) => pos.getY(i), (i) => core(i) && Math.abs(pos.getY(i) - s1.y) < sh * 1.5, (g) => g === Region.Pants, (g) => g === Region.Top, s1.y);
+  const ankleAt = fit((i) => pos.getY(i), (i) => pos.getY(i) < foot.y + sh, (g) => g === Region.Boots, (g) => g === Region.Pants, foot.y);
+  for (let i = 0; i < n; i++) {
+    A[i * 3] = neckV[i]! - neckAt;
+    A[i * 3 + 1] = armT[i]! - elbowAt;
+    A[i * 3 + 2] = armT[i]! - wristAt;
+    B[i * 2] = pos.getY(i) - waistAt;
+    B[i * 2 + 1] = pos.getY(i) - ankleAt;
+  }
+  geo.userData.cuts = { neckAt, elbowAt, wristAt, waistAt, ankleAt };
 }
 
 function analyseMesh(mesh: THREE.SkinnedMesh, boxes: RigInfo['boxes']): void {
@@ -957,21 +1046,31 @@ function humanBodyMaterial(
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
-          '#include <common>\nattribute float aRegion;\nattribute float aNape;\nuniform float uNapeIn;\nflat varying float vRegion;\nvarying vec3 vObjPos;',
+          '#include <common>\nattribute float aRegion;\nattribute float aNape;\nattribute vec3 aCutA;\nattribute vec2 aCutB;\nuniform float uNapeIn;\nflat varying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vCutA;\nvarying vec2 vCutB;',
         )
         .replace(
           '#include <begin_vertex>',
-          '#include <begin_vertex>\nvRegion = aRegion;\nvObjPos = position;\ntransformed.z += uNapeIn * aNape;',
+          '#include <begin_vertex>\nvRegion = aRegion;\nvObjPos = position;\nvCutA = aCutA;\nvCutB = aCutB;\ntransformed.z += uNapeIn * aNape;',
         );
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform vec3 uPal[9];\nuniform vec3 uSkinTint;\nuniform float uSkinMask[9];\nuniform float uHide[9];\nflat varying float vRegion;\nvarying vec3 vObjPos;',
+          '#include <common>\nuniform vec3 uPal[9];\nuniform vec3 uSkinTint;\nuniform float uSkinMask[9];\nuniform float uHide[9];\nflat varying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vCutA;\nvarying vec2 vCutB;',
         )
         .replace(
           '#include <map_fragment>',
           `#include <map_fragment>
           int ri = int(vRegion + 0.5);
+          // The body's own regions by smooth cut lines (markCuts), per pixel: a clean hem at the neck, elbows,
+          // wrists, waist and ankles instead of the triangles' staircase. The scalp keeps its own.
+          if (ri != 8 && dot(vCutA, vCutA) + dot(vCutB, vCutB) > 0.0) {
+            if (vCutA.z > 0.0) ri = 1;
+            else if (vCutA.y > 0.0) ri = 3;
+            else if (vCutA.x > 0.0) ri = 0;
+            else if (vCutB.x > 0.0) ri = 2;
+            else if (vCutB.y > 0.0) ri = 4;
+            else ri = 5;
+          }
           for (int i = 0; i < 9; i++) if (i == ri && uHide[i] > 0.5) discard;
           float skin = 0.0;
           vec3 cloth = uPal[0];
@@ -1219,7 +1318,7 @@ export function faceSpecFor(a: Appearance): FaceSpec {
     hairColor: a.hair === 'bald' ? 0x3a281b : a.hairColor,
     eyes: a.eyes ?? 0x4a3020,
     age: a.age ?? 1,
-    beard: a.beard !== 'none',
+    beard: a.sex === 'm' && a.beard !== 'none',
     scars: !!a.scars,
     zombie: !!a.zombie,
     seed: a.skin ^ a.hairColor ^ (a.top << 1),
@@ -1266,6 +1365,27 @@ function layerClip(lib: AssetLibrary, name: string, layer: 'upper' | 'lower' | '
 // ─────────────────────────────────────────────────────────────────────────────
 // Character view
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The volume headwear takes over the hair (body bind space, from the measured skull): a helmet's shell (a little
+ * inside it, so tucked hair never shows through) with its rim on the brow line, tipped back as fitHelmet wears it;
+ * a cap's crown, closer to the skull, its band low at the back.
+ */
+function headClipFor(head: HeadFit, k: number, kind: 'helmet' | 'cap', spec?: { brow?: number; tilt?: number }): HeadClip {
+  // Inside the liner (gearFit.ts helmetLiner, 1.2 cm off the skull) or the cap's crown.
+  const pad = (kind === 'helmet' ? 0.009 : 0.006) * k;
+  const c = new THREE.Vector3(head.x, head.brow, (head.front + head.back) / 2);
+  const r = new THREE.Vector3(head.halfW + pad, head.crown - head.brow + pad, (head.front - head.back) / 2 + pad);
+  // A helmet worn with its faceplate down (the Altyn) comes down over the ears to the jaw: the hair is tucked in
+  // all the way down there.
+  if (kind === 'helmet' && spec?.brow !== undefined)
+    return { c, r, rim: head.brow - 0.075 * k, slope: 0, pivotZ: head.back, band: 0.02 * k, fringeY: head.brow - 0.05 * k };
+  if (kind === 'helmet') {
+    const tilt = spec?.tilt ?? (spec?.brow === undefined ? 0.16 : 0);
+    return { c, r, rim: head.brow + 0.018 * k, slope: Math.tan(tilt), pivotZ: head.back, band: 0.03 * k, fringeY: head.brow - 0.05 * k };
+  }
+  return { c, r, rim: head.brow + 0.012 * k, slope: 0.22, pivotZ: head.front, band: 0.022 * k, fringeY: head.brow - 0.05 * k };
+}
 
 const CHAR_SCALE = 0.92;
 const tmpV = new THREE.Vector3();
@@ -1326,6 +1446,8 @@ export class CharacterView {
   /** Clothing pieces bound to the body skeleton. */
   private outfitMeshes: THREE.SkinnedMesh[] = [];
   private hairMeshes: THREE.SkinnedMesh[] = [];
+  /** Headwear the hair is tucked under (hairGen.ts HeadClip), or null. */
+  private headClip: HeadClip | null = null;
   private mixer: THREE.AnimationMixer;
   private lower: THREE.AnimationAction | null = null;
   private lowerName = '';
@@ -1645,7 +1767,7 @@ export class CharacterView {
     }
     const spec = HAIR_SPECS[a.hair] ?? HAIR_SPECS[a.sex === 'f' ? 'ponytail' : 'short']!;
     const built = proceduralHair(human.body, a.sex, a.hair, spec);
-    const mat = hairGenMaterial(color, this.u);
+    const mat = hairGenMaterial(color, this.u, this.headClip);
     // The scalp part goes under hats and helmets; what hangs below them (Long) stays.
     for (const [geo, name] of [[built.scalp, `Hair_${a.hair}`], [built.long, `HairLong_${a.hair}`]] as const) {
       if (!geo) continue;
@@ -1734,7 +1856,7 @@ export class CharacterView {
       this.model.traverse((o) => (o as THREE.SkinnedMesh).isSkinnedMesh && all.push(o as THREE.SkinnedMesh));
       const eyes = this.human!.eyes;
       for (const m of all)
-        if (m === eyes) shapeMesh(m, this.model, (this.eyeField ??= field.bodyOnly()), `${this.look.sex}|${key}|eyes`);
+        if (m === eyes) shapeMesh(m, this.model, (this.eyeField ??= field.eyesOnly()), `${this.look.sex}|${key}|eyes`);
         else shapeMesh(m, this.model, field, `${this.look.sex}|${key}`);
       // Rigid gear on a bone (packs, a sling, helmets, pouches) isn't bent: it moves as one, by the field where it
       // sits (the field depends on height and direction round the body, not on distance out), so a pack stays on
@@ -1839,8 +1961,20 @@ export class CharacterView {
       else if (m.visible) capOn = true;
     }
     const hat = !s.helmet && !this.human && this.look.hat && !this.look.zombie ? this.look.hat : null;
-    // Hats and helmets sit over short hair; long hair stays (it hangs below the rim). A balaclava covers it all.
-    for (const h of this.hairMeshes) h.visible = !maskOn && (!(s.helmet || capOn || (hat && hat !== 'bandana')) || /Long/.test(h.name));
+    // Helmets and caps go over the hair: the hairstyle stays, what is under the shell is tucked in under it and what
+    // hangs below the rim (the nape, the sides, a ponytail, long hair) shows (hairGen.ts HeadClip). A balaclava
+    // covers it all. The mannequin (no measured head) keeps its old rule: short hair off under headwear.
+    const headFit = this.human ? this.bodyFit()?.head ?? null : null;
+    const k0 = this.bodyFit()?.k ?? 1;
+    const helmetSpec = s.helmet ? GEAR_MODEL[s.helmet.def] : undefined;
+    this.headClip = !headFit || maskOn ? null : s.helmet ? headClipFor(headFit, k0, 'helmet', helmetSpec) : capOn ? headClipFor(headFit, k0, 'cap') : null;
+    const hairColor = this.look.zombie ? 0x3a3530 : this.look.hairColor;
+    for (const h of this.hairMeshes) {
+      if (this.human) {
+        h.visible = !maskOn;
+        if ((h.material as THREE.Material).name === 'hairgen') h.material = hairGenMaterial(hairColor, this.u, this.headClip);
+      } else h.visible = !maskOn && (!(s.helmet || capOn || (hat && hat !== 'bandana')) || /Long/.test(h.name));
+    }
     // Brows and a beard are under it too (they'd poke through the knit).
     if (this.human)
       this.model.traverse((o) => {
@@ -3110,8 +3244,8 @@ export function disposeCharacterCaches(): void {
 const portraitCache = new Map<string, string>();
 
 /** A head shot ('head') or the whole figure ('body', for build pictures), as a PNG data URL (cached). */
-export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, framing: 'head' | 'face' | 'body' | 'hair' | 'back' = 'head'): string {
-  const key = JSON.stringify(look) + size + framing;
+export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, framing: 'head' | 'face' | 'body' | 'hair' | 'back' | 'mug' | 'side' | 'bodyback' | 'torso' = 'head', slots: Equipment['slots'] = {} as Equipment['slots']): string {
+  const key = JSON.stringify(look) + size + framing + JSON.stringify(slots);
   const hit = portraitCache.get(key);
   if (hit) return hit;
   // Shared with the item pictures (offscreen.ts), so everything they change is set here too.
@@ -3120,7 +3254,7 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, 
   r.setSize(size, size, false);
   r.outputColorSpace = THREE.SRGBColorSpace;
   r.toneMapping = THREE.ACESFilmicToneMapping;
-  r.toneMappingExposure = framing === 'body' ? 1.35 : 1;
+  r.toneMappingExposure = framing === 'body' || framing === 'side' || framing === 'bodyback' ? 1.35 : 1;
   r.setClearColor(0x000000, 0);
   const scene = new THREE.Scene();
   const u: WorldUniforms = {
@@ -3135,10 +3269,21 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, 
     pos: { x: 0, y: 0 },
     vel: { x: 0, y: 0 },
     // Hair pictures turn the head to show its side and back (ponytails, length); 'back' shows the back.
-    facing: framing === 'hair' ? Math.PI / 2 - 1.05 : framing === 'back' ? -Math.PI / 2 + 0.3 : Math.PI / 2 - 0.3,
+    facing:
+      framing === 'hair'
+        ? Math.PI / 2 - 1.05
+        : framing === 'back' || framing === 'bodyback'
+          ? -Math.PI / 2 + 0.3
+          : framing === 'side'
+            ? Math.PI / 2 - 1.3
+            : framing === 'torso'
+              ? Math.PI / 2 - 0.25
+            : framing === 'mug'
+              ? Math.PI / 2 - 0.45
+              : Math.PI / 2 - 0.3,
     crouching: false,
     sprinting: false,
-    eq: { slots: {}, pockets: { w: 0, h: 0, items: [] } },
+    eq: { slots, pockets: { w: 0, h: 0, items: [] } },
     active: 'melee',
     faction: 'npc',
   } as unknown as Actor;
@@ -3157,7 +3302,11 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, 
   );
   const hp = headBone ? headBone.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(0, 1.6, 0);
   const cam = new THREE.PerspectiveCamera(26, 1, 0.05, 10);
-  if (framing === 'body') {
+  if (framing === 'side' || framing === 'bodyback' || framing === 'torso') {
+    // Dev checks of the torso (the bust, the painted top's hems): head to hips.
+    cam.position.set(hp.x + 0.15, hp.y - 0.25, hp.z + 1.55);
+    cam.lookAt(hp.x, hp.y - 0.33, hp.z);
+  } else if (framing === 'body') {
     // Feet to crown, whatever the height slider says (the head bone sets the frame).
     const mid = hp.y * 0.53;
     cam.position.set(0.5, mid + 0.25, (hp.y + 0.25) * 2.3);
@@ -3165,6 +3314,12 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, 
   } else if (framing === 'hair' || framing === 'back') {
     cam.position.set(hp.x + 0.1, hp.y + 0.24, hp.z + 0.78);
     cam.lookAt(hp.x, hp.y + 0.06, hp.z);
+  } else if (framing === 'mug') {
+    // The face tiles: the face alone, close and frontal (turned a little, so the nose and chin show in profile),
+    // lit from the side so its shape reads.
+    cam.position.set(hp.x + 0.02, hp.y + 0.07, hp.z + 0.6);
+    cam.lookAt(hp.x - 0.035, hp.y + 0.035, hp.z + 0.03);
+    key1.position.set(2.2, 1.6, 1.6);
   } else if (framing === 'face') {
     // Tighter: the face fills the picture (the creator's face and hair tiles).
     cam.position.set(hp.x + 0.1, hp.y + 0.08, hp.z + 0.68);

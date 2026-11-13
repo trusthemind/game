@@ -8,11 +8,11 @@ import { newRelationship, type Relationship } from './dialogue/types';
 import type { Difficulty, Grave, RaidResult } from './sim/raid';
 import { applyRaidToTasks, type TaskState } from './tasks';
 import { newHideout, type HideoutState } from './hideout';
-import { SHAPE_PRESETS, type FaceSpec, type ShapeSpec } from './shape';
+import { resolveFace, resolveShape, SHAPE_PRESETS, type FaceSpec, type ShapeSpec } from './shape';
 import { beardId, DEFAULT_HAIR, HAIR_BY_ID } from './hair';
 import { companionLevel, companionRaidXp, companionState, gearTierFor, upgradeCompanionGear, type CompanionState } from './companions';
 
-export const PROFILE_VERSION = 12;
+export const PROFILE_VERSION = 13;
 
 export interface ProfileStats {
   raids: number;
@@ -87,7 +87,7 @@ export function tidyLook(look: PlayerLook): PlayerLook {
   if (typeof look.hair !== 'string' || !HAIR_BY_ID[look.hair]) look.hair = DEFAULT_HAIR[look.sex === 'f' ? 'f' : 'm'];
   if (typeof look.hairColor !== 'number') look.hairColor = DEFAULT_LOOK.hairColor;
   look.beard = look.sex === 'f' ? 'none' : beardId(look.beard);
-  if (look.beardColor !== undefined && typeof look.beardColor !== 'number') delete look.beardColor;
+  if (look.beardColor !== undefined && (typeof look.beardColor !== 'number' || look.sex === 'f')) delete look.beardColor;
   return look;
 }
 
@@ -252,6 +252,14 @@ export function migrateProfile(raw: unknown): Profile {
     out.look ??= { ...DEFAULT_LOOK };
     out.look.beard = beardId(out.look.beard);
     out.version = 12;
+  }
+  if (out.version < 13) {
+    // v12 → v13: the bust slider (the chest slider drove it before) and the many face sliders (new ones read 0).
+    out.look ??= { ...DEFAULT_LOOK };
+    const sex = out.look.sex === 'f' ? 'f' : 'm';
+    if (out.look.shape && typeof out.look.shape === 'object') out.look.shape = resolveShape(sex, out.look.shape);
+    if (out.look.face && typeof out.look.face === 'object') out.look.face = resolveFace(out.look.face);
+    out.version = 13;
   }
   dropUnknownItems(out);
   out.companions ??= {};

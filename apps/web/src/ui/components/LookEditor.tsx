@@ -1,8 +1,11 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
   BEARD_STYLES,
-  FACE_KEYS,
+  FACE_GROUPS,
+  FACE_PARTS,
   FACE_PRESETS,
+  facePartOf,
+  NEUTRAL_FACE,
   HAIR_PALETTE,
   hairStylesFor,
   HUMAN_LIMIT,
@@ -29,13 +32,14 @@ const groupsOf = <T extends { group: string }>(list: readonly T[]) => {
 };
 const SKIN_NAMES = ['Fair', 'Light', 'Tan', 'Brown', 'Dark'];
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const cap = (s: string) => (s.charAt(0).toUpperCase() + s.slice(1)).replace(/_/g, ' ');
 
 /** Slider captions: label, the -1 end, the +1 end, and where on the little figure the icon marks (x, y). */
 const BODY_META: Record<keyof BodyShape, [string, string, string, number, number]> = {
   height: ['Height', 'Short', 'Tall', 7, 1],
   shoulders: ['Shoulders', 'Narrow', 'Broad', 7, 6],
-  chest: ['Chest', 'Flat', 'Full', 7, 8],
+  chest: ['Chest', 'Narrow', 'Deep', 7, 8],
+  bust: ['Bust', 'Small', 'Full', 8.5, 8.5],
   waist: ['Waist', 'Narrow', 'Wide', 7, 11],
   belly: ['Belly', 'Flat', 'Round', 8, 11.5],
   hips: ['Hips', 'Narrow', 'Wide', 7, 13],
@@ -44,16 +48,36 @@ const BODY_META: Record<keyof BodyShape, [string, string, string, number, number
   calves: ['Calves', 'Thin', 'Thick', 5.5, 19],
   arms: ['Arms', 'Thin', 'Thick', 2.5, 10],
 };
+/** The bust slider reads as pecs on the male body. */
+const bodyMeta = (sex: Sex): typeof BODY_META => (sex === 'm' ? { ...BODY_META, bust: ['Pecs', 'Flat', 'Full', 8.5, 8.5] } : BODY_META);
 const FACE_META: Record<keyof FaceShape, [string, string, string, number, number]> = {
+  headWidth: ['Head width', 'Narrow', 'Wide', 2, 8],
+  headLength: ['Head length', 'Short', 'Long', 7, 2],
+  forehead: ['Forehead', 'Sloped', 'Upright', 7, 4],
   brow: ['Brow ridge', 'Smooth', 'Heavy', 7, 6],
-  cheeks: ['Cheekbones', 'Flat', 'High', 10, 10],
-  nose: ['Nose', 'Small', 'Large', 7, 10.5],
+  browHeight: ['Brow height', 'Low', 'High', 9.5, 5.5],
+  eyeSize: ['Eye size', 'Small', 'Large', 9.5, 8],
+  eyeSpacing: ['Eye spacing', 'Close', 'Wide', 4.5, 8],
+  eyeTilt: ['Eye tilt', 'Down', 'Up', 10.5, 7.5],
+  nose: ['Nose size', 'Small', 'Large', 7, 10.5],
+  noseWidth: ['Nose width', 'Narrow', 'Wide', 8.5, 11.5],
+  noseBridge: ['Nose bridge', 'Scooped', 'Humped', 7, 9],
+  noseTip: ['Nose tip', 'Hooked', 'Upturned', 7, 12],
+  lips: ['Lips', 'Thin', 'Full', 7, 14],
+  mouthWidth: ['Mouth width', 'Narrow', 'Wide', 9, 14],
   jaw: ['Jaw', 'Narrow', 'Wide', 10.5, 14],
   chin: ['Chin', 'Soft', 'Strong', 7, 17.5],
+  chinLength: ['Chin length', 'Short', 'Long', 7, 18],
+  chinShape: ['Chin shape', 'Square', 'Pointed', 8.5, 17],
+  cleft: ['Chin cleft', 'None', 'Deep', 7, 17],
+  cheeks: ['Cheekbones', 'Flat', 'High', 10, 10],
+  cheekFull: ['Cheeks', 'Hollow', 'Full', 10, 12.5],
+  ears: ['Ears', 'Small', 'Large', 12.5, 9.5],
 };
+const PART_LABEL: Record<keyof typeof FACE_PARTS, string> = { nose: 'Nose', eyes: 'Eyes', mouth: 'Mouth', jaw: 'Jaw & chin' };
 
 export type Tab = 'body' | 'face' | 'hair' | 'skin' | 'beard';
-const TABS: { id: Tab; label: string }[] = [
+const ALL_TABS: { id: Tab; label: string }[] = [
   { id: 'body', label: 'Body' },
   { id: 'face', label: 'Face' },
   { id: 'hair', label: 'Hair' },
@@ -64,8 +88,8 @@ const TABS: { id: Tab; label: string }[] = [
 // The looks the tile pictures show: only the sex, skin and the option itself vary (hair colour too for hair and
 // beards), so each picture is drawn once per sex and skin and reused.
 const BASE_HAIR_COLOR = 0x3a281b;
-const faceThumb = (sex: Sex, skin: number, face: string): PlayerLook => ({
-  sex, skin, face, hair: sex === 'm' ? 'bald' : 'bun', hairColor: BASE_HAIR_COLOR, beard: 'none', shape: 'average',
+const faceThumb = (sex: Sex, skin: number, face: string | FaceShape): PlayerLook => ({
+  sex, skin, face, hair: sex === 'm' ? 'bald' : 'topknot', hairColor: BASE_HAIR_COLOR, beard: 'none', shape: 'average',
 });
 const hairThumb = (sex: Sex, skin: number, hair: string, hairColor: number): PlayerLook => ({
   sex, skin, hair, hairColor, beard: 'none', face: 'classic', shape: 'average',
@@ -176,8 +200,10 @@ function FineTune<K extends string>({
   onReset,
   resetLabel,
   modified,
+  groups,
 }: {
   title: string;
+  groups?: readonly { id: string; label: string; keys: readonly K[] }[];
   keys: readonly K[];
   meta: Record<K, [string, string, string, number, number]>;
   values: Record<K, number>;
@@ -205,7 +231,10 @@ function FineTune<K extends string>({
       </div>
       {open && (
         <div className="fine-tune-body" id={bodyId}>
-          {keys.map((k) => {
+          {(groups ?? [{ id: '', label: '', keys }]).map((g) => (
+            <div className="tune-group" key={g.id} role={g.label ? 'group' : undefined} aria-label={g.label || undefined}>
+              {g.label && <h5 className="tune-group-title">{g.label}</h5>}
+          {g.keys.map((k) => {
             const [label, lo, hi, x, y] = meta[k];
             const v = values[k];
             const pct = Math.round((v / HUMAN_LIMIT) * 100);
@@ -233,6 +262,8 @@ function FineTune<K extends string>({
               </div>
             );
           })}
+            </div>
+          ))}
           <p className="tune-hint dim">Double-click a slider (or press Delete) to centre it.</p>
         </div>
       )}
@@ -262,6 +293,8 @@ export interface LookEditorProps {
  */
 export function LookEditor({ draft, tab, setTab, apply, preview, setSex, bodyBase, faceBase, setBodyBase, setFaceBase }: LookEditorProps) {
   const sex = draft.sex;
+  // No facial hair on the female body: its tab isn't offered.
+  const TABS = ALL_TABS.filter((t) => t.id !== 'beard' || sex === 'm');
   const shape = resolveShape(sex, draft.shape);
   const face = resolveFace(draft.face);
   const shapeId = typeof draft.shape === 'string' ? draft.shape : null;
@@ -323,7 +356,7 @@ export function LookEditor({ draft, tab, setTab, apply, preview, setSex, bodyBas
         <FineTune
           title="Fine tune build"
           keys={SHAPE_KEYS}
-          meta={BODY_META}
+          meta={bodyMeta(sex)}
           values={shape}
           face={false}
           modified={bodyMod}
@@ -336,21 +369,39 @@ export function LookEditor({ draft, tab, setTab, apply, preview, setSex, bodyBas
   else if (tab === 'face')
     content = (
       <>
-        <Group label="Face shape">
+        <Group label="Overall">
           {Object.keys(FACE_PRESETS).map((id) => (
             <Tile
               key={id}
               label={cap(id)}
               selected={faceId === id}
-              thumb={{ look: faceThumb(sex, draft.skin, id), kind: 'face' }}
+              thumb={{ look: faceThumb(sex, draft.skin, id), kind: 'mug' }}
               onPreview={pv({ face: id })}
               onPick={() => (setFaceBase(id), apply({ face: id }))}
             />
           ))}
         </Group>
+        {(Object.keys(FACE_PARTS) as (keyof typeof FACE_PARTS)[]).map((part) => {
+          const on = facePartOf(face, part);
+          return (
+            <Group key={part} label={PART_LABEL[part]}>
+              {Object.entries(FACE_PARTS[part]).map(([id, p]) => (
+                <Tile
+                  key={id}
+                  label={cap(id)}
+                  selected={on === id}
+                  thumb={{ look: faceThumb(sex, draft.skin, { ...NEUTRAL_FACE, ...p }), kind: 'mug' }}
+                  onPreview={pv({ face: humanFace({ ...face, ...p }) })}
+                  onPick={() => apply({ face: humanFace({ ...face, ...p }) })}
+                />
+              ))}
+            </Group>
+          );
+        })}
         <FineTune
           title="Fine tune face"
-          keys={FACE_KEYS}
+          keys={FACE_GROUPS.flatMap((g) => g.keys)}
+          groups={FACE_GROUPS}
           meta={FACE_META}
           values={face}
           face
@@ -387,7 +438,7 @@ export function LookEditor({ draft, tab, setTab, apply, preview, setSex, bodyBas
         ))}
       </>
     );
-  else if (tab === 'skin')
+  else if (tab === 'skin' || (tab === 'beard' && sex === 'f'))
     content = (
       <Group label="Skin tone" chips>
         {SKIN_TONES.map((c, i) => (

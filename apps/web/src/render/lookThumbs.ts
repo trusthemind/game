@@ -8,7 +8,7 @@ import { lookBodies, playerAppearance, renderPortrait } from './character';
  * Each picture is keyed by the whole look it shows; callers pass a canonical look (only the sex, skin and the
  * option itself vary), so the cache is effectively per sex and skin and survives reopening the creator.
  */
-export type LookThumbKind = 'face' | 'body' | 'hair';
+export type LookThumbKind = 'face' | 'body' | 'hair' | 'mug';
 
 const SIZE = 160;
 const cache = new Map<string, string>();

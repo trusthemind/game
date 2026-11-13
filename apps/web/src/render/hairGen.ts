@@ -42,6 +42,7 @@ export interface Frame {
   wVal: Float32Array;
   headPts: number;
   body: THREE.BufferGeometry;
+  sex: 'm' | 'f';
 }
 
 const FRAMES = new WeakMap<THREE.BufferGeometry, Frame>();
@@ -183,7 +184,7 @@ export function headFrame(body: THREE.SkinnedMesh, sex: 'm' | 'f'): Frame | null
     for (let k = 0; k < 4; k++) (wIdx[j * 4 + k] = si.getComponent(v, k)), (wVal[j * 4 + k] = sw.getComponent(v, k));
   });
   const L = sex === 'f' ? { front: 0.8, earTop: 0.41, earBot: -0.06 } : { front: 0.72, earTop: 0.47, earBot: 0.06 };
-  const f: Frame = { c, W, cm: W / 15, tipY, topY, span, ...L, R, head, pts, nrm, wIdx, wVal, headPts, body: geo };
+  const f: Frame = { c, W, cm: W / 15, tipY, topY, span, ...L, R, head, pts, nrm, wIdx, wVal, headPts, body: geo, sex };
   FRAMES.set(geo, f);
   return f;
 }
@@ -264,6 +265,26 @@ class Buf {
     g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(this.sw, 4));
     g.setIndex(this.idx);
     g.computeVertexNormals();
+    // Seams (where a ring closes, a ball's poles): average the normals of vertices at the same place, so the
+    // surface shades as one smooth piece instead of showing its polygons.
+    const nrm = g.attributes.normal as THREE.BufferAttribute;
+    for (const [a, b] of [[0, this.n] as [number, number]]) {
+      const at = new Map<string, number[]>();
+      for (let i = a; i < b; i++) {
+        const k = `${Math.round(this.pos[i * 3]! * 1e5)},${Math.round(this.pos[i * 3 + 1]! * 1e5)},${Math.round(this.pos[i * 3 + 2]! * 1e5)}`;
+        const l = at.get(k);
+        if (l) l.push(i);
+        else at.set(k, [i]);
+      }
+      const v = new THREE.Vector3();
+      for (const l of at.values()) {
+        if (l.length < 2) continue;
+        v.set(0, 0, 0);
+        for (const i of l) v.x += nrm.getX(i), v.y += nrm.getY(i), v.z += nrm.getZ(i);
+        v.normalize();
+        for (const i of l) nrm.setXYZ(i, v.x, v.y, v.z);
+      }
+    }
     g.computeBoundingSphere();
     return g;
   }
@@ -401,7 +422,9 @@ export function hairline(p: ScalpPt, o: Line = {}): number {
   const front = f.front + (o.front ?? 0);
   const temple = front - 0.1 + (o.temple ?? 0);
   const side = o.ears ? f.earBot - 0.2 : f.earTop + 0.02;
-  const burn = o.burn ?? f.earBot + 0.05;
+  // A man's sideburn runs down in front of the ear; a woman's hairline turns round above it (a sideburn down the
+  // cheek read as a beard on her).
+  const burn = o.burn ?? (f.sex === 'f' ? f.earTop - 0.04 : f.earBot + 0.05);
   const nape = o.nape ?? -0.22;
   const y = lin(
     [
@@ -419,7 +442,7 @@ export function hairline(p: ScalpPt, o: Line = {}): number {
     ],
     p.a,
   );
-  const fe = o.feather ?? 0.06;
+  const fe = o.feather ?? 0.085;
   return sm(p.yN, y - fe, y + fe);
 }
 
@@ -434,8 +457,11 @@ export function zones(p: ScalpPt, top: number, front: number, side: number, back
 }
 
 const noiseAt = (p: ScalpPt, freq: number, seed = 0) => vnoise(p.d.x * freq + seed, p.d.y * freq, p.d.z * freq);
-/** Curls: rounded bumps, 0..1. */
-const curls = (p: ScalpPt, freq: number) => Math.abs(noiseAt(p, freq) * 2 - 1);
+/** Curls: rounded bumps, 0..1 (a softened |n|: no creases between them). */
+const curls = (p: ScalpPt, freq: number) => {
+  const n = noiseAt(p, freq) * 2 - 1;
+  return Math.sqrt(n * n + 0.04) - 0.2;
+};
 
 // ── Builders ─────────────────────────────────────────────────────────────────
 
@@ -489,7 +515,8 @@ function buildShell(f: Frame, shell: (p: ScalpPt) => ScalpOut, drape: DrapeSpec 
         const sp = scalpPoint(f, az, el);
         const o = shell(sp);
         cov = THREE.MathUtils.clamp(o.cov, 0, 1);
-        const out = (GAP + Math.max(0, o.t) * sm(cov, 0, 0.5)) * cm;
+        // Thinning out to the skin over the whole soft hairline, so its edge is a taper, not a step.
+        const out = (GAP + Math.max(0, o.t) * sm(cov, 0.1, 1) ** 3) * cm;
         p.copy(sp.d).multiplyScalar(radius(f, az, el) + out).add(f.c);
         p.y += (o.up ?? 0) * cm * cov;
         p.z += (o.fwd ?? 0) * cm * cov;
@@ -597,13 +624,13 @@ function rootAt(f: Frame, az: number, yN: number, out: number): THREE.Vector3 {
 function buildTail(f: Frame, t: TailSpec, out: Buf, tint = 1): void {
   const cm = f.cm;
   const root = rootAt(f, t.az, t.yN, 0.4);
-  const RING = 12;
+  const RING = 24;
   if (t.kind === 'bun') {
     // A ball of hair, its strands wound round it.
     const r = t.r(0) * cm;
     const o = t.path[0] ?? [0, 0, 0];
     const c = root.clone().add(new THREE.Vector3(o[0], o[1], o[2]).multiplyScalar(cm));
-    const rows = 10;
+    const rows = 18;
     const grid: number[][] = [];
     for (let i = 0; i <= rows; i++) {
       const v = i / rows;
@@ -611,7 +638,8 @@ function buildTail(f: Frame, t: TailSpec, out: Buf, tint = 1): void {
       const row: number[] = [];
       for (let k = 0; k <= RING; k++) {
         const th = (k / RING) * Math.PI * 2;
-        const bump = 1 + 0.06 * Math.sin(th * 3 + ph * 4);
+        // A wound coil: a soft twist round the ball, not lumps.
+        const bump = 1 + 0.025 * Math.sin(th * 2 + ph * 3) * Math.sin(ph);
         const p = new THREE.Vector3(Math.sin(ph) * Math.cos(th), Math.cos(ph) * 0.8, Math.sin(ph) * Math.sin(th)).multiplyScalar(r * bump).add(c);
         row.push(out.add(p, (k / RING) * 2 * Math.PI * (r / cm) + v * 6, v * Math.PI * (r / cm) + k * 0.4, 1, 1, tint, headW(f)));
       }
@@ -624,7 +652,7 @@ function buildTail(f: Frame, t: TailSpec, out: Buf, tint = 1): void {
   // Tube: a smooth path from the root, kept clear of the body.
   const ctrl = [root.clone(), ...t.path.map(([x, y, z]) => root.clone().add(new THREE.Vector3(x, y, z).multiplyScalar(cm)))];
   const curve = new THREE.CatmullRomCurve3(ctrl, false, 'centripetal');
-  const N = 28;
+  const N = 40;
   const pts = curve.getSpacedPoints(N);
   const js: number[] = [];
   pts.forEach((p, i) => {
@@ -809,25 +837,92 @@ export { lin as hairLin, ss as hairSs, curls as hairCurls, noiseAt as hairNoise 
 
 const MATS = new Map<string, THREE.MeshStandardMaterial>();
 
-/** Hair: the colour, darker and lighter strands along the growth, ragged at the hairline, speckled for stubble. */
-export function hairGenMaterial(color: number, u: WorldUniforms): THREE.MeshStandardMaterial {
-  const key = `${color}`;
+/**
+ * Headwear over the hair (the body's bind space): the hair keeps its style, and what of it is under the headwear's
+ * shell is drawn in under it. Above the rim (a plane, `rim` at z = `pivotZ`, rising `slope` per unit forward) the
+ * hair is pulled inside the ellipsoid (centre `c`, radii `r`), blending out over `band` below the rim, so it never
+ * pokes through; what hangs below the rim (the nape, the sides, a ponytail, long hair) stays as it is. A fringe
+ * over the forehead (in front, above `fringeY`) is tucked in under it, i.e. not drawn.
+ */
+export interface HeadClip {
+  c: THREE.Vector3;
+  r: THREE.Vector3;
+  rim: number;
+  slope: number;
+  pivotZ: number;
+  band: number;
+  fringeY: number;
+}
+
+const clipKey = (c: HeadClip | null | undefined) =>
+  c ? [c.c.x, c.c.y, c.c.z, c.r.x, c.r.y, c.r.z, c.rim, c.slope, c.pivotZ, c.band, c.fringeY].map((v) => v.toFixed(4)).join(',') : '';
+
+/**
+ * Hair: solid shells shaded as strands (lighter and darker strands along the growth, darker towards the roots and
+ * the hairline, a soft sheen), with a soft, clean hairline: the edge fades out (blended, not speckled) through
+ * fine wisps. A shaved scalp or stubble (density < 1) is a thin translucent shadow, not dots. `clip`: headwear over
+ * it (HeadClip).
+ */
+export function hairGenMaterial(color: number, u: WorldUniforms, clip?: HeadClip | null): THREE.MeshStandardMaterial {
+  const key = `${color}|${clipKey(clip)}`;
   let m = MATS.get(key);
   if (m) return m;
-  m = new THREE.MeshStandardMaterial({ color, roughness: 0.62, metalness: 0, side: THREE.DoubleSide });
+  m = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0, side: THREE.DoubleSide, transparent: true, depthWrite: true, alphaTest: 0.02 });
   m.name = 'hairgen';
+  const on = clip ? 1 : 0;
+  const C = clip?.c ?? new THREE.Vector3();
+  const R = clip?.r ?? new THREE.Vector3(1, 1, 1);
+  const rim = new THREE.Vector4(clip?.rim ?? 0, clip?.slope ?? 0, clip?.pivotZ ?? 0, clip?.band ?? 0.01);
   patchWorldMaterial(m, u, {
-    key: 'hairgen',
+    key: `hairgen${on}`,
     pre: (sh) => {
+      sh.uniforms.uClipOn = { value: on };
+      sh.uniforms.uClipC = { value: C };
+      sh.uniforms.uClipR = { value: R };
+      sh.uniforms.uClipRim = { value: rim };
+      sh.uniforms.uClipF = { value: clip?.fringeY ?? 0 };
       sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute vec2 aStrand;\nattribute vec3 aHair;\nvarying vec2 vStrand;\nvarying vec3 vHair;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvStrand = aStrand;\nvHair = aHair;');
+        .replace(
+          '#include <common>',
+          `#include <common>
+          attribute vec2 aStrand;
+          attribute vec3 aHair;
+          varying vec2 vStrand;
+          varying vec3 vHair;
+          varying vec3 vBindP;
+          uniform float uClipOn;
+          uniform vec3 uClipC;
+          uniform vec3 uClipR;
+          uniform vec4 uClipRim;`,
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          vStrand = aStrand;
+          vHair = aHair;
+          vBindP = position;
+          if (uClipOn > 0.5) {
+            float rimY = uClipRim.x + uClipRim.y * (transformed.z - uClipRim.z);
+            float above = smoothstep(rimY - uClipRim.w, rimY + uClipRim.w * 0.25, transformed.y);
+            vec3 hq = (transformed - uClipC) / uClipR;
+            float L = length(hq);
+            // Below the rim the hair is let out again gradually (squashed by the rim, not cut off flat by it).
+            float maxL = mix(1.0 + max(0.0, rimY - transformed.y) / (uClipRim.w * 2.0), 0.96, above);
+            if (L > maxL) transformed = uClipC + (transformed - uClipC) * (maxL / L);
+          }`,
+        );
       sh.fragmentShader = sh.fragmentShader
         .replace(
           '#include <common>',
           `#include <common>
           varying vec2 vStrand;
           varying vec3 vHair;
+          varying vec3 vBindP;
+          uniform float uClipOn;
+          uniform vec3 uClipC;
+          uniform vec3 uClipR;
+          uniform vec4 uClipRim;
+          uniform float uClipF;
           float hgH(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
           float hgN(vec2 p) {
             vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -837,11 +932,28 @@ export function hairGenMaterial(color: number, u: WorldUniforms): THREE.MeshStan
         .replace(
           '#include <map_fragment>',
           `#include <map_fragment>
-          float hgGrain = hgH(floor(vStrand * vec2(24.0, 2.5)));
-          if (vHair.x < 0.995 && vHair.x < hgGrain * 0.8 + 0.1) discard;
-          if (vHair.y < 0.995 && hgH(floor(vStrand * vec2(34.0, 34.0)) + 0.37) > vHair.y) discard;
-          float hgS = hgN(vStrand * vec2(16.0, 0.6)) * 0.5 + hgN(vStrand * vec2(5.0, 0.3) + 7.0) * 0.5;
-          diffuseColor.rgb *= (0.5 + 0.8 * hgS * hgS) * vHair.z;`,
+          if (uClipOn > 0.5) {
+            float rimY = uClipRim.x + uClipRim.y * (vBindP.z - uClipRim.z);
+            vec3 hq = (vBindP - uClipC) / uClipR;
+            // A fringe tucked in under the front rim.
+            if (hq.z > 0.3 && abs(hq.x) < 0.75 && vBindP.y > uClipF && vBindP.y < rimY + uClipRim.w) discard;
+          }
+          // Strands: smooth noise across them (clumps, then single strands), stretched along them.
+          float hgS = hgN(vStrand * vec2(3.0, 0.15)) * 0.55 + hgN(vStrand * vec2(11.0, 0.4) + 7.0) * 0.3 + hgN(vStrand * vec2(29.0, 0.8) + 3.0) * 0.15;
+          // The hairline: soft wisps (strands of different lengths), blended into the skin.
+          float hgW = hgN(vec2(vStrand.x * 7.0, 0.5)) * 0.6 + hgN(vec2(vStrand.x * 23.0, 2.5)) * 0.4;
+          float hgA = vHair.x >= 0.995 ? 1.0 : smoothstep(0.0, 0.55, vHair.x * 1.2 - hgW * 0.25);
+          // Sparse growth (shaved, stubble): a translucent shadow, as dense as the growth.
+          if (vHair.y < 0.995) hgA *= vHair.y * (0.55 + 0.2 * hgS);
+          diffuseColor.a *= hgA;
+          // Darker under the surface and at the hairline (roots), lighter strands on top.
+          float hgRoot = mix(0.84, 1.0, smoothstep(0.0, 0.8, vHair.x));
+          diffuseColor.rgb *= (0.62 + 0.62 * hgS) * vHair.z * hgRoot;`,
+        )
+        .replace(
+          '#include <roughnessmap_fragment>',
+          `#include <roughnessmap_fragment>
+          roughnessFactor = clamp(roughnessFactor * (0.8 + 0.45 * hgS), 0.3, 1.0);`,
         );
     },
   });

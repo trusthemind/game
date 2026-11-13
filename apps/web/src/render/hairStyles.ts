@@ -7,11 +7,9 @@ import { hairCurls, hairLin, hairNoise, hairline, zones, type BeardSpec, type Dr
  * centimetres on a 15 cm wide head; heights (yN) run from the nose tip (0) to the crown (1).
  */
 
-/** Modelled hair (hair.glb mesh names) per body. Anything else is procedural. */
-export const GLB_HAIR: Record<'m' | 'f', Record<string, string>> = {
-  m: { buzz: 'Hair_Buzzed', short: 'Hair_SimpleParted', long: 'Hair_Long' },
-  f: { crop: 'Hair_BuzzedFemale', buzz: 'Hair_BuzzedFemale', long: 'Hair_Long', bun: 'Hair_Buns' },
-};
+/** Modelled hair (hair.glb mesh names) per body. None now: every style is procedural, so all of them shade alike
+ * (solid shells with a soft hairline) and tuck under headwear the same way (hairGen.ts HeadClip). */
+export const GLB_HAIR: Record<'m' | 'f', Record<string, string>> = { m: {}, f: {} };
 
 /** Smooth ramp from 0 at `a` to 1 at `b` (either way round). */
 const sm = (x: number, a: number, b: number) => (a < b ? THREE.MathUtils.smoothstep(x, a, b) : 1 - THREE.MathUtils.smoothstep(x, b, a));
@@ -58,7 +56,7 @@ export const HAIR_SPECS: Record<string, HairSpec> = {
     }),
   },
   crop: { shell: (p) => ({ t: zones(p, 1.2, 1.2, 0.6, 0.7), cov: hairline(p) }) },
-  curls: { shell: (p) => ({ t: zones(p, 1.7, 1.6, 1.0, 1.2) + 0.7 * hairCurls(p, 16), cov: hairline(p) }) },
+  curls: { shell: (p) => ({ t: zones(p, 1.7, 1.6, 1.0, 1.2) + 0.4 * hairCurls(p, 10), cov: hairline(p) }) },
   undercut: {
     shadow: 0.5,
     shell: (p) => ({
@@ -88,8 +86,8 @@ export const HAIR_SPECS: Record<string, HairSpec> = {
       fwd: 0.5 * fringe(p, 0.5, 42, -1),
     }),
   },
-  curlytop: { shadow: 0.5, shell: (p) => ({ t: zones(p, 3.2, 3.2, 0.12, 0.15, 0.66, 0.06) + 0.9 * hairCurls(p, 15), cov: hairline(p) * sm(p.yN, 0.5, 0.62) }) },
-  afro: { shell: (p) => ({ t: 5.4 + 0.4 * sm(p.yN, 0.3, 1.0) - 1.5 * sm(p.yN, 0.3, -0.1) + 0.7 * hairCurls(p, 12), cov: hairline(p, { ears: true, nape: -0.28 }) }) },
+  curlytop: { shadow: 0.5, shell: (p) => ({ t: zones(p, 3.2, 3.2, 0.12, 0.15, 0.66, 0.06) + 0.5 * hairCurls(p, 10), cov: hairline(p) * sm(p.yN, 0.5, 0.62) }) },
+  afro: { shell: (p) => ({ t: 5.4 + 0.4 * sm(p.yN, 0.3, 1.0) - 1.5 * sm(p.yN, 0.3, -0.1) + 0.35 * hairCurls(p, 7), cov: hairline(p, { ears: true, nape: -0.28 }) }) },
   shag: {
     shell: (p) => ({ t: zones(p, 2.6, 2.4, 1.9, 2.1) + spikes(p, 8, 1.6, 2), cov: Math.max(hairline(p, { ears: true }), fringe(p, 0.48, 40)), fwd: 0.4 * fringe(p, 0.48, 40) }),
     drape: longDrape(9, 6, { flare: 0.8, curl: 0.7 }),
@@ -120,11 +118,11 @@ export const HAIR_SPECS: Record<string, HairSpec> = {
   },
   wavy: {
     shell: (p) => ({ t: zones(p, 1.7, 1.7, 1.4, 1.6, 0.55) * part(p, 22, 0.4), cov: hairline(p, { ears: true }) }),
-    drape: longDrape(28, 24, { flare: 0.8, wave: [0.9, 7] }),
+    drape: longDrape(28, 24, { flare: 0.7, wave: [0.5, 8] }),
   },
   curlylong: {
-    shell: (p) => ({ t: zones(p, 2.8, 2.6, 2.4, 2.6, 0.55) + 0.8 * hairCurls(p, 13), cov: hairline(p, { ears: true }) }),
-    drape: longDrape(22, 18, { flare: 1.6, curl: 1.1, wave: [0.6, 5] }),
+    shell: (p) => ({ t: zones(p, 2.8, 2.6, 2.4, 2.6, 0.55) + 0.45 * hairCurls(p, 9), cov: hairline(p, { ears: true }) }),
+    drape: longDrape(22, 18, { flare: 1.4, curl: 0.6, wave: [0.4, 6] }),
   },
   bangs: {
     shell: (p) => ({ t: zones(p, 1.5, 1.3, 1.1, 1.3, 0.55), cov: Math.max(hairline(p, { ears: true }), fringe(p, 0.36, 50)), fwd: 0.45 * fringe(p, 0.36, 50) }),

@@ -29,6 +29,10 @@ import { useEscape } from './useEscape';
 /** A shape/face that equals a preset is stored as that preset's id (so it reads as chosen in the tiles). */
 function tidy(look: PlayerLook): PlayerLook {
   const out = { ...look };
+  if (out.sex === 'f') {
+    out.beard = 'none';
+    delete out.beardColor;
+  }
   if (out.shape && typeof out.shape === 'object') {
     const s = humanShape(resolveShape(out.sex, out.shape as BodyShape));
     out.shape = presetOf(out.sex, s) ?? s;
@@ -109,10 +113,13 @@ export function CustomizeModal({ onClose }: { onClose: () => void }) {
     const same = typeof draft.shape === 'string' && SHAPE_PRESETS[sex][draft.shape] ? draft.shape : 'average';
     const base = mem?.base ?? (SHAPE_PRESETS[sex][bodyBase] ? bodyBase : 'average');
     setBodyBase(base);
+    // A woman never keeps a beard (or its colour): switching clears it; the Beard tab goes away with it.
+    if (sex === 'f' && tab === 'beard') openTab('face');
     apply({
       sex,
       hair: mem?.hair ?? DEFAULT_HAIR[sex],
       beard: sex === 'm' ? (mem?.beard ?? 'none') : 'none',
+      beardColor: sex === 'm' ? draft.beardColor : undefined,
       shape: mem?.shape ?? same,
     });
   };
@@ -130,7 +137,8 @@ export function CustomizeModal({ onClose }: { onClose: () => void }) {
       beard: sex === 'm' ? pick(Math.random() < 0.3 ? ['none'] : BEARD_STYLES.map((b) => b.id)) : 'none',
       beardColor: undefined,
       shape: randomHumanShape(sex, Math.random, body),
-      face: randomHumanFace(Math.random, faceId),
+      // A whole face with a random nose, eyes, mouth and jaw blended in (kept believable: shape.ts humanFace).
+      face: randomHumanFace(Math.random, faceId, true),
     });
   };
   const reset = () => {
