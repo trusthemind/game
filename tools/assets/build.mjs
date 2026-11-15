@@ -135,7 +135,7 @@ async function exportGlb(scene, file, opts = {}) {
   fs.rmSync(tmp);
 }
 
-async function optimise(input, output, { skinned = false, simplifyRatio = 0 } = {}) {
+async function optimise(input, output, { skinned = false, simplifyRatio = 0, normalBits = 10 } = {}) {
   await MeshoptEncoder.ready;
   await MeshoptSimplifier.ready;
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
@@ -148,7 +148,7 @@ async function optimise(input, output, { skinned = false, simplifyRatio = 0 } = 
     ...(simplifyRatio ? [simplify({ simplifier: MeshoptSimplifier, ratio: simplifyRatio, error: 0.015 })] : []),
     resample(),
     reorder({ encoder: MeshoptEncoder }),
-    quantize({ quantizeNormal: 10, quantizePosition: 14 }),
+    quantize({ quantizeNormal: normalBits, quantizePosition: 14 }),
     meshopt({ encoder: MeshoptEncoder, level: 'medium' }),
   );
   await io.write(output, doc);
@@ -460,12 +460,14 @@ async function buildNature() {
 // the beard go into hair.glb as separate skinned meshes (the renderer rebinds them to the body's bones).
 async function buildHumans() {
   console.log('humans:');
+  await buildMpfbHumans();
   const root = find(path.join(SRC, 'ubc'), 'Superhero_Male_FullBody.gltf');
   if (!root) return console.warn('  ! ubc missing');
   const dir = path.dirname(root);
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
   const tex = textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024], quality: 82 });
-  for (const [file, out] of [['Superhero_Male_FullBody.gltf', 'human_m'], ['Superhero_Female_FullBody.gltf', 'human_f']]) {
+  // The old bodies, kept for `?body=ubc` (and fix_skeleton.mjs, which takes its joint rotations from them).
+  for (const [file, out] of [['Superhero_Male_FullBody.gltf', 'human_m_ubc'], ['Superhero_Female_FullBody.gltf', 'human_f_ubc']]) {
     const doc = await io.read(path.join(dir, file));
     // Roughness maps add little from a top-down camera.
     for (const m of doc.getRoot().listMaterials()) m.setMetallicRoughnessTexture(null);
@@ -500,6 +502,22 @@ async function buildHumans() {
   await io.write(tmp, base);
   await optimise(tmp, path.join(OUT, 'hair.glb'), { skinned: true });
   fs.rmSync(tmp);
+}
+
+// ── Humans (MPFB2, CC0 / CC-BY: tools/assets/mpfb-pilot) ─────────────────────────────────────────────
+// The base bodies the game uses: build_base.py (Blender) + fix_skeleton.mjs write them to mpfb-pilot/base with
+// their PBR skin (albedo / normal / ORM, 2048 WebP) and toggleable groups (body, eyes, brows, underwear,
+// anatomy). Here they only get meshopt compression; the textures stay as baked.
+async function buildMpfbHumans() {
+  const dir = path.join(ROOT, 'tools/assets/mpfb-pilot/base');
+  for (const sex of ['m', 'f']) {
+    const src = path.join(dir, `human_${sex}_mpfb.glb`);
+    if (!fs.existsSync(src)) {
+      console.warn(`  ! ${path.relative(ROOT, src)} missing (run build_base.py + fix_skeleton.mjs)`);
+      continue;
+    }
+    await optimise(src, path.join(OUT, `human_${sex}.glb`), { skinned: true, normalBits: 12 });
+  }
 }
 
 // ── Outfits: Quaternius Modular Character Outfits (CC0), same skeleton as the base characters ─────────
@@ -660,7 +678,9 @@ async function buildBodies() {
 const only = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
 const want = (k) => !only || only.has(k);
 if (want('character')) await buildCharacter();
+// ONLY=mpfb: just the MPFB base bodies (no pack sources needed).
 if (want('humans')) await buildHumans();
+else if (want('mpfb')) await buildMpfbHumans();
 if (want('weapons')) await buildSet('weapons', WEAPONS, [path.join(SRC, 'guns')]);
 if (want('melee')) await buildSet('melee', MELEE, [path.join(SRC, 'survival')]);
 if (want('mods')) await buildSet('mods', MODS, [path.join(SRC, 'guns')]);

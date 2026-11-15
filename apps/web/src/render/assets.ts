@@ -104,6 +104,12 @@ export function getAssets(): AssetLibrary | null {
   return ready;
 }
 
+/**
+ * The base bodies: human_m / human_f are the MPFB2 ones (tools/assets/mpfb-pilot); `?body=ubc` (also after a
+ * `#route?`) loads the old Universal Base Characters bodies (human_{m,f}_ubc.glb) instead, to compare or roll back.
+ */
+const HUMAN_SUFFIX = typeof window !== 'undefined' && /[?&]body=ubc(&|#|$)/.test(window.location.href) ? '_ubc' : '';
+
 export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibrary> {
   if (pending) return pending;
   const manager = new THREE.LoadingManager();
@@ -119,7 +125,7 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
     for (const c of g.scene.children) m.set(c.name, c);
     return m;
   };
-  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature'), load('mods'), load('human_m').catch(() => null), load('human_f').catch(() => null), load('hair').catch(() => null), load('furniture').catch(() => null), load('gear').catch(() => null), load('vehicles').catch(() => null), load('furniture_sf').catch(() => null)]).then(
+  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature'), load('mods'), load(`human_m${HUMAN_SUFFIX}`).catch(() => null), load(`human_f${HUMAN_SUFFIX}`).catch(() => null), load('hair').catch(() => null), load('furniture').catch(() => null), load('gear').catch(() => null), load('vehicles').catch(() => null), load('furniture_sf').catch(() => null)]).then(
     ([character, characterF, weapons, melee, props, nature, mods, humanM, humanF, hairDoc, furniture, gearDoc, vehicleDoc, furnitureSf]) => {
       const hair = new Map<string, THREE.SkinnedMesh>();
       hairDoc?.scene.traverse((o) => {

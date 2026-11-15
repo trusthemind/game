@@ -6,6 +6,7 @@
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,7 +46,10 @@ const invRigid = (t, q) => {
 };
 
 for (const sex of ['m', 'f']) {
-  const ours = await io.read(path.join(here, `../../../apps/web/public/models/human_${sex}.glb`));
+  // The old (Universal Base Characters) bodies, kept as human_{m,f}_ubc.glb once the MPFB ones replaced them.
+  const pub = path.join(here, '../../../apps/web/public/models');
+  const ubc = path.join(pub, `human_${sex}_ubc.glb`);
+  const ours = await io.read(fs.existsSync(ubc) ? ubc : path.join(pub, `human_${sex}.glb`));
   const ourRot = new Map(ours.getRoot().listSkins()[0].listJoints().map((j) => [j.getName(), j.getRotation()]));
   const file = path.join(dir, `human_${sex}_mpfb.glb`);
   const doc = await io.read(file);
@@ -53,6 +57,8 @@ for (const sex of ['m', 'f']) {
   const skins = root.listSkins();
   const joints = skins[0].listJoints();
   for (const j of joints) j.setName(RENAME[j.getName()] ?? j.getName());
+  // Blender suffixes the second body's materials (brows.001, ...); the game finds the brows / lashes by name.
+  for (const m of root.listMaterials()) m.setName(m.getName().replace(/\.\d+$/, ''));
   const missing = [...ourRot.keys()].filter((n) => !joints.some((j) => j.getName() === n));
   const extra = joints.filter((j) => !ourRot.has(j.getName())).map((j) => j.getName());
   const world = new Map(joints.map((j) => [j, j.getWorldTranslation()]));

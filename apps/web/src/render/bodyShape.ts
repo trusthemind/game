@@ -49,6 +49,9 @@ interface Marks {
   foot: THREE.Vector3[];
   /** Between the eyes, at their front (the face's landmark), if the model has eyes. */
   eye: THREE.Vector3 | null;
+  /** The eyeballs' half spacing and radius as measured on this body's eyes (else EYE_X / EYE_R: the old bodies). */
+  eyeX?: number;
+  eyeR?: number;
 }
 
 /** The displacement field of one shape on one skeleton (built at rest, in the model's space). */
@@ -70,7 +73,7 @@ export class ShapeField {
     this.s = out;
   }
 
-  static fromBones(bones: THREE.Bone[], model: THREE.Object3D, s: BodyShape, sex: 'm' | 'f', face: FaceShape | null = null, eye: THREE.Vector3 | null = null): ShapeField {
+  static fromBones(bones: THREE.Bone[], model: THREE.Object3D, s: BodyShape, sex: 'm' | 'f', face: FaceShape | null = null, eye: THREE.Vector3 | null = null, eyeDims: { x: number; r?: number } | null = null): ShapeField {
     model.updateMatrixWorld(true);
     const inv = new THREE.Matrix4().copy(model.matrixWorld).invert();
     const at = (n: string) => {
@@ -79,7 +82,7 @@ export class ShapeField {
     };
     const lr = (n: string) => [at(`${n}_l`), at(`${n}_r`)];
     return new ShapeField(
-      { pelvis: at('pelvis'), s1: at('spine_01'), s2: at('spine_02'), s3: at('spine_03'), neck: at('neck_01'), ua: lr('upperarm'), la: lr('lowerarm'), hand: lr('hand'), thigh: lr('thigh'), calf: lr('calf'), foot: lr('foot'), eye },
+      { pelvis: at('pelvis'), s1: at('spine_01'), s2: at('spine_02'), s3: at('spine_03'), neck: at('neck_01'), ua: lr('upperarm'), la: lr('lowerarm'), hand: lr('hand'), thigh: lr('thigh'), calf: lr('calf'), foot: lr('foot'), eye, eyeX: eyeDims?.x, eyeR: eyeDims?.r },
       s,
       sex,
       face,
@@ -114,7 +117,7 @@ export class ShapeField {
     const e = this.m.eye;
     if (!F || !e) return;
     const sx = p.x >= 0 ? 1 : -1;
-    const c = _ec.set(sx * EYE_X, e.y, e.z - EYE_R).add(_ez.set(e.x, 0, 0));
+    const c = _ec.set(sx * (this.m.eyeX ?? EYE_X), e.y, e.z - (this.m.eyeR ?? EYE_R)).add(_ez.set(e.x, 0, 0));
     // Where the socket goes: the face's displacement at the eyeball's centre (spacing, head width).
     this.faceAt(c, _ed.set(0, 0, 0), true);
     _ed.x += sx * F.eyeSpacing * 0.006;
@@ -162,9 +165,9 @@ export class ShapeField {
     const jawSide = smooth(-0.12, -0.05, dz);
     // Round each eye: the lids and the skin round them follow the eyeball (size, spacing, tilt).
     {
-      const ex = dx - sx * EYE_X;
+      const ex = dx - sx * (this.m.eyeX ?? EYE_X);
       const ey = dy;
-      const ez = dz + EYE_R;
+      const ez = dz + (this.m.eyeR ?? EYE_R);
       const d = Math.hypot(ex, ey * 1.15, ez * 0.8);
       const w = bump(d, 0, 0.034) * front;
       if (w > 0) {
@@ -203,20 +206,46 @@ export class ShapeField {
       out.x += sx * F.mouthWidth * 0.008 * bump(dy, -0.075, 0.016) * bump(ax, 0.022, 0.016) * front;
     }
     // Cheekbones: out and a little forward, under the outer corner of the eyes.
-    const cheek = F.cheeks * bump(dy, -0.028, 0.028) * bump(ax, 0.048, 0.03) * front;
+    // (Broad and modest: a tight 1 cm ball here read as a bruised dent under it, not as a cheekbone.)
+    // Fading out slower below than above: a cheekbone that stopped short over a narrow jaw left a ledge (elfin's crease).
+    const cheek = F.cheeks * bump(dy, -0.024, dy < -0.024 ? 0.058 : 0.04) * bump(ax, 0.05, 0.045) * front;
     // Cheeks: full (+) or hollow (-) below the cheekbones.
     const full = F.cheekFull * bump(dy, -0.062, 0.032) * bump(ax, 0.043, 0.03) * smooth(-0.09, -0.03, dz);
     // Jaw: wider or narrower from below the ears to the chin's sides.
-    const jaw = F.jaw * 0.016 * bump(dy, -0.085, 0.05) * smooth(0.012, 0.05, ax) * jawSide;
+    // Out at the jaw's sides and angles, little round the mouth (a narrow jaw pulled in there grooved the cheeks).
+    // Narrowing is gentler than widening, and fades up into the cheek slower (an in-pulled jaw under a full cheekbone
+    // creased the cheek across).
+    const jaw = F.jaw * (F.jaw < 0 ? 0.011 : 0.016) * bump(dy, -0.09, F.jaw < 0 && dy > -0.09 ? 0.062 : 0.05) * smooth(0.026, 0.066, ax) * jawSide;
     // Chin: forward and a little down.
     const chin = F.chin * bump(dy, -0.105, 0.032) * bump(dx, 0, 0.032) * front;
-    out.x += sx * (cheek * 0.012 + jaw + full * 0.009);
-    out.y -= chin * 0.01;
-    out.z += cheek * 0.006 + chin * 0.016 + full * 0.004;
+    // Cheekbones and cheeks swell out of the face (along it, from the head's vertical axis), not sideways: a
+    // sideways push only slid the skin across the front of the face and creased it into a dent beside the nose.
+    {
+      const rz = dz + 0.07;
+      const rl = Math.hypot(dx, rz) || 1;
+      const k = cheek * 0.0075 + full * 0.008;
+      out.x += (dx / rl) * k;
+      out.z += (rz / rl) * k;
+      // The jaw likewise, out of its own surface (narrowing it sideways creased the face from the mouth's corners).
+      const js = F.jaw < 0 ? 0.45 : 0.7;
+      out.x += sx * jaw * js + (dx / rl) * jaw * (1 - js);
+      out.z += (rz / rl) * jaw * (1 - js) * smooth(0.02, 0.05, ax);
+    }
+    // Forward more than down: down as well dragged a forward chin into a point (narrow).
+    out.y -= chin * (chin > 0 ? 0.0055 : 0.01);
+    out.z += chin * 0.016;
     // Chin: longer (+) or shorter, the lower face from the mouth down (and under the chin with it).
-    out.y -= F.chinLength * 0.012 * smooth(-0.08, -0.105, dy) * smooth(-0.11, -0.05, dz) * bump(ax, 0, 0.07);
+    out.y -= F.chinLength * 0.012 * smooth(-0.076, -0.112, dy) * smooth(-0.11, -0.05, dz) * bump(ax, 0, 0.07);
     // Its shape: pointed (+, the sides in) or square (-, out).
-    out.x -= sx * F.chinShape * 0.01 * bump(dy, -0.108, 0.026) * smooth(0.004, 0.024, ax) * bump(ax, 0.026, 0.03) * front;
+    // (In or out of the chin's own surface: pinching it sideways creased the face down from the mouth's corners.)
+    {
+      // Pointed tapers the jaw's front broadly (a tight pinch beside the tip read as a spike on narrow / elfin).
+      const k = F.chinShape * (F.chinShape > 0 ? 0.0065 : 0.009) * bump(dy, -0.1, 0.038) * smooth(0.006, 0.034, ax) * bump(ax, 0.034, 0.046) * front;
+      const rz = dz + 0.07;
+      const rl = Math.hypot(dx, rz) || 1;
+      out.x -= (dx / rl) * k * 0.6 + sx * k * 0.4;
+      out.z -= (rz / rl) * k * 0.6;
+    }
     // A cleft down its middle.
     out.z -= Math.max(0, F.cleft) * 0.0035 * bump(dy, -0.108, 0.013) * bump(dx, 0, 0.0055) * front;
     // Ears: bigger or smaller about where they join the head.
@@ -487,6 +516,8 @@ function bakeShape(mesh: THREE.SkinnedMesh, src: THREE.BufferGeometry, model: TH
   const pos = src.attributes.position!;
   const si = src.attributes.skinIndex!;
   const sw = src.attributes.skinWeight!;
+  // Facial hair lifted off the skin says where on the skin it grows (aAnchor): it moves as that skin point does.
+  const anchor = src.attributes.aAnchor as THREE.BufferAttribute | undefined;
   const n = pos.count;
   const out = new Float32Array(n * 3);
   const Ms: Float32Array = new Float32Array(n * 16);
@@ -511,6 +542,7 @@ function bakeShape(mesh: THREE.SkinnedMesh, src: THREE.BufferGeometry, model: TH
     if (!ws) e[0] = e[5] = e[10] = e[15] = 1;
     Ms.set(e, i * 16);
     v.fromBufferAttribute(pos, i).applyMatrix4(M).toArray(P, i * 3);
+    if (anchor) v.fromBufferAttribute(anchor, i).applyMatrix4(M);
     field.at(v, d).toArray(D, i * 3);
   }
   if (rigid) rigidify(P, D, field);

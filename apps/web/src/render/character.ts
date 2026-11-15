@@ -27,7 +27,7 @@ import {
   type TorsoField,
   type HeadFit,
 } from './gearFit';
-import { attachSkinned, cloneHuman, type HumanParts } from './human';
+import { attachSkinned, cloneHuman, pelvisRetarget, type HumanParts } from './human';
 import { heightFactor, restPoints, shapeKey, shapeMesh, ShapeField, withNeutral, type BodyShape, type FaceShape } from './bodyShape';
 import { fitToRest, gltfMeshNames } from './rebind';
 import { beardGeometry, disposeHairGen, hairGenMaterial, hairGeometry as proceduralHair, type HeadClip } from './hairGen';
@@ -1136,7 +1136,9 @@ function humanBodyMaterial(
   if (m) return m;
   m = src.clone();
   m.userData.src = src;
-  m.roughness = 0.75;
+  // The old bodies come without a roughness map (build.mjs drops it): a flat matte value. The MPFB ones keep
+  // their ORM map (roughness 1 scales it as baked) and the sheen of their physical material.
+  if (!src.roughnessMap) m.roughness = 0.75;
   const tint = new THREE.Color(a.skin);
   tint.r /= TEX_SKIN.r;
   tint.g /= TEX_SKIN.g;
@@ -1233,9 +1235,41 @@ function hairMaterial(src: THREE.MeshStandardMaterial, color: number, u: WorldUn
   m.color = new THREE.Color(color).multiplyScalar(1.6);
   m.alphaTest = 0.4;
   m.transparent = false;
+  m.depthWrite = true; // (a blended source card wouldn't write depth: drawn opaque, the skin then hid it)
   m.side = THREE.DoubleSide;
   m.roughness = 0.65;
   patchWorldMaterial(m, u, { key: 'hair' });
+  humanMatCache.set(key, m);
+  return m;
+}
+
+/**
+ * The MPFB bodies' brow cards: their texture is near-black strands on alpha, so the colour comes from the hair
+ * colour alone (the texture gives only the coverage), thickened (alpha x4; x6 turned the haze round the strands into a solid bar on the men)
+ * from the game camera.
+ */
+function browMaterial(src: THREE.MeshStandardMaterial, color: number, u: WorldUniforms): THREE.MeshStandardMaterial {
+  // (The second body's materials come out of Blender as "brows.001": by that name they fell through to the hair
+  // material, which keeps the texture's own dark colour, so her brows never took the hair colour.)
+  if (!/^brows(\.\d+)?$/.test(src.name)) return hairMaterial(src, color, u);
+  const key = `${src.uuid}|brow|${color}`;
+  let m = humanMatCache.get(key);
+  if (m) return m;
+  m = src.clone();
+  m.color = new THREE.Color(color).multiplyScalar(0.8);
+  m.alphaTest = 0.35;
+  m.transparent = false;
+  // The source is a blended card (no depth write): drawn as opaque before the body, the skin then painted over it
+  // and the brows vanished.
+  m.depthWrite = true;
+  m.side = THREE.DoubleSide;
+  m.roughness = 0.8;
+  patchWorldMaterial(m, u, {
+    pre: (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb = diffuse;\ndiffuseColor.a = min(diffuseColor.a * 4.0, 1.0);');
+    },
+    key: 'brow',
+  });
   humanMatCache.set(key, m);
   return m;
 }
@@ -1477,19 +1511,28 @@ const UPPER = /^(spine_02|spine_03|neck_01|Head|clavicle|upperarm|lowerarm|hand|
 const LOWER = /^(root|pelvis|spine_01|thigh|calf|foot|ball)/;
 const filtered = new Map<string, THREE.AnimationClip>();
 /** One layer of a clip (the clips key only rotations, and the root's and pelvis's positions: see assets.ts). */
-function layerClip(lib: AssetLibrary, name: string, layer: 'upper' | 'lower' | 'full'): THREE.AnimationClip | null {
-  const key = `${name}:${layer}`;
+function layerClip(lib: AssetLibrary, name: string, layer: 'upper' | 'lower' | 'full', pelvis: [number, number, number] | null = null): THREE.AnimationClip | null {
+  const key = `${name}:${layer}:${pelvis?.map((v) => v.toFixed(4)).join(',') ?? ''}`;
   const hit = filtered.get(key);
   if (hit) return hit;
   const src = lib.clips.get(name);
   if (!src) return null;
-  if (layer === 'full') return src;
-  const re = layer === 'upper' ? UPPER : LOWER;
-  const clip = new THREE.AnimationClip(
-    `${name}_${layer}`,
-    src.duration,
-    src.tracks.filter((t) => re.test(t.name)),
-  );
+  if (layer === 'full' && !pelvis) return src;
+  const re = layer === 'upper' ? UPPER : layer === 'lower' ? LOWER : /./;
+  const tracks = src.tracks.filter((t) => re.test(t.name));
+  // Another body's hips (pelvisRetarget): the pelvis keys moved by its rest offset, their height by its leg length.
+  const pi = tracks.findIndex((t) => t.name === 'pelvis.position');
+  if (pelvis && pi >= 0) {
+    const t = tracks[pi]!.clone();
+    const v = t.values;
+    for (let i = 0; i < v.length; i += 3) {
+      v[i] = v[i]! + pelvis[0];
+      v[i + 1] = v[i + 1]! + pelvis[1];
+      v[i + 2] = v[i + 2]! * pelvis[2];
+    }
+    tracks[pi] = t;
+  }
+  const clip = new THREE.AnimationClip(layer === 'full' ? name : `${name}_${layer}`, src.duration, tracks);
   filtered.set(key, clip);
   return clip;
 }
@@ -1621,6 +1664,8 @@ export class CharacterView {
    * swung towards the wearer's state (engine actorVisorDown); null t: snap on the next update. */
   private visor: THREE.Object3D | null = null;
   private visorT: number | null = null;
+  /** How the clips' pelvis keys map onto this body (pelvisRetarget); null: as keyed. */
+  private pelvisR: [number, number, number] | null = null;
 
   constructor(
     private lib: AssetLibrary,
@@ -1660,17 +1705,25 @@ export class CharacterView {
       m.frustumCulled = false;
     }
     if (human) {
-      for (const m of [human.eyes, human.brows]) {
+      this.pelvisR = pelvisRetarget(human.body, look.sex);
+      for (const m of [human.eyes, human.brows, human.lashes, ...human.underwear]) {
         if (!m) continue;
         m.material =
           m === human.brows
-            ? hairMaterial(m.material as THREE.MeshStandardMaterial, look.zombie ? 0x2a2a24 : look.hairColor, u)
-            : worldMat(m.material as THREE.MeshStandardMaterial, u, look.zombie ? 0xc8c0a0 : null);
+            ? browMaterial(m.material as THREE.MeshStandardMaterial, look.zombie ? 0x2a2a24 : look.hairColor, u)
+            : worldMat(m.material as THREE.MeshStandardMaterial, u, m === human.eyes && look.zombie ? 0xc8c0a0 : null);
+        m.castShadow = shadows && human.underwear.includes(m);
+        m.frustumCulled = false;
+      }
+      // The `anatomy` group stays hidden (nevernude); when shown it is skin like the body.
+      for (const m of human.anatomy) {
+        m.material = humanBodyMaterial(human.srcMaterial, look, u, false, false);
         m.frustumCulled = false;
       }
       const bindK = heightScale(src, look.sex === 'f' ? 1.66 : 1.8);
       this.model.scale.setScalar(bindK * (outfit ? heightFactor(look.shape) : 1));
       if (outfit) (this.wearKit(kitFor(look)), this.measureCover());
+      this.coverUnderwear();
     } else this.model.scale.setScalar(CHAR_SCALE);
     this.root.add(this.model);
     this.handR = this.skinned.skeleton.getBoneByName('hand_r') ?? null;
@@ -1811,6 +1864,16 @@ export class CharacterView {
         this.outfitMeshes.push(m);
       }
     }
+  }
+
+  /** The underwear pieces under a garment that covers them aren't drawn (they'd show through it in places). */
+  private coverUnderwear(): void {
+    const human = this.human;
+    if (!human?.underwear.length) return;
+    const kit = kitFor(this.look);
+    const top = kit.some((k) => k.slot === 'top');
+    const pants = kit.some((k) => k.slot === 'pants' || (k.slot === 'top' && !!getDef(k.id).clothing?.full));
+    for (const m of human.underwear) m.visible = !(m.userData.covers === 'top' ? top : pants);
   }
 
   /** Where the clothes just put on end round the waist, for the body's mask (measureCover): once per body and kit. */
@@ -1968,6 +2031,7 @@ export class CharacterView {
     this.measureCover();
     this.buildHair();
     for (const m of this.bodyMeshes) m.material = humanBodyMaterial(this.human.srcMaterial, next, this.u, this.dead, true);
+    this.coverUnderwear();
     this.applyShape();
   }
 
@@ -1981,8 +2045,15 @@ export class CharacterView {
     const sum = new THREE.Vector3();
     let zMax = -Infinity;
     for (const p of pts) (sum.add(p), (zMax = Math.max(zMax, p.z)));
-    return sum.multiplyScalar(1 / pts.length).setZ(zMax);
+    sum.multiplyScalar(1 / pts.length);
+    // Each eyeball's centre across (its points' mean, one side each), for the face field. Its depth stays EYE_R:
+    // the MPFB eyes are a front cap only, so their points' mean says little about the eyeball's centre.
+    let dx = 0;
+    for (const p of pts) dx += Math.abs(p.x - sum.x);
+    this.eyeDims = { x: dx / pts.length };
+    return sum.setZ(zMax);
   }
+  private eyeDims: { x: number } | null = null;
 
   /**
    * Shape the body and everything skinned to it (clothes, armour, hair) by the look's body shape (bodyShape.ts):
@@ -2000,6 +2071,8 @@ export class CharacterView {
         this.look.sex,
         this.look.face ?? null,
         this.eyeMark(),
+        // The old bodies' eyes were what EYE_X / EYE_R were measured on; the MPFB ones are measured here.
+        this.human!.lashes ? this.eyeDims : null,
       ));
       const all: THREE.SkinnedMesh[] = [];
       this.model.traverse((o) => (o as THREE.SkinnedMesh).isSkinnedMesh && all.push(o as THREE.SkinnedMesh));
@@ -2456,7 +2529,7 @@ export class CharacterView {
       if (this.lower) this.lower.timeScale = timeScale;
       return;
     }
-    const clip = layerClip(this.lib, name, layer);
+    const clip = layerClip(this.lib, name, layer, this.pelvisR);
     if (!clip) return;
     const next = this.mixer.clipAction(clip);
     const sameClip = this.lowerName.split(':')[0] === name;
@@ -2480,7 +2553,7 @@ export class CharacterView {
     this.upper = null;
     this.upperName = name ?? '';
     if (name) {
-      const clip = layerClip(this.lib, name, 'upper');
+      const clip = layerClip(this.lib, name, 'upper', this.pelvisR);
       if (clip) {
         const next = this.mixer.clipAction(clip);
         next.reset().play();
@@ -2492,7 +2565,7 @@ export class CharacterView {
   }
 
   private playOneShot(name: string, layer: 'upper' | 'full', speed = 1): void {
-    const clip = layerClip(this.lib, name, layer);
+    const clip = layerClip(this.lib, name, layer, this.pelvisR);
     if (!clip) return;
     const a = this.mixer.clipAction(clip);
     // Already on (the next shot of a burst, or a one-shot still fading out): restart at full weight. Fading it
@@ -3407,7 +3480,7 @@ export function disposeCharacterCaches(): void {
 const portraitCache = new Map<string, string>();
 
 /** A head shot ('head') or the whole figure ('body', for build pictures), as a PNG data URL (cached). */
-export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, framing: 'head' | 'face' | 'body' | 'hair' | 'back' | 'mug' | 'side' | 'bodyback' | 'torso' = 'head', slots: Equipment['slots'] = {} as Equipment['slots']): string {
+export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, framing: 'head' | 'face' | 'body' | 'hair' | 'back' | 'mug' | 'side' | 'bodyback' | 'torso' | 'profile' = 'head', slots: Equipment['slots'] = {} as Equipment['slots']): string {
   const key = JSON.stringify(look) + size + framing + JSON.stringify(slots);
   const hit = portraitCache.get(key);
   if (hit) return hit;
@@ -3443,7 +3516,9 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, 
               ? Math.PI / 2 - 0.25
             : framing === 'mug'
               ? Math.PI / 2 - 0.45
-              : Math.PI / 2 - 0.3,
+              : framing === 'profile'
+                ? Math.PI / 2 - 1.35
+                : Math.PI / 2 - 0.3,
     crouching: false,
     sprinting: false,
     eq: { slots, pockets: { w: 0, h: 0, items: [] } },
@@ -3483,7 +3558,7 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, 
     cam.position.set(hp.x + 0.02, hp.y + 0.07, hp.z + 0.6);
     cam.lookAt(hp.x - 0.035, hp.y + 0.035, hp.z + 0.03);
     key1.position.set(2.2, 1.6, 1.6);
-  } else if (framing === 'face') {
+  } else if (framing === 'face' || framing === 'profile') {
     // Tighter: the face fills the picture (the creator's face and hair tiles).
     cam.position.set(hp.x + 0.1, hp.y + 0.08, hp.z + 0.68);
     cam.lookAt(hp.x, hp.y + 0.04, hp.z);

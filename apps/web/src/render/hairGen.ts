@@ -442,8 +442,10 @@ export function hairline(p: ScalpPt, o: Line = {}): number {
     ],
     p.a,
   );
+  // Not a ruled line: it wanders a little (more round the front and temples, where it shows).
+  const wob = (vnoise(p.az * 0.11 + 3.3, 0.5, 1.7) - 0.5) * 0.05 + (vnoise(p.az * 0.37 + 9.1, 2.5, 0.3) - 0.5) * 0.025;
   const fe = o.feather ?? 0.085;
-  return sm(p.yN, y - fe, y + fe);
+  return sm(p.yN, y + wob - fe, y + wob + fe);
 }
 
 /** Thickness by zone: crown/top vs the front, sides and back below `cut` (yN). */
@@ -502,6 +504,30 @@ function buildShell(f: Frame, shell: (p: ScalpPt) => ScalpOut, drape: DrapeSpec 
     let prev: THREE.Vector3 | null = null;
     let anchor: THREE.Vector3 | null = null;
     let anchorOut = 0;
+    // The style down this column, and how far into the hair each row is: the mean growth over the next rows
+    // down towards the hairline (~2.5 cm). The thickness builds up over that, so the front of a short cut lies
+    // down onto the forehead in a slope like real hair, not a cap's edge with a ledge under it.
+    const outs: ScalpOut[] = [];
+    const sps: ScalpPt[] = [];
+    for (let ie = 0; ie < NE; ie++) {
+      sps.push(scalpPoint(f, az, 90 - ie * DEL));
+      outs.push(shell(sps[ie]!));
+    }
+    // The drape hangs only from hair: where the anchor ring is bare skin (in front of the ear, below the temple's
+    // hairline) a drape hung from it began in a ledge, a step between the scalp's edge and the hanging part.
+    // Shorter and fading out where the shell's own edge is, so the two blend.
+    let anchorCov = 1;
+    if (lenHere > 0 && anchorRow < NE) {
+      anchorCov = THREE.MathUtils.clamp(Math.min(outs[anchorRow]!.cov, outs[Math.max(0, anchorRow - 3)]!.cov), 0, 1);
+      lenHere *= sm(anchorCov, 0.3, 0.9);
+      if (lenHere < 1.5) lenHere = 0;
+    }
+    const RAMP = 10;
+    const ramp = (ie: number) => {
+      let sum = 0;
+      for (let k = 0; k <= RAMP; k++) sum += THREE.MathUtils.clamp(outs[Math.min(NE - 1, ie + k)]!.cov, 0, 1);
+      return sum / (RAMP + 1);
+    };
     for (let ie = 0; ie < NE + ND; ie++) {
       const skull = ie < NE && (ie <= anchorRow || lenHere <= 0);
       if (!skull && (ie <= anchorRow || lenHere <= 0)) break;
@@ -512,14 +538,15 @@ function buildShell(f: Frame, shell: (p: ScalpPt) => ScalpOut, drape: DrapeSpec 
       let target: Buf = scalp;
       if (skull) {
         const el = 90 - ie * DEL;
-        const sp = scalpPoint(f, az, el);
-        const o = shell(sp);
+        const sp = sps[ie]!;
+        const o = outs[ie]!;
         cov = THREE.MathUtils.clamp(o.cov, 0, 1);
-        // Thinning out to the skin over the whole soft hairline, so its edge is a taper, not a step.
-        const out = (GAP + Math.max(0, o.t) * sm(cov, 0.1, 1) ** 3) * cm;
+        // Thinning out to the skin over the soft hairline and the hair just above it, so its edge is a taper.
+        const r = Math.min(cov, ramp(ie));
+        const out = (GAP + Math.max(0, o.t) * sm(cov, 0.1, 1) ** 2 * sm(r, 0.05, 1) ** 1.5) * cm;
         p.copy(sp.d).multiplyScalar(radius(f, az, el) + out).add(f.c);
-        p.y += (o.up ?? 0) * cm * cov;
-        p.z += (o.fwd ?? 0) * cm * cov;
+        p.y += (o.up ?? 0) * cm * cov * sm(r, 0.2, 1);
+        p.z += (o.fwd ?? 0) * cm * cov * sm(r, 0.2, 1);
         clear(f, p, Math.max(GAP * cm, out * 0.6), true);
         dens = o.dens ?? 1;
         edge = cov;
@@ -542,7 +569,7 @@ function buildShell(f: Frame, shell: (p: ScalpPt) => ScalpOut, drape: DrapeSpec 
         const j = clear(f, p, Math.max(anchorOut * 0.5, (p.y < f.tipY - f.span * 0.5 ? 1.6 : 0.5) * cm), false);
         w = blendW(f, j, sm(s, 2, 14));
         cov = 1;
-        edge = 1 - sm(s, lenHere - 2.5, lenHere);
+        edge = (1 - sm(s, lenHere - 2.5, lenHere)) * sm(anchorCov, 0.3, 0.75);
         target = long;
       }
       if (prev) along += prev.distanceTo(p) / cm;
@@ -693,6 +720,8 @@ function buildTail(f: Frame, t: TailSpec, out: Buf, tint = 1): void {
 }
 
 const HAIR_CACHE = new Map<string, Built>();
+/** Triangles per hairstyle (the last body built), for the dev checks. */
+export const hairStats: Record<string, number> = {};
 
 /** Scalp + hanging geometry for a style on this body (cached per body and style). */
 export function hairGeometry(body: THREE.SkinnedMesh, sex: 'm' | 'f', id: string, spec: HairSpec): Built {
@@ -706,6 +735,7 @@ export function hairGeometry(body: THREE.SkinnedMesh, sex: 'm' | 'f', id: string
   if (spec.shadow) buildShell(f, (p) => ({ t: 0.04, cov: hairline(p, { feather: 0.08 }), dens: spec.shadow }), undefined, scalp, long, 0.75);
   if (spec.shell) buildShell(f, spec.shell, spec.drape, scalp, long);
   for (const t of spec.tails ?? []) buildTail(f, t, long);
+  hairStats[id] = (scalp.idx.length + long.idx.length) / 3;
   const out = { scalp: scalp.geometry(), long: long.geometry() };
   HAIR_CACHE.set(key, out);
   return out;
@@ -731,6 +761,9 @@ export type BeardSpec = (p: FacePt) => FaceOut;
 
 const BEARD_CACHE = new Map<string, THREE.BufferGeometry | null>();
 
+/** Triangles per beard style (the last body built), for the dev checks. */
+export const beardStats: Record<string, number> = {};
+
 export function beardGeometry(body: THREE.SkinnedMesh, sex: 'm' | 'f', id: string, spec: BeardSpec): THREE.BufferGeometry | null {
   const f = headFrame(body, sex);
   if (!f) return null;
@@ -751,19 +784,58 @@ export function beardGeometry(body: THREE.SkinnedMesh, sex: 'm' | 'f', id: strin
     const faz = THREE.MathUtils.radToDeg(Math.atan2(Math.abs(pos.getX(i)), pos.getZ(i) - f.c.z));
     return faz < 105;
   };
-  // The face's triangles, split in four (shared midpoints) so the masks have finer edges.
   const P: THREE.Vector3[] = [];
   const Nn: THREE.Vector3[] = [];
   const src: number[] = [];
+  const W: Map<number, number>[] = [];
+  const cov: number[] = [];
+  const outs: FaceOut[] = [];
+  const v = new THREE.Vector3();
+  /** The style's mask here; nothing on the ears (they stand clear of the skull: a beard there was a lump). */
+  const evalAt = (k: number) => {
+    const p = P[k]!;
+    const fp: FacePt = {
+      xN: Math.abs(p.x) / (f.W / 2),
+      yN: (p.y - f.tipY) / f.span,
+      faz: THREE.MathUtils.radToDeg(Math.atan2(Math.abs(p.x), p.z - f.c.z)),
+    };
+    const o = spec(fp);
+    let c = THREE.MathUtils.clamp(o.cov, 0, 1);
+    // (From 80°: further forward the cheek in front of the ear stands out of the skull's radius too, and cutting it
+    // there left skin between a full beard and the sideburn.)
+    if (c > 0 && fp.faz > 80 && fp.yN > f.earBot - 0.12) {
+      v.subVectors(p, f.c);
+      const r = v.length();
+      const az = THREE.MathUtils.radToDeg(Math.atan2(v.x, v.z));
+      const el = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(v.y / r, -1, 1)));
+      const out = (r - radius(f, az, el)) / cm;
+      c *= sm(out, 1.6, 0.9);
+    }
+    cov[k] = c;
+    outs[k] = o;
+  };
   const map = new Map<number, number>();
-  const vert = (i: number) => {
+  // The body's mesh is split along its UV seams (the same point twice, its normals not always the same): welded
+  // here, or the beard opened along each seam into a crack.
+  const weld = new Map<string, number>();
+  const vert = (i0: number) => {
+    const wk = `${Math.round(pos.getX(i0) * 2e4)},${Math.round(pos.getY(i0) * 2e4)},${Math.round(pos.getZ(i0) * 2e4)}`;
+    let i = weld.get(wk);
+    if (i === undefined) weld.set(wk, (i = i0));
     let k = map.get(i);
     if (k === undefined) {
       k = P.length;
       P.push(new THREE.Vector3().fromBufferAttribute(pos, i));
       Nn.push(new THREE.Vector3().fromBufferAttribute(nrm, i));
       src.push(i);
+      const wm = new Map<number, number>();
+      for (let q = 0; q < 4; q++) {
+        const x = sw.getComponent(i, q);
+        if (x > 0) wm.set(si.getComponent(i, q), (wm.get(si.getComponent(i, q)) ?? 0) + x);
+      }
+      W.push(wm);
       map.set(i, k);
+      evalAt(k);
     }
     return k;
   };
@@ -773,60 +845,112 @@ export function beardGeometry(body: THREE.SkinnedMesh, sex: 'm' | 'f', id: strin
     let k = mids.get(key2);
     if (k === undefined) {
       k = P.length;
-      P.push(P[a]!.clone().add(P[b]!).multiplyScalar(0.5));
-      Nn.push(Nn[a]!.clone().add(Nn[b]!).normalize());
+      // A little out from the flat chord towards the curved surface (the mean of the ends' normals), so the
+      // finer mesh stays on the face instead of cutting into it between the body's vertices.
+      const pa = P[a]!;
+      const pb = P[b]!;
+      const na = Nn[a]!;
+      const nb = Nn[b]!;
+      const d = pb.clone().sub(pa);
+      const bulge = (d.dot(nb) - d.dot(na)) * 0.125;
+      const n = na.clone().add(nb).normalize();
+      P.push(pa.clone().add(pb).multiplyScalar(0.5).addScaledVector(n, bulge));
+      Nn.push(n);
       src.push(src[a]!);
+      const wm = new Map<number, number>();
+      for (const [bn, x] of W[a]!) wm.set(bn, x * 0.5);
+      for (const [bn, x] of W[b]!) wm.set(bn, (wm.get(bn) ?? 0) + x * 0.5);
+      W.push(wm);
       mids.set(key2, k);
+      evalAt(k);
     }
     return k;
   };
-  const tris: [number, number, number][] = [];
+  // The face's triangles, split in four (twice where the beard is: finer edges and a smooth taper), with
+  // a triangle kept wherever any corner has hair (its bare corners are the transparent edge, not a cut).
+  let tris: [number, number, number][] = [];
   for (let t = 0; t < idx.count; t += 3) {
     const a = idx.getX(t);
     const b = idx.getX(t + 1);
     const c = idx.getX(t + 2);
     if (!near(a) || !near(b) || !near(c)) continue;
-    const A = vert(a);
-    const B = vert(b);
-    const C = vert(c);
-    const ab = mid(A, B);
-    const bc = mid(B, C);
-    const ca = mid(C, A);
-    tris.push([A, ab, ca], [ab, B, bc], [ca, bc, C], [ab, bc, ca]);
+    tris.push([vert(a), vert(b), vert(c)]);
+  }
+  const has = (tr: [number, number, number]) => cov[tr[0]]! > 0.001 || cov[tr[1]]! > 0.001 || cov[tr[2]]! > 0.001;
+  for (let level = 0; level < 1; level++) {
+    const next: [number, number, number][] = [];
+    for (const tr of tris) {
+      // Split anything with hair or next to it (a bare triangle beside the edge may get some once split).
+      const [A, B, C] = tr;
+      const ab = mid(A, B);
+      const bc = mid(B, C);
+      const ca = mid(C, A);
+      const kids: [number, number, number][] = [[A, ab, ca], [ab, B, bc], [ca, bc, C], [ab, bc, ca]];
+      if (!has(tr) && !kids.some(has)) continue;
+      next.push(...kids);
+    }
+    tris = next;
+  }
+  tris = tris.filter(has);
+  // Lift along smoothed normals: the skin's own turn sharply in its creases (the mouth's corners, under the lip),
+  // and a thick beard lifted along them folded over itself there in a visible seam.
+  {
+    const nb = new Map<number, Set<number>>();
+    const link = (a: number, b: number) => {
+      let s = nb.get(a);
+      if (!s) nb.set(a, (s = new Set()));
+      s.add(b);
+    };
+    for (const [a, b, c] of tris) (link(a, b), link(b, a), link(b, c), link(c, b), link(c, a), link(a, c));
+    for (let pass = 0; pass < 6; pass++) {
+      const next = new Map<number, THREE.Vector3>();
+      for (const [k, s] of nb) {
+        const n = Nn[k]!.clone().multiplyScalar(2);
+        for (const j of s) n.add(Nn[j]!);
+        next.set(k, n.normalize());
+      }
+      for (const [k, n] of next) Nn[k] = n;
+    }
   }
   const out = new Buf();
   const vi = new Int32Array(P.length).fill(-1);
-  const cov = new Float32Array(P.length);
   const pp = new THREE.Vector3();
-  for (let k = 0; k < P.length; k++) {
+  const add = (k: number) => {
+    if (vi[k]! >= 0) return vi[k]!;
     const p = P[k]!;
-    const fp: FacePt = {
-      xN: Math.abs(p.x) / (f.W / 2),
-      yN: (p.y - f.tipY) / f.span,
-      faz: THREE.MathUtils.radToDeg(Math.atan2(Math.abs(p.x), p.z - f.c.z)),
-    };
-    const o = spec(fp);
-    cov[k] = THREE.MathUtils.clamp(o.cov, 0, 1);
-    if (cov[k]! <= 0.001) continue;
-    const lift = (0.06 + Math.max(0, o.t) * sm(cov[k]!, 0, 0.6)) * cm;
+    const o = outs[k]!;
+    const c = cov[k]!;
+    // Thickness swells in from the edge (a rounded mass, no ledge), the lift never below the skin.
+    // Clumps: a thick beard isn't a smooth mask; its surface rises and falls a little, strand-wise (long down).
+    const t = Math.max(0, o.t);
+    const lump = t > 0.3 ? 0.82 + 0.36 * vnoise(p.x / cm * 1.4, p.y / cm * 0.45, p.z / cm * 1.4) : 1;
+    const lift = (0.05 + t * lump * sm(c, 0.1, 1) ** 2) * cm;
     pp.copy(p).addScaledVector(Nn[k]!, lift);
     if (o.drop) {
-      pp.y -= o.drop * cm * cov[k]!;
-      pp.z += o.drop * 0.25 * cm * cov[k]!;
+      pp.y -= o.drop * cm * c;
+      pp.z += o.drop * 0.25 * cm * c;
     }
-    const i = src[k]!;
-    const below = p.y < f.tipY - f.span * 0.5;
-    const w: [number[], number[]] = below
-      ? [[0, 1, 2, 3].map((c) => si.getComponent(i, c)), [0, 1, 2, 3].map((c) => sw.getComponent(i, c))]
-      : headW(f);
+    // Skinned as the skin under it (the split points too: their ends' blend), so jaw and neck move it together
+    // with no tear where the head's weights give way to the neck's.
+    const top = [...W[k]!.entries()].sort((x, y) => y[1] - x[1]).slice(0, 4);
+    const sum = top.reduce((acc, [, x]) => acc + x, 0) || 1;
+    while (top.length < 4) top.push([0, 0]);
+    const w: [number[], number[]] = [top.map(([bn]) => bn), top.map(([, x]) => x / sum)];
     // Strands run down the face: across = x, along = -y.
-    vi[k] = out.add(pp, (p.x / cm) * 1.0, -(p.y / cm) + (o.drop ?? 0) * 0, cov[k]!, o.dens ?? 1, 1, w);
-  }
-  for (const [a, b, c] of tris) {
-    if (vi[a]! < 0 || vi[b]! < 0 || vi[c]! < 0) continue;
-    out.idx.push(vi[a]!, vi[b]!, vi[c]!);
-  }
+    vi[k] = out.add(pp, p.x / cm, -(p.y / cm), c, o.dens ?? 1, 1, w);
+    return vi[k]!;
+  };
+  const anchors: number[] = [];
+  const add2 = (k: number) => {
+    const fresh = vi[k]! < 0;
+    const j = add(k);
+    if (fresh) anchors.push(P[k]!.x, P[k]!.y, P[k]!.z);
+    return j;
+  };
+  for (const [a, b, c] of tris) out.idx.push(add2(a), add2(b), add2(c));
+  beardStats[id] = tris.length;
   const g = out.geometry();
+  g?.setAttribute('aAnchor', new THREE.Float32BufferAttribute(anchors, 3));
   BEARD_CACHE.set(key, g);
   return g;
 }
@@ -940,15 +1064,32 @@ export function hairGenMaterial(color: number, u: WorldUniforms, clip?: HeadClip
           }
           // Strands: smooth noise across them (clumps, then single strands), stretched along them.
           float hgS = hgN(vStrand * vec2(3.0, 0.15)) * 0.55 + hgN(vStrand * vec2(11.0, 0.4) + 7.0) * 0.3 + hgN(vStrand * vec2(29.0, 0.8) + 3.0) * 0.15;
+          // Single hairs up close (faded out where they'd be finer than a pixel and shimmer).
+          float hgFk = 1.0 - clamp(fwidth(vStrand.x) * 30.0, 0.0, 1.0);
+          hgS = mix(hgS, hgS * 0.7 + hgN(vStrand * vec2(70.0, 1.8) + 19.0) * 0.3, hgFk);
+          // Clumps a shade warmer or cooler than each other (natural hair isn't one flat colour).
+          float hgHue = hgN(vStrand * vec2(1.2, 0.06) + 41.0) - 0.5;
           // The hairline: soft wisps (strands of different lengths), blended into the skin.
           float hgW = hgN(vec2(vStrand.x * 7.0, 0.5)) * 0.6 + hgN(vec2(vStrand.x * 23.0, 2.5)) * 0.4;
           float hgA = vHair.x >= 0.995 ? 1.0 : smoothstep(0.0, 0.55, vHair.x * 1.2 - hgW * 0.25);
           // Sparse growth (shaved, stubble): a translucent shadow, as dense as the growth.
-          if (vHair.y < 0.995) hgA *= vHair.y * (0.55 + 0.2 * hgS);
+          // Up close it is fine stipple (the hairs' cut ends, ~1 mm apart); far off, where the dots would shimmer,
+          // their average.
+          if (vHair.y < 0.995) {
+            // Each octave goes to its average once its dots are under ~4 px (by ~1.5 px they're gone): faded only at
+            // ~1 px before, the dots crawled at game distance.
+            float hgFw = max(fwidth(vStrand.x), fwidth(vStrand.y));
+            float hgF1 = smoothstep(0.25, 0.7, hgFw * 16.0);
+            float hgF2 = smoothstep(0.25, 0.7, hgFw * 31.0);
+            float hgSt = mix(smoothstep(0.42, 0.78, hgN(vStrand * vec2(16.0, 10.0) + 11.0)), 0.42, hgF1) * 0.7
+              + mix(smoothstep(0.5, 0.85, hgN(vStrand * vec2(31.0, 23.0) + 5.0)), 0.35, hgF2) * 0.3;
+            hgA *= vHair.y * (0.35 + 0.95 * hgSt);
+          }
           diffuseColor.a *= hgA;
           // Darker under the surface and at the hairline (roots), lighter strands on top.
           float hgRoot = mix(0.84, 1.0, smoothstep(0.0, 0.8, vHair.x));
-          diffuseColor.rgb *= (0.62 + 0.62 * hgS) * vHair.z * hgRoot;`,
+          diffuseColor.rgb *= (0.62 + 0.62 * hgS) * vHair.z * hgRoot;
+          diffuseColor.rgb *= vec3(1.0 + 0.12 * hgHue, 1.0 + 0.02 * hgHue, 1.0 - 0.1 * hgHue);`,
         )
         .replace(
           '#include <roughnessmap_fragment>',

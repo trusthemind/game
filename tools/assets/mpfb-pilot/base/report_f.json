@@ -1,7 +1,8 @@
 {
  "f": {
   "tris": {
-   "body": 21208,
+   "anatomy": 128,
+   "body": 21080,
    "brows": 560,
    "eyes": 172,
    "underwear": 3674

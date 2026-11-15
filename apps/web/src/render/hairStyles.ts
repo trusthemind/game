@@ -37,12 +37,12 @@ export const HAIR_SPECS: Record<string, HairSpec> = {
   bald: {},
   shaved: { shadow: 0.5 },
   buzz: { shell: (p) => ({ t: 0.22, cov: hairline(p), dens: 0.92 }) },
-  crew: { shell: (p) => ({ t: zones(p, 1.3, 1.05, 0.32, 0.42, 0.6), cov: hairline(p, { front: 0.01 }) + 0 }) },
+  crew: { shell: (p) => ({ t: zones(p, 1.2, 0.75, 0.32, 0.42, 0.6), cov: hairline(p, { front: 0.01 }) + 0 }) },
   short: {
-    shell: (p) => ({ t: zones(p, 1.8, 1.7, 0.7, 0.8) * part(p, 26) + (p.az < 20 ? 0.35 * sm(p.yN, 0.55, 0.8) : 0), cov: hairline(p) }),
+    shell: (p) => ({ t: zones(p, 1.7, 1.15, 0.6, 0.75) * part(p, 26) + (p.az < 20 ? 0.35 * sm(p.yN, 0.55, 0.8) : 0), cov: hairline(p) }),
   },
   ivy: {
-    shell: (p) => ({ t: zones(p, 1.9, 2.1, 0.35, 0.45, 0.64, 0.07) * part(p, 24, 0.4), cov: hairline(p), up: 0.5 * gauss(p.az + 10, 40) * sm(p.yN, 0.6, 0.75) }),
+    shell: (p) => ({ t: zones(p, 1.9, 1.6, 0.35, 0.45, 0.64, 0.07) * part(p, 24, 0.4), cov: hairline(p), up: 0.5 * gauss(p.az + 10, 40) * sm(p.yN, 0.6, 0.75) }),
   },
   fade: { shadow: 0.5, shell: (p) => ({ t: zones(p, 1.6, 1.4, 0.05, 0.06, 0.7, 0.04), cov: hairline(p) * sm(p.yN, 0.55, 0.66) }) },
   caesar: {
@@ -65,7 +65,7 @@ export const HAIR_SPECS: Record<string, HairSpec> = {
       up: 0.8 * gauss(p.az + 15, 50) * sm(p.yN, 0.7, 0.85),
     }),
   },
-  slick: { shell: (p) => ({ t: zones(p, 1.5, 1.7, 0.9, 1.1, 0.55), cov: hairline(p, { front: 0.02 }) }) },
+  slick: { shell: (p) => ({ t: zones(p, 1.5, 1.3, 0.8, 1.0, 0.55), cov: hairline(p, { front: 0.02 }) }) },
   pompadour: {
     shell: (p) => {
       const g = gauss(p.az, 48) * sm(p.yN, 0.55, 0.78) * (1 - sm(p.yN, 0.85, 1.0) * 0.6);
@@ -81,15 +81,17 @@ export const HAIR_SPECS: Record<string, HairSpec> = {
   },
   messy: {
     shell: (p) => ({
-      t: zones(p, 2.3, 2.2, 1.5, 1.7) + spikes(p, 9, 2.4, 2),
+      // Tousled tufts (rounded, not cones), a little longer on top.
+      t: zones(p, 2.2, 1.8, 1.3, 1.5) + spikes(p, 7, 1.3, 1.5) + 0.45 * hairCurls(p, 12),
       cov: Math.max(hairline(p, { nape: -0.3 }), fringe(p, 0.5, 42, -1)),
       fwd: 0.5 * fringe(p, 0.5, 42, -1),
     }),
   },
   curlytop: { shadow: 0.5, shell: (p) => ({ t: zones(p, 3.2, 3.2, 0.12, 0.15, 0.66, 0.06) + 0.5 * hairCurls(p, 10), cov: hairline(p) * sm(p.yN, 0.5, 0.62) }) },
-  afro: { shell: (p) => ({ t: 5.4 + 0.4 * sm(p.yN, 0.3, 1.0) - 1.5 * sm(p.yN, 0.3, -0.1) + 0.35 * hairCurls(p, 7), cov: hairline(p, { ears: true, nape: -0.28 }) }) },
+  // A rounded mass of tight curls: fuller on top and at the sides than over the forehead, its surface knobbly.
+  afro: { shell: (p) => ({ t: zones(p, 5.6, 2.6, 4.8, 5.0, 0.5, 0.3) - 1.5 * sm(p.yN, 0.3, -0.1) + 0.8 * hairCurls(p, 8) + 0.35 * hairCurls(p, 17), cov: hairline(p, { ears: true, nape: -0.28 }) }) },
   shag: {
-    shell: (p) => ({ t: zones(p, 2.6, 2.4, 1.9, 2.1) + spikes(p, 8, 1.6, 2), cov: Math.max(hairline(p, { ears: true }), fringe(p, 0.48, 40)), fwd: 0.4 * fringe(p, 0.48, 40) }),
+    shell: (p) => ({ t: zones(p, 2.5, 2.2, 1.9, 2.1) + spikes(p, 7, 0.9, 1.5) + 0.35 * hairCurls(p, 11), cov: Math.max(hairline(p, { ears: true }), fringe(p, 0.48, 40)), fwd: 0.4 * fringe(p, 0.48, 40) }),
     drape: longDrape(9, 6, { flare: 0.8, curl: 0.7 }),
   },
   bob: {
@@ -194,29 +196,56 @@ const lin = hairLin;
 /** Below the cheek line (where a full beard stops on the cheek), soft. */
 const cheek = (yN: number, faz: number, lower = 0) =>
   sm(
-    lin([[0, -0.055], [12, -0.065], [22, -0.13], [34, -0.06], [48, 0.02], [62, 0.08], [76, 0.18], [90, 0.4]], faz) - lower - yN,
-    -0.02,
-    0.03,
+    lin([[0, -0.05], [12, -0.05], [22, -0.06], [34, -0.04], [48, 0.02], [62, 0.08], [76, 0.18], [90, 0.4]], faz) - lower - yN,
+    -0.045,
+    0.09,
   );
 /** Above the neckline under the jaw. */
-const neck = (yN: number, faz: number) => sm(yN - lin([[0, -0.72], [35, -0.66], [60, -0.52], [80, -0.3], [95, 0]], faz), -0.02, 0.03);
-const sides = (faz: number) => sm(faz, 98, 88);
+const neck = (yN: number, faz: number) => sm(yN - lin([[0, -0.72], [35, -0.66], [60, -0.52], [80, -0.3], [95, 0]], faz), -0.03, 0.06);
+const sides = (faz: number) => sm(faz, 100, 84);
 /** 0 on the lips. */
 const lips = (xN: number, yN: number, lowerOnly = false) => {
   const cy = lowerOnly ? -0.215 : -0.18;
   const hy = lowerOnly ? 0.045 : 0.07;
-  return sm((xN / 0.27) ** 2 + ((yN - cy) / hy) ** 2, 0.75, 1.15);
+  return sm((xN / 0.27) ** 2 + ((yN - cy) / hy) ** 2, 0.8, 1.5);
 };
 const area = (xN: number, yN: number, faz: number, lower = 0) => cheek(yN, faz, lower) * neck(yN, faz) * sides(faz) * lips(xN, yN);
-const mo = (xN: number, yN: number, w = 0.34, lo = -0.14, hi = -0.05) => sm(xN, w + 0.04, w - 0.03) * sm(yN, lo - 0.02, lo + 0.01) * sm(yN, hi + 0.015, hi - 0.015);
-const chin = (xN: number, yN: number, w = 0.33, top = -0.24, bottom = -0.62) => sm(xN, w + 0.04, w - 0.03) * sm(yN, top + 0.02, top - 0.02) * sm(yN, bottom - 0.03, bottom + 0.03);
+/** A moustache: under the nose, following the lip down to its corners (drooping there), narrower at the ends. */
+const mo = (xN: number, yN: number, w = 0.34, lo = -0.14, hi = -0.05) => {
+  const l = lo - 0.035 * sm(xN, 0.1, w);
+  const h = hi - 0.035 * sm(xN, 0.1, w) - 0.02 * sm(xN, w * 0.6, w);
+  return sm(xN, w + 0.06, w - 0.05) * sm(yN, l - 0.025, l + 0.015) * sm(yN, h + 0.02, h - 0.02);
+};
+/**
+ * A shaped moustache (moustache, walrus, pencil): the band `mo` draws, but its height narrowing towards the ends
+ * (`blunt` 0: to a point; 1: hardly) instead of being cut off square there. Returns the coverage and the thickness
+ * profile (0..1: full a little above the band's middle, thinning to the lower fringe, the top edge and the ends: a
+ * flat slab with square ends read as a block glued under the nose).
+ */
+const moShape = (xN: number, yN: number, w = 0.34, lo = -0.14, hi = -0.05, blunt = 0.3) => {
+  const l = lo - 0.035 * sm(xN, 0.1, w);
+  const h = hi - 0.035 * sm(xN, 0.1, w) - 0.02 * sm(xN, w * 0.6, w);
+  const e = Math.min(1, xN / (w + 0.04));
+  const k = Math.sqrt(Math.max(0, 1 - e * e)) ** (0.5 + 0.5 * (1 - blunt));
+  const hh = ((h - l) / 2) * (blunt + (1 - blunt) * k) * (e < 1 ? 1 : 0);
+  const c = (l + h) / 2 + 0.15 * (h - l) * (1 - k);
+  const d = Math.abs(yN - c);
+  const cov = hh > 0.004 ? sm(d, hh + 0.022, hh - 0.012) : 0;
+  const u = Math.min(1, d / Math.max(hh, 1e-3));
+  const t = Math.sqrt(Math.max(0, 1 - u * u)) * (yN < c ? 0.85 + 0.15 * (1 - u) : 1) * (0.35 + 0.65 * k);
+  return { cov, t };
+};
+const chin = (xN: number, yN: number, w = 0.33, top = -0.24, bottom = -0.62) => sm(xN, w + 0.06, w - 0.05) * sm(yN, top + 0.03, top - 0.03) * sm(yN, bottom - 0.04, bottom + 0.04);
 const jawEdge = (faz: number) => lin([[0, -0.47], [40, -0.43], [65, -0.32], [82, -0.12], [95, 0.1]], faz);
+/** Thinner on the cheeks, full on the jaw and chin. */
+const jawFull = (yN: number) => 0.4 + 0.6 * sm(yN, -0.12, -0.4);
 const chinDrop = (xN: number, yN: number, len: number) => len * sm(yN, -0.2, -0.5) * sm(xN, 0.72, 0.05);
 
 export const BEARD_SPECS: Record<string, BeardSpec | null> = {
   none: null,
-  stubble: ({ xN, yN, faz }) => ({ t: 0.04, cov: area(xN, yN, faz, -0.03), dens: 0.42 }),
-  scruff: ({ xN, yN, faz }) => ({ t: 0.14, cov: area(xN, yN, faz, -0.02), dens: 0.82 }),
+  // Shadow-stubble: densest on the chin, upper lip and jaw, thinning up the cheek.
+  stubble: ({ xN, yN, faz }) => ({ t: 0.04, cov: area(xN, yN, faz, -0.03), dens: 0.5 * (0.55 + 0.45 * sm(yN, -0.08, -0.32)) }),
+  scruff: ({ xN, yN, faz }) => ({ t: 0.14, cov: area(xN, yN, faz, -0.02), dens: 0.85 * (0.7 + 0.3 * sm(yN, -0.08, -0.32)) }),
   chinstrap: ({ xN, yN, faz }) => ({ t: 0.45, cov: area(xN, yN, faz) * sm(yN - jawEdge(faz), 0.13, 0.08) }),
   soulpatch: ({ xN, yN }) => ({ t: 0.5, cov: sm(xN, 0.09, 0.05) * sm(yN, -0.35, -0.32) * sm(yN, -0.235, -0.255) }),
   goatee: ({ xN, yN, faz }) => ({ t: 0.85, cov: Math.max(mo(xN, yN, 0.3), chin(xN, yN, 0.3, -0.14, -0.58), sm(xN, 0.33, 0.27) * sm(yN, -0.27, -0.24) * sm(yN, -0.06, -0.09) * sm(xN, 0.2, 0.24)) * lips(xN, yN) * sides(faz), drop: chinDrop(xN, yN, 1.0) }),
@@ -224,13 +253,28 @@ export const BEARD_SPECS: Record<string, BeardSpec | null> = {
     const w = 0.08 + 0.16 * sm(yN, -0.62, -0.3);
     return { t: 0.8, cov: Math.max(mo(xN, yN, 0.36), chin(xN, yN, w, -0.28, -0.62), sm(xN, 0.07, 0.04) * sm(yN, -0.3, -0.27) * sm(yN, -0.21, -0.24)) * lips(xN, yN) * sides(faz), drop: chinDrop(xN, yN, 2.6) * sm(xN, 0.2, 0.0) };
   },
-  moustache: ({ xN, yN }) => ({ t: 0.7, cov: mo(xN, yN, 0.33) * lips(xN, yN, true) }),
-  walrus: ({ xN, yN }) => ({ t: 1.1, cov: mo(xN, yN, 0.4, -0.2, -0.04) * lips(xN, yN, true), drop: 0.5 * sm(yN, -0.08, -0.18) }),
-  pencil: ({ xN, yN }) => ({ t: 0.15, cov: mo(xN, yN, 0.3, -0.115, -0.085) }),
+  moustache: ({ xN, yN }) => {
+    const m = moShape(xN, yN, 0.33, -0.14, -0.05, 0.15);
+    return { t: 0.6 * (0.15 + 0.85 * m.t), cov: m.cov * lips(xN, yN, true) };
+  },
+  // Bushy, over the lip: thick along its root, thinning into a fringe that hangs over the mouth, the ends drooping.
+  walrus: ({ xN, yN }) => {
+    // The fringe's lower edge is ragged (strand tips), lowest under the middle of each side, rising to the ends.
+    const m = moShape(xN, yN, 0.4, -0.19 + 0.016 * (0.5 + 0.5 * Math.cos(xN * 62)), -0.04, 0.45);
+    return {
+      t: 0.6 * (0.12 + 0.88 * m.t),
+      cov: m.cov * lips(xN, yN, true),
+      drop: 0.35 * sm(yN, -0.1, -0.2) * (1 - 0.5 * sm(xN, 0.25, 0.4)),
+    };
+  },
+  pencil: ({ xN, yN }) => {
+    const m = moShape(xN, yN, 0.3, -0.115, -0.085, 0.2);
+    return { t: 0.15 * (0.4 + 0.6 * m.t), cov: m.cov };
+  },
   horseshoe: ({ xN, yN }) => ({ t: 0.75, cov: Math.max(mo(xN, yN, 0.34), sm(xN, 0.22, 0.27) * sm(xN, 0.4, 0.34) * sm(yN, -0.5, -0.45) * sm(yN, -0.04, -0.08)) * lips(xN, yN) }),
   chops: ({ xN, yN, faz }) => ({ t: 0.9, cov: Math.max(area(xN, yN, faz) * (1 - chin(xN, yN, 0.36, -0.2, -0.9)), mo(xN, yN, 0.34)) * lips(xN, yN) * sm(yN, -0.6, -0.5) }),
-  boxed: ({ xN, yN, faz }) => ({ t: 0.6, cov: area(xN, yN, faz, 0.03) }),
-  full: ({ xN, yN, faz }) => ({ t: 1.25, cov: area(xN, yN, faz), drop: chinDrop(xN, yN, 1.6) }),
-  long: ({ xN, yN, faz }) => ({ t: 1.5, cov: area(xN, yN, faz), drop: chinDrop(xN, yN, 7.5) }),
-  viking: ({ xN, yN, faz }) => ({ t: 1.4, cov: area(xN, yN, faz), drop: chinDrop(xN, yN, 8) * (0.45 + 0.55 * sm(Math.abs(xN - 0.17), 0.16, 0.0)) }),
+  boxed: ({ xN, yN, faz }) => ({ t: 0.6 * jawFull(yN), cov: area(xN, yN, faz, 0.03) }),
+  full: ({ xN, yN, faz }) => ({ t: 1.25 * jawFull(yN), cov: area(xN, yN, faz), drop: chinDrop(xN, yN, 1.6) }),
+  long: ({ xN, yN, faz }) => ({ t: 1.5 * jawFull(yN), cov: area(xN, yN, faz), drop: chinDrop(xN, yN, 7.5) }),
+  viking: ({ xN, yN, faz }) => ({ t: 1.4 * jawFull(yN), cov: area(xN, yN, faz), drop: chinDrop(xN, yN, 8) * (0.45 + 0.55 * sm(Math.abs(xN - 0.17), 0.16, 0.0)) }),
 };

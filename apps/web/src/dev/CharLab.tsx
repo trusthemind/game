@@ -170,6 +170,7 @@ function CharLabScene() {
         ['m'],
       ];
       // `&gun=ak74m`: everyone aiming it, to see the clothes with the arms up. `&fits=m:c_a,c_b;f:c_c` other outfits.
+      // `&speed=1.4`: walking (3.2 running).
       const wq = new URLSearchParams(location.hash.split('?')[1] ?? '');
       const gun = wq.get('gun');
       const fits = wq.get('fits');
@@ -177,7 +178,7 @@ function CharLabScene() {
       outfits.forEach(([sex, ...ids], i) => {
         const base = lookFor(i + 60, 'scav');
         const eq = [...ids.map((id) => `${id}:${getDef(id).clothing!.slot}`), ...(gun ? [`${gun}:primary`] : [])];
-        cast.push({ look: { ...base, sex: sex as 'm' | 'f', hair: sex === 'f' ? 'ponytail' : base.hair, hat: null, clothed: true }, eq, active: gun ? 'primary' : 'melee', speed: 0 });
+        cast.push({ look: { ...base, sex: sex as 'm' | 'f', hair: sex === 'f' ? 'ponytail' : base.hair, hat: null, clothed: true }, eq, active: gun ? 'primary' : 'melee', speed: +(wq.get('speed') ?? 0) });
       });
       cam.position.set(0, 1.5, 10);
       cam.lookAt(0, 1.0, 0);
@@ -511,6 +512,7 @@ function CharLabScene() {
               model.traverse((o) => {
                 if (o.name === 'anatomy') o.visible = q.get('anatomy') === '1';
                 if (o.name === 'underwear') o.visible = q.get('underwear') === '1';
+                if (q.get('hide')?.split(',').includes(o.name)) o.visible = false;
               });
               body = model.getObjectByName('body') as THREE.SkinnedMesh;
             }
@@ -531,6 +533,7 @@ function CharLabScene() {
               }
             }
             model.rotation.y = turn;
+            model.userData.mpfbLab = true;
             model.position.set((i - 1.5) * 0.85, 0, 0);
             scene.add(model);
             const mixer = new THREE.AnimationMixer(model);
@@ -546,6 +549,21 @@ function CharLabScene() {
         if (q.get('solo') === '1') {
           cam.position.set(-0.425, 0.95, 2.6);
           cam.lookAt(-0.425, 0.85, 0);
+        }
+        // `&head=1`: head close-up (the Customize-screen distance) of the front MPFB body, or with `&solo` off, of
+        // ours and the MPFB body side by side.
+        if (q.get('head') === '1') {
+          scene.updateMatrixWorld(true);
+          const front = scene.children.filter((o) => o.userData.mpfbLab).slice(0, 2);
+          const ys = front.map((m) => {
+            const b = (m.getObjectByName('body') as THREE.SkinnedMesh | undefined)?.skeleton.getBoneByName('Head');
+            return b ? b.getWorldPosition(new THREE.Vector3()).y + 0.06 : 1.64;
+          });
+          const y = Math.max(...ys);
+          const x = q.get('solo') === '1' ? -0.425 : -0.85;
+          const yy = q.get('solo') === '1' ? y - 0.07 : y;
+          cam.position.set(x, yy + 0.03, +(q.get('dist') ?? (q.get('solo') === '1' ? 0.8 : 1.45)));
+          cam.lookAt(x, yy, 0);
         }
       }
       if (view === 'faces') {
@@ -726,6 +744,21 @@ function CharLabScene() {
       }
       (window as unknown as { __labReady?: boolean }).__labReady = true;
       (window as unknown as { __lab: unknown }).__lab = views;
+      // `await __bench(60)`: ms per frame (update + render, synced with a 1-pixel read) and the triangles drawn.
+      (window as unknown as { __bench: unknown }).__bench = (n = 60) => {
+        const gl = renderer.getContext();
+        const px = new Uint8Array(4);
+        const frame = () => {
+          for (const { v, a } of views) v.update(a, 1 / 60, true, true);
+          renderer.render(scene, cam);
+          gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        };
+        for (let i = 0; i < 10; i++) frame();
+        const t0 = performance.now();
+        for (let i = 0; i < n; i++) frame();
+        const ms = (performance.now() - t0) / n;
+        return { ms: +ms.toFixed(2), tris: renderer.info.render.triangles, calls: renderer.info.render.calls, chars: views.length };
+      };
       // `__visor(true)` lowers every helmet's faceplate, `__visor(false)` raises them (they swing on the next frames).
       (window as unknown as { __visor: unknown }).__visor = (down: boolean) =>
         views.forEach(({ a }) => {
@@ -754,14 +787,15 @@ function CharLabScene() {
         cam.updateMatrixWorld();
       };
       // A contact sheet of head close-ups: every figure (a column each) from each view (a row each), drawn over the
-      // page. `__sheet(['front','side','top'], 0.62, 160)`; `__sheet(null)` removes it.
-      (window as unknown as { __sheet: unknown }).__sheet = (modes: string[] | null = ['front', 'side', 'top'], dist = 0.62, px = 150, dy = 0.14) => {
+      // page. `__sheet(['front','side','top'], 0.62, 160)`; `__sheet(['front','back'], 2.4, 160, 0, 0.9)` whole figures
+      // (aimed at 0.9 m); `__sheet(null)` removes it.
+      (window as unknown as { __sheet: unknown }).__sheet = (modes: string[] | null = ['front', 'side', 'top'], dist = 0.62, px = 150, dy = 0.14, aim: string | number = 'head') => {
         document.getElementById('lab-sheet')?.remove();
         if (!modes) {
           views.forEach((l) => l.v.root.children.forEach((ch) => (ch.visible = true)));
           return;
         }
-        const look = (window as unknown as { __look: (i: number, m: string, d: number, y: string, dy: number) => void }).__look;
+        const look = (window as unknown as { __look: (i: number, m: string, d: number, y: string | number, dy: number) => void }).__look;
         const out = document.createElement('canvas');
         out.id = 'lab-sheet';
         out.width = views.length * px;
@@ -775,9 +809,9 @@ function CharLabScene() {
         cam.updateProjectionMatrix();
         views.forEach((_, i) =>
           modes.forEach((m, j) => {
-            look(i, m, dist, 'head', m === 'top' ? 0.08 : dy);
+            look(i, m, dist, aim, m === 'top' ? 0.08 : dy);
             renderer.render(scene, cam);
-            x.drawImage(renderer.domElement, 0, 0, px, px, i * px, j * px, px, px);
+            x.drawImage(renderer.domElement, 0, 0, renderer.domElement.width, renderer.domElement.height, i * px, j * px, px, px);
           }),
         );
         renderer.setSize(size.x, size.y, false);

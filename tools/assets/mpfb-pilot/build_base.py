@@ -35,6 +35,33 @@ ANATOMY = {"m": os.path.join(ANAT_SRC, "m3223/man_genital.mhclo"),
            "f": os.path.join(ANAT_SRC, "f3396/female_generic_with_simplified_genitals_fixed.proxy")}
 ANAT_OFFSET = 0.0012  # m outward, so the patch never z-fights the body under it
 os.makedirs(OUT, exist_ok=True)
+# Athletic survivor build (macros + measure / muscle targets) and a deliberate face per sex, instead of the pilot's
+# 'average' macros + seeded face noise (read as a smooth, bland mannequin).
+BUILD = {
+    "m": dict(macro=dict(weight=0.42, muscle=0.78, height=0.5, proportions=0.9),
+              targets=[("torso-vshape-incr", 0.55), ("measure-shoulder-dist-incr", 0.35), ("torso-muscle-pectoral-incr", 0.45),
+                       ("torso-muscle-dorsi-incr", 0.45), ("measure-waist-circ-decr", 0.25), ("stomach-pregnant-decr", 0.35),
+                       ("measure-neck-circ-incr", 0.35), ("buttocks-volume-incr", 0.1)]
+              + [(f"{s}-{t}", v) for s in "lr" for t, v in [("upperarm-muscle-incr", 0.55), ("upperarm-shoulder-muscle-incr", 0.55),
+                 ("lowerarm-muscle-incr", 0.45), ("upperleg-muscle-incr", 0.45), ("lowerleg-muscle-incr", 0.45)]],
+              face=[("head-square", 0.55), ("chin-prominent-incr", 0.3), ("chin-width-incr", 0.35), ("chin-jaw-drop-incr", 0.15),
+                    ("head-fat-decr", 0.35), ("head-scale-vert-decr", 0.15), ("nose-scale-horiz-incr", 0.1), ("nose-point-width-decr", 0.2),
+                    ("mouth-scale-horiz-incr", 0.1), ("eyebrows-trans-down", 0.2), ("forehead-temple-decr", 0.2)]
+                   + [(f"{s}-{t}", v) for s in "lr" for t, v in [("cheek-bones-incr", 0.35), ("cheek-volume-decr", 0.35)]],
+              skin="young_caucasian_male", eyes="brownlight", brow="eyebrow011", lashes="eyelashes02"),
+    "f": dict(macro=dict(weight=0.4, muscle=0.66, height=0.5, proportions=0.9, cupsize=0.5, firmness=1.0),
+              targets=[("torso-vshape-incr", 0.15), ("measure-waist-circ-decr", 0.2), ("stomach-pregnant-decr", 0.35),
+                       ("buttocks-volume-incr", 0.25), ("measure-shoulder-dist-incr", 0.1), ("breast-trans-up", 0.3), ("breast-point-decr", 0.2)]
+              + [(f"{s}-{t}", v) for s in "lr" for t, v in [("upperarm-muscle-incr", 0.35), ("upperarm-shoulder-muscle-incr", 0.35),
+                 ("lowerarm-muscle-incr", 0.25), ("upperleg-muscle-incr", 0.35), ("lowerleg-muscle-incr", 0.4)]],
+              # (Hollow cheeks under high cheekbones read as dark blotches there in game; bigger eyes as dark ones.)
+              face=[("head-oval", 0.5), ("chin-width-decr", 0.1), ("chin-prominent-incr", 0.1), ("head-fat-decr", 0.15),
+                    ("head-scale-vert-decr", 0.12), ("nose-scale-horiz-decr", 0.15), ("nose-point-width-decr", 0.2),
+                    ("mouth-upperlip-volume-incr", 0.25), ("mouth-lowerlip-volume-incr", 0.3)]
+                   + [(f"{s}-{t}", v) for s in "lr" for t, v in [("cheek-bones-incr", 0.25), ("cheek-volume-incr", 0.1), ("eye-scale-incr", 0.06)]],
+              skin="young_caucasian_female", eyes="brownlight", brow="eyebrow003", lashes="eyelashes04"),
+}
+TEX_DIR = os.path.join(HERE, "base", "tex")
 
 # Reuse the pilot's macro / face definitions (everything above its export loop).
 src = open(os.path.join(HERE, "gen_cast.py"), encoding="utf-8").read()
@@ -53,6 +80,18 @@ for s in "lr":
         AIM[f"{f}_02_{s}"] = f"{f}_03_{s}"
         AIM[f"{f}_03_{s}"] = f"{f}_04_leaf_{s}"
 TO_MPFB = {"Head": "head", "root": "Root"}
+def export(rig, path):
+    bpy.ops.object.select_all(action="DESELECT")
+    rig.select_set(True)
+    for c in rig.children:
+        c.select_set(True)
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_apply=True, export_skins=True,
+                              export_morph=False, export_animations=False, export_image_format="WEBP", export_image_quality=88,
+                              export_tangents=True, export_yup=True)
+
+
+exec(compile(open(os.path.join(HERE, "skin_bake.py"), encoding="utf-8").read(), "skin_bake.py", "exec"))
 
 
 def ours_dir(sex, a, b):
@@ -153,20 +192,41 @@ def finish_anatomy(sex, obj, body, crotch):
     return obj
 
 
+def definition_normals(info, settings, weight=0.0):
+    """Vertex normals of the same human at max muscle / min weight (helpers removed, as the body), or None."""
+    import copy
+    i2 = copy.deepcopy(info)
+    i2["phenotype"].update(muscle=1.0, weight=weight)
+    i2["name"] = "def_tmp"
+    before = set(bpy.data.objects)
+    bm = HumanService.deserialize_from_dict(i2, settings)
+    bpy.context.view_layer.objects.active = bm
+    TargetService.bake_targets(bm)
+    for mod in list(bm.modifiers):
+        if mod.type == "MASK":
+            apply_mod(bm, mod.name)
+    bm.data.update()
+    out = [v.normal.copy() for v in bm.data.vertices]
+    for o in [o for o in bpy.data.objects if o not in before]:
+        bpy.data.objects.remove(o, do_unlink=True)
+    return out
+
+
 def build(sex):
     face = FACES[0]
-    s = "male" if sex == "m" else "female"
+    cfg = BUILD[sex]
     pheno = TargetService.get_default_macro_info_dict()
     pheno.update(BODIES["average"])
-    pheno.update(gender=1.0 if sex == "m" else 0.0, age=face["age"], cupsize=0.5, firmness=0.5)
-    a, c, as_ = face["race"]
-    pheno["race"] = {"african": a, "caucasian": c, "asian": as_}
+    pheno.update(gender=1.0 if sex == "m" else 0.0, age=0.5, cupsize=0.5, firmness=0.5)
+    pheno.update(cfg["macro"])
+    pheno["race"] = {"african": 0.15, "caucasian": 0.7, "asian": 0.15}
     info = HumanService._create_default_human_info_dict()
-    info.update(phenotype=pheno, rig="game_engine", eyes="low-poly.mhclo", eyebrows=face["brow"] + ".mhclo", eyelashes="eyelashes01.mhclo",
-                targets=face_targets(face["seed"] + (0 if sex == "m" else 100)), skin_mhmat="", skin_material_type="NONE",
+    info.update(phenotype=pheno, rig="game_engine", eyes="low-poly.mhclo", eyebrows=cfg["brow"] + ".mhclo", eyelashes=cfg["lashes"] + ".mhclo",
+                targets=[{"target": t, "value": v} for t, v in cfg["targets"] + cfg["face"]], skin_mhmat="", skin_material_type="NONE",
                 eyes_material_type="NONE", name=f"{sex}_base")
     settings = HumanService.get_default_deserialization_settings()
     settings.update(subdiv_levels=0, load_clothes=False)
+    def_normals = definition_normals(info, settings, 0.0 if sex == "m" else 0.3)
     basemesh = HumanService.deserialize_from_dict(info, settings)
     rig = basemesh.parent
     bpy.context.view_layer.objects.active = basemesh
@@ -207,6 +267,20 @@ def build(sex):
     ref = body.copy()
     ref.data = body.data.copy()
     bpy.context.collection.objects.link(ref)
+    # High poly for the normal bake: this mesh, shaded with the normals of the max-muscle / min-fat version of the same
+    # human pushed further (muscle separation, abs, serratus, ...), so the definition lands in the normal map without
+    # changing the silhouette.
+    if def_normals is not None and len(def_normals) == len(ref.data.vertices):
+        for p in ref.data.polygons:
+            p.use_smooth = True
+        cur = [v.normal.copy() for v in ref.data.vertices]
+        DEF_K = 3.0 if sex == "m" else 1.5
+        neck_z = (rig.matrix_world @ rig.data.bones["neck_01"].head_local).z
+        ws = [DEF_K * min(1.0, max(0.0, (neck_z - v.co.z) / 0.06)) for v in ref.data.vertices]  # not on the face
+        ref.data.normals_split_custom_set_from_vertices([(c + (d - c) * w).normalized() for c, d, w in zip(cur, def_normals, ws)])
+        print("DEF normals applied", len(cur), flush=True)
+    else:
+        print("DEF normals skipped", None if def_normals is None else len(def_normals), len(ref.data.vertices), flush=True)
     ratio = min(1.0, budget / tri_count(body))
     if ratio < 1.0:
         dec = body.modifiers.new("decimate", "DECIMATE")
@@ -235,11 +309,16 @@ def build(sex):
         with bpy.context.temp_override(object=body, active_object=body):
             bpy.ops.object.modifier_move_to_index(modifier="normals", index=0)
         apply_mod(body, "normals")
+    skin_path = AssetService.find_asset_absolute_path(cfg["skin"] + ".mhmat", "skins")
+    bpy.context.scene["ashfall_skin_photo"] = mhmat_texture(skin_path)
+    bpy.context.scene["ashfall_brow_png"] = mhmat_texture(AssetService.find_asset_absolute_path(cfg["brow"] + ".mhmat", "eyebrows"))
+    hair_col = (0.045, 0.03, 0.02) if sex == "m" else (0.06, 0.035, 0.022)
+    bpy.context.scene["ashfall_hair_col"] = [float(c) for c in hair_col]
+    tex = bake_skin(sex, body, ref, rig, others, os.path.join(TEX_DIR, sex))
     bpy.data.objects.remove(ref, do_unlink=True)
 
     # Materials: skin (body + anatomy share it), eyes, brows / lashes, solid fabric underwear.
-    skin_path = AssetService.find_asset_absolute_path(face["skin"].format(s=s) + ".mhmat", "skins")
-    skin = simple_material("skin_" + face["skin"].format(s=s), mhmat_texture(skin_path), rough=0.55)
+    skin = skin_material("skin", tex)
     uwm = solid("underwear_fabric", UW_COLOR[sex])
     groups = {"body": [body], "anatomy": [anatomy] if anatomy else [], "underwear": [], "eyes": [], "brows": []}
     for o in [body] + others:
@@ -248,16 +327,19 @@ def build(sex):
         if o is body or o is anatomy:
             o.data.materials.append(skin)
         elif "lash" in n:
-            p = AssetService.find_asset_absolute_path("eyelashes01.mhmat", "eyelashes")
-            o.data.materials.append(simple_material("lashes", mhmat_texture(p), alpha=True, rough=0.8))
+            p = mhmat_texture(AssetService.find_asset_absolute_path(cfg["lashes"] + ".mhmat", "eyelashes"))
+            o.data.materials.append(card_material("lashes", hair_card_texture(p, os.path.join(TEX_DIR, sex, "lashes.png"), (0.045, 0.032, 0.024), 1.25 if sex == "m" else 1.7)))
             groups["brows"].append(o)
         elif "brow" in n:
-            p = AssetService.find_asset_absolute_path(face["brow"] + ".mhmat", "eyebrows")
-            o.data.materials.append(simple_material("brows_" + face["brow"], mhmat_texture(p), alpha=True, rough=0.8))
+            p = mhmat_texture(AssetService.find_asset_absolute_path(cfg["brow"] + ".mhmat", "eyebrows"))
+            o.data.materials.append(card_material("brows", hair_card_texture(p, os.path.join(TEX_DIR, sex, "brows.png"), hair_col, 0.55)))
+            # A little off the skin: the decimated brow ridge swallowed parts of the cards (the men's brows read faint).
+            for v in o.data.vertices:
+                v.co += v.normal * 0.0012
             groups["brows"].insert(0, o)
         elif "eye" in n or "low-poly" in n:
-            p = os.path.join(MPFB_USER, "eyes", "materials", face["eyes"] + ".mhmat")
-            o.data.materials.append(simple_material("eyes_" + face["eyes"], mhmat_texture(p), rough=0.2))
+            p = mhmat_texture(os.path.join(MPFB_USER, "eyes", "materials", cfg["eyes"] + ".mhmat"))
+            o.data.materials.append(eye_material(eye_texture(p, os.path.join(TEX_DIR, sex, "eyes.png"))))
             groups["eyes"].append(o)
         else:
             o.data.materials.append(uwm)
