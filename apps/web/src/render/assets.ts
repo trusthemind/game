@@ -106,11 +106,11 @@ export function getAssets(): AssetLibrary | null {
 }
 
 /**
- * The base bodies: by default the old Universal Base Characters ones (human_{m,f}_ubc.glb), since the MPFB2 bodies
- * (human_{m,f}.glb, tools/assets/mpfb-pilot) were rejected for body shape and faces; `?body=mpfb` (also after a
- * `#route?`) loads the MPFB2 ones to keep working on them.
+ * The base bodies: by default the MPFB2 ones fitted to real scans (human_{m,f}.glb, tools/assets/mpfb-pilot);
+ * `?body=ubc` (also after a `#route?`) loads the old Universal Base Characters ones (human_{m,f}_ubc.glb) to compare
+ * or roll back.
  */
-const HUMAN_SUFFIX = typeof window !== 'undefined' && /[?&]body=mpfb(&|#|$)/.test(window.location.href) ? '' : '_ubc';
+const HUMAN_SUFFIX = typeof window !== 'undefined' && /[?&]body=ubc(&|#|$)/.test(window.location.href) ? '_ubc' : '';
 
 export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibrary> {
   if (pending) return pending;
