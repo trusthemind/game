@@ -175,4 +175,21 @@ describe('secure container + death grave', () => {
     expect(m.settings.difficulty).toBe('normal');
     expect(m.version).toBe(PROFILE_VERSION);
   });
+
+  it('nudity: new profiles default to nevernude; old or invalid values migrate to nevernude; nude is kept', () => {
+    expect(createProfile().settings.nudity).toBe('nevernude');
+    const old = createProfile() as unknown as { settings: Record<string, unknown> };
+    delete old.settings.nudity;
+    expect(migrateProfile(JSON.parse(JSON.stringify(old))).settings.nudity).toBe('nevernude');
+    for (const bad of ['yes', 1, true, null, 'NUDE']) {
+      old.settings.nudity = bad;
+      expect(migrateProfile(JSON.parse(JSON.stringify(old))).settings.nudity).toBe('nevernude');
+    }
+    old.settings.nudity = 'nude';
+    expect(migrateProfile(JSON.parse(JSON.stringify(old))).settings.nudity).toBe('nude');
+    const v2 = createProfile() as unknown as Record<string, unknown> & { settings: Record<string, unknown> };
+    v2.version = 2;
+    delete v2.settings;
+    expect(migrateProfile(JSON.parse(JSON.stringify(v2))).settings.nudity).toBe('nevernude');
+  });
 });

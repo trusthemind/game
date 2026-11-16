@@ -525,9 +525,25 @@ const _idv = new THREE.Vector3();
 
 /** Per neutral geometry: its shaped copies by `${sex}|${shapeKey}`. */
 let SHAPED = new WeakMap<THREE.BufferGeometry, Map<string, THREE.BufferGeometry>>();
+/**
+ * Every shaped copy, least recently used first: past SHAPED_MAX the oldest is forgotten and its GPU buffers freed
+ * (a mesh still drawing it just uploads it again). The character creator bakes a copy per look it shows.
+ */
+const SHAPED_LRU = new Map<string, { neutral: THREE.BufferGeometry; key: string; g: THREE.BufferGeometry }>();
+const SHAPED_MAX = 160;
 /** Forgets every shaped copy (a dev carousel of ever-new looks would otherwise keep them all). */
 export function clearShapedGeometries(): void {
   SHAPED = new WeakMap();
+  SHAPED_LRU.clear();
+}
+/** Keep only the `keep` most recently used shaped copies (the creator closing). */
+export function trimShapedGeometries(keep = 0): void {
+  while (SHAPED_LRU.size > keep) {
+    const [id, e] = SHAPED_LRU.entries().next().value!;
+    SHAPED_LRU.delete(id);
+    SHAPED.get(e.neutral)?.delete(e.key);
+    e.g.dispose();
+  }
 }
 export const shapeStats = { builds: 0, ms: 0, verts: 0 };
 
@@ -548,6 +564,7 @@ export function shapeMesh(mesh: THREE.SkinnedMesh, model: THREE.Object3D, field:
   let per = SHAPED.get(neutral);
   if (!per) SHAPED.set(neutral, (per = new Map()));
   let g = per.get(key);
+  const id = `${neutral.uuid}|${key}`;
   if (!g) {
     const t0 = performance.now();
     g = bakeShape(mesh, neutral, model, field, rigid);
@@ -555,7 +572,9 @@ export function shapeMesh(mesh: THREE.SkinnedMesh, model: THREE.Object3D, field:
     shapeStats.builds++;
     shapeStats.ms += performance.now() - t0;
     shapeStats.verts += neutral.attributes.position!.count;
-  }
+  } else SHAPED_LRU.delete(id);
+  SHAPED_LRU.set(id, { neutral, key, g });
+  trimShapedGeometries(SHAPED_MAX);
   mesh.geometry = g;
 }
 

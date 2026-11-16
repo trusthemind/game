@@ -28,13 +28,14 @@ import {
   type HeadFit,
 } from './gearFit';
 import { attachSkinned, cloneHuman, pelvisRetarget, type HumanParts } from './human';
-import { clearShapedGeometries, heightFactor, restPoints, shapeKey, shapeMesh, ShapeField, withNeutral, type BodyShape, type FaceShape } from './bodyShape';
+import { clearShapedGeometries, trimShapedGeometries, heightFactor, restPoints, shapeKey, shapeMesh, ShapeField, withNeutral, type BodyShape, type FaceShape } from './bodyShape';
 import { clearFittedGeometries, fitToRest, gltfMeshNames } from './rebind';
 import { beardGeometry, buildUnderlay, disposeHairGen, hairGenMaterial, hairGeometry as proceduralHair, hairUnderlay, UNDERLAY_GLSL, type HeadClip } from './hairGen';
 import { BEARD_SPECS, GLB_HAIR, HAIR_SPECS } from './hairStyles';
 import { ASSET_HAIR, assetHairGeometry, assetHairLoaded, assetHairMaterial, disposeAssetHair, loadAssetHair } from './assetHair';
 import { FACE_ID_GLSL, IDENTITIES_OFF, faceSkinUniforms, identityField, identityTexturedMaterial } from './faceIdentity';
 import { ease, newPalm, palmFrame, reachPalm, type Arm } from './armIK';
+import { nudity, nudityVersion } from './nudity';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Appearance
@@ -1128,7 +1129,41 @@ function heightScale(src: THREE.Object3D, target: number): number {
   return target / h;
 }
 
-const humanMatCache = new Map<string, THREE.MeshStandardMaterial>();
+/**
+ * Materials by key, least recently used first: past `max` the oldest is disposed (a mesh still drawing it just
+ * compiles it again). Skin materials are keyed by the whole look, so the character creator makes one per look.
+ */
+class MatLru {
+  private m = new Map<string, THREE.MeshStandardMaterial>();
+  constructor(private max: number) {}
+  get(k: string): THREE.MeshStandardMaterial | undefined {
+    const v = this.m.get(k);
+    if (v) {
+      this.m.delete(k);
+      this.m.set(k, v);
+    }
+    return v;
+  }
+  set(k: string, v: THREE.MeshStandardMaterial): this {
+    this.m.set(k, v);
+    this.trim(this.max);
+    return this;
+  }
+  trim(keep: number): void {
+    while (this.m.size > keep) {
+      const [k, v] = this.m.entries().next().value!;
+      this.m.delete(k);
+      v.dispose();
+    }
+  }
+  values(): IterableIterator<THREE.MeshStandardMaterial> {
+    return this.m.values();
+  }
+  clear(): void {
+    this.m.clear();
+  }
+}
+const humanMatCache = new MatLru(480);
 
 /**
  * Skin micro-detail (tools/assets/mpfb-pilot/skin_detail.py): pores, the fine criss-cross creases and grain from
@@ -1822,9 +1857,11 @@ export class CharacterView {
         m.castShadow = shadows && human.underwear.includes(m);
         m.frustumCulled = false;
       }
-      // The `anatomy` group stays hidden (nevernude); when shown it is skin like the body.
+      // The `anatomy` group: skin like the body (its tone, shaped and skinned with it); drawn only with the
+      // 'nude' setting where no clothing covers it (coverUnderwear).
       for (const m of human.anatomy) {
         m.material = humanBodyMaterial(human.srcMaterial, look, u, false, false);
+        m.castShadow = shadows;
         m.frustumCulled = false;
       }
       const bindK = heightScale(src, look.sex === 'f' ? 1.66 : 1.8);
@@ -1973,14 +2010,24 @@ export class CharacterView {
     }
   }
 
-  /** The underwear pieces under a garment that covers them aren't drawn (they'd show through it in places). */
+  /** The nudity setting's version this body last applied (coverUnderwear; update() re-applies on a change). */
+  private nudeV = -1;
+  /**
+   * What's drawn over each region (userData.covers: 'top' the chest, 'pants' the groin): a garment covering it
+   * hides the underwear and the anatomy alike (they'd show through it in places). Uncovered: the underwear
+   * ('nevernude', the default) or the anatomy ('nude').
+   */
   private coverUnderwear(): void {
     const human = this.human;
-    if (!human?.underwear.length) return;
+    this.nudeV = nudityVersion();
+    if (!human || (!human.underwear.length && !human.anatomy.length)) return;
     const kit = kitFor(this.look);
     const top = kit.some((k) => k.slot === 'top');
     const pants = kit.some((k) => k.slot === 'pants' || (k.slot === 'top' && !!getDef(k.id).clothing?.full));
-    for (const m of human.underwear) m.visible = !(m.userData.covers === 'top' ? top : pants);
+    const nude = nudity() === 'nude';
+    const bare = (m: THREE.Object3D) => !(m.userData.covers === 'top' ? top : pants);
+    for (const m of human.underwear) m.visible = bare(m) && !nude;
+    for (const m of human.anatomy) m.visible = bare(m) && nude;
   }
 
   /** Where the clothes just put on end round the waist, for the body's mask (measureCover): once per body and kit. */
@@ -2170,6 +2217,7 @@ export class CharacterView {
     this.measureCover();
     this.buildHair();
     for (const m of this.bodyMeshes) m.material = humanBodyMaterial(this.human.srcMaterial, next, this.u, this.dead, true);
+    for (const m of this.human.anatomy) m.material = humanBodyMaterial(this.human.srcMaterial, next, this.u, this.dead, false);
     this.coverUnderwear();
     this.applyShape();
   }
@@ -2779,6 +2827,7 @@ export class CharacterView {
     this.root.rotation.y = Math.PI / 2 - a.facing;
     this.root.visible = visible;
     this.hidden = !visible;
+    if (this.nudeV !== nudityVersion()) this.coverUnderwear();
     this.syncGear(a.eq, a.active);
     if (this.visor) {
       // Lowered or raised: a quarter-second swing on its pins (snapped when the helmet is first put on).
@@ -3527,6 +3576,7 @@ export class CharacterView {
       m.material = this.human
         ? humanBodyMaterial(this.human.srcMaterial, this.look, this.u, true, this.outfitMeshes.length > 0)
         : bodyMaterial(this.look, this.u, true);
+    for (const m of this.human?.anatomy ?? []) m.material = humanBodyMaterial(this.human!.srcMaterial, this.look, this.u, true, false);
     if (this.held && this.heldKind === 'gun') {
       // Drop the gun next to the body.
       this.held.position.set(0.5, 0.05, 0.4);
@@ -3623,17 +3673,33 @@ export function disposeCharacterCaches(): void {
   clearFittedGeometries();
 }
 
+/**
+ * The character creator closed: give back most of what its pictures and previews baked (shaped bodies, per-look
+ * skin materials), keeping the most recent (the look just saved is drawn in the hideout next).
+ */
+export function trimCharacterCaches(): void {
+  trimShapedGeometries(24);
+  humanMatCache.trim(96);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Portraits for dialogue / survivor cards
 // ─────────────────────────────────────────────────────────────────────────────
 
 const portraitCache = new Map<string, string>();
+/** Portraits kept (LRU): the dialogue / survivor cards' few, not every picture ever drawn. */
+const PORTRAIT_CACHE_MAX = 64;
 
-/** A head shot ('head') or the whole figure ('body', for build pictures), as a PNG data URL (cached). */
-export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, framing: 'head' | 'face' | 'body' | 'hair' | 'back' | 'mug' | 'side' | 'bodyback' | 'torso' | 'profile' = 'head', slots: Equipment['slots'] = {} as Equipment['slots'], yaw?: number): string {
-  const key = JSON.stringify(look) + size + framing + JSON.stringify(slots) + (yaw ?? '');
+/** A head shot ('head') or the whole figure ('body', for build pictures), as a PNG data URL (cached unless
+ * `transient`: the creator's tiles keep their own cache, lookThumbs.ts). */
+export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, framing: 'head' | 'face' | 'body' | 'hair' | 'back' | 'mug' | 'side' | 'bodyback' | 'torso' | 'profile' = 'head', slots: Equipment['slots'] = {} as Equipment['slots'], yaw?: number, transient = false): string {
+  const key = JSON.stringify(look) + size + framing + JSON.stringify(slots) + (yaw ?? '') + nudity();
   const hit = portraitCache.get(key);
-  if (hit) return hit;
+  if (hit) {
+    portraitCache.delete(key);
+    portraitCache.set(key, hit);
+    return hit;
+  }
   // Shared with the item pictures (offscreen.ts), so everything they change is set here too.
   const r = offscreenRenderer();
   r.setPixelRatio(1);
@@ -3729,7 +3795,10 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, 
   }
   r.render(scene, cam);
   const url = r.domElement.toDataURL('image/png');
-  portraitCache.set(key, url);
+  if (!transient) {
+    portraitCache.set(key, url);
+    while (portraitCache.size > PORTRAIT_CACHE_MAX) portraitCache.delete(portraitCache.keys().next().value!);
+  }
   view.dispose();
   (u.uFow.value as THREE.DataTexture).dispose();
   return url;

@@ -13,7 +13,8 @@ export interface HumanParts {
   /** The `underwear` group (MPFB bodies): shown by default (nevernude), each piece hidden under what covers it
    * (userData.covers: 'top' a bra, 'pants' briefs / trunks). */
   underwear: THREE.SkinnedMesh[];
-  /** The `anatomy` group (MPFB bodies): hidden by default; drawn in the body's skin when shown. */
+  /** The `anatomy` group (MPFB bodies), split like the underwear (userData.covers): hidden by default
+   * ('nevernude'); drawn in the body's skin with the 'nude' setting where nothing covers it. */
   anatomy: THREE.SkinnedMesh[];
   /** Every skinned mesh that belongs to the body (for material swaps). */
   meshes: THREE.SkinnedMesh[];
@@ -58,7 +59,7 @@ export function cloneHuman(lib: AssetLibrary, sex: 'm' | 'f'): HumanParts | null
   // A node's name is on its mesh, or on the Group a multi-primitive mesh comes in as.
   const inGroup = (name: string) => meshes.filter((m) => m.name === name || m.parent?.name === name);
   const underwear = inGroup('underwear').flatMap(splitUnderwear);
-  const anatomy = inGroup('anatomy');
+  const anatomy = inGroup('anatomy').flatMap(splitUnderwear);
   const rest = meshes.filter((m) => !underwear.includes(m) && !anatomy.includes(m));
   const byMat = (re: RegExp) => rest.find((m) => re.test(matName(m))) ?? null;
   const body =

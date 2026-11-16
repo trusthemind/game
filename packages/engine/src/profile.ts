@@ -32,7 +32,17 @@ export interface Settings {
   difficulty: Difficulty;
   /** Bandage bleeds / splint fractures automatically when the shooting stops. */
   autoHeal: boolean;
+  /**
+   * How uncovered bodies are drawn (client rendering only; characters are adults): 'nevernude' (default) shows
+   * underwear where no clothing covers the body, 'nude' the bare body there. Clothing always covers.
+   */
+  nudity: Nudity;
 }
+
+export type Nudity = 'nevernude' | 'nude';
+export const NUDITY_VALUES: readonly Nudity[] = ['nevernude', 'nude'];
+/** A stored nudity value, or the default ('nevernude') for anything else. */
+export const tidyNudity = (v: unknown): Nudity => (v === 'nude' ? 'nude' : 'nevernude');
 
 /** Player character look (rendering only; persisted so you see the same survivor everywhere). */
 export interface PlayerLook {
@@ -123,7 +133,7 @@ export function createProfile(name = 'Survivor', id = randomId(), look: PlayerLo
     companionEq: {},
     companions: {},
     lastFreeKit: 0,
-    settings: { quality: 'auto', showPerf: false, volume: 0.7, difficulty: 'normal', autoHeal: true },
+    settings: { quality: 'auto', showPerf: false, volume: 0.7, difficulty: 'normal', autoHeal: true, nudity: 'nevernude' },
     look: { ...look },
     grave: null,
     tasks: {},
@@ -178,8 +188,10 @@ export function migrateProfile(raw: unknown): Profile {
     out.version = 2;
   }
   for (const id of Object.keys(NPCS)) out.npcs[id] ??= { ...newRelationship(), affinity: INITIAL_AFFINITY[id] ?? 0 };
-  out.settings ??= { quality: 'auto', showPerf: false, volume: 0.7, difficulty: 'normal', autoHeal: true };
+  out.settings ??= { quality: 'auto', showPerf: false, volume: 0.7, difficulty: 'normal', autoHeal: true, nudity: 'nevernude' };
   out.settings.autoHeal ??= true;
+  // Added without a version bump: older saves (no field) and anything unrecognised read as 'nevernude'.
+  out.settings.nudity = tidyNudity(out.settings.nudity);
   if (out.version < 3) {
     // v2 → v3: secure container slot, difficulty, death grave.
     out.equipment.slots.secure ??= null;

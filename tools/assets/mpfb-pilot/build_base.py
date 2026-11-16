@@ -92,6 +92,8 @@ TO_MPFB = {"Head": "head", "root": "Root"}
 # bone directions bent the torso into a deep sway-back with the head pushed forward and the shoulders pulled back.
 # Our clips are rotation-only on fixed rest rotations (fix_skeleton.mjs), so they play the same on either spine shape;
 # only the limbs (A-pose -> T-pose) need the swing.
+# deg about the lateral axis, + = flexion (forward); see the T-pose loop. "" -> off.
+POSTURE = {k: float(v) for k, v in (kv.split(":") for kv in os.environ.get("ASHFALL_POSTURE", "spine_02:-3,spine_03:-8,neck_01:-16").split(",") if kv)}
 CLAV_BACK = float(os.environ.get("ASHFALL_CLAV_BACK", "10"))  # deg, see the T-pose loop
 NO_AIM = {"pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "clavicle_l", "clavicle_r"}
 def export(rig, path):
@@ -407,6 +409,20 @@ def build(sex):
     for name in order:
         ours_name = {"head": "Head", "Root": "root"}.get(name, name)
         child = AIM.get(ours_name)
+        if name in POSTURE or (name == "head" and POSTURE):
+            # Upright stance: MPFB's rest has the head forward of the shoulders and a rounded upper back (UBC: chest
+            # up, neck over the shoulders); our clips add their own curl on top -> hunched in game. Extend the
+            # thoracic spine and the neck about their joints (lateral axis), the head turned back by the sum so the
+            # face still looks level.
+            pb = pbs[name]
+            bpy.context.view_layer.update()
+            head = pb.head.copy()
+            ang = POSTURE[name] if name in POSTURE else -sum(POSTURE.values())
+            R = Matrix.Rotation(math.radians(ang), 4, "X")
+            pb.matrix = Matrix.Translation(head) @ R @ Matrix.Translation(-head) @ pb.matrix
+            bpy.context.view_layer.update()
+            print("POSTURE", name, ang, "tail z/y", round(pb.tail.z, 3), round(pb.tail.y, 3), flush=True)
+            continue
         if ours_name in ("clavicle_l", "clavicle_r") and CLAV_BACK:
             # Shoulders drawn back (retracted) round the clavicle's inner end: MPFB's rest shoulders sit ~8 cm ahead
             # of the hips (ours ~3.5); with our Idle that read as round-shouldered / hunched.

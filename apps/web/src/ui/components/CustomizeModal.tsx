@@ -27,6 +27,8 @@ import { useProfile } from '../../state/profileStore';
 import { CharacterPreview, type PreviewFraming } from './CharacterPreview';
 import { HAIR, LookEditor, type Tab } from './LookEditor';
 import { useEscape } from './useEscape';
+import { pauseLookThumbs, prewarmLookThumbs } from '../../render/lookThumbs';
+import { trimCharacterCaches } from '../../render/character';
 
 /** A shape/face that equals a preset is stored as that preset's id (so it reads as chosen in the tiles). */
 function tidy(look: PlayerLook): PlayerLook {
@@ -95,6 +97,17 @@ export function CustomizeModal({ onClose }: { onClose: () => void }) {
     setFraming(t === 'body' || t === 'skin' ? 'body' : 'face');
   };
   useEffect(() => () => void (leave.current && clearTimeout(leave.current)), []);
+  // The tiles' one-off loads (the modelled hair) start while the first tab is up; closing gives back what the
+  // creator's pictures and previews baked (they're rebuilt on demand).
+  useEffect(() => {
+    const t = window.setTimeout(prewarmLookThumbs, 300);
+    return () => {
+      clearTimeout(t);
+      trimCharacterCaches();
+    };
+  }, []);
+  // The live preview rebuilds first: the tile pictures wait while it changes (a slider drag, a sweep of the tiles).
+  useEffect(() => pauseLookThumbs(250), [shown]);
 
   const apply = (patch: Partial<PlayerLook>) => {
     setHover(null);

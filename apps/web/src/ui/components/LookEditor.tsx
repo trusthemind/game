@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
   BEARD_STYLES,
   FACE_GROUPS,
@@ -23,7 +23,12 @@ import {
   type Sex,
 } from '@ashfall/engine';
 import { SKIN_TONES } from '../../render/character';
-import { getLookThumb, onLookThumbs, trimLookThumbs, type LookThumbKind } from '../../render/lookThumbs';
+import { UBC_BODIES } from '../../render/assets';
+import { IDENTITIES_OFF } from '../../render/faceIdentity';
+import { useProfile } from '../../state/profileStore';
+import { cancelLookThumb, getLookThumb, lookThumbKey, lookThumbStale, lookThumbUrl, onLookThumb, trimLookThumbs, type LookThumbKind } from '../../render/lookThumbs';
+
+const NO_IDENTITIES = UBC_BODIES || IDENTITIES_OFF;
 
 /** The styles offered per sex (engine hair.ts), grouped in display order. */
 export const HAIR: Record<Sex, string[]> = { m: hairStylesFor('m').map((h) => h.id), f: hairStylesFor('f').map((h) => h.id) };
@@ -103,10 +108,48 @@ const bodyThumb = (sex: Sex, skin: number, shape: string): PlayerLook => ({
   sex, skin, shape, hair: sex === 'm' ? 'short' : 'ponytail', hairColor: BASE_HAIR_COLOR, beard: 'none', face: 'classic',
 });
 
-function useLookThumb(look: PlayerLook, kind: LookThumbKind): string | null {
-  const [, bump] = useState(0);
-  useEffect(() => onLookThumbs(() => bump((n) => n + 1)), []);
-  return getLookThumb(look, kind);
+/** Tiles near the viewport ask for their picture; one shared observer for all of them. */
+const seen = new WeakMap<Element, (on: boolean) => void>();
+let io: IntersectionObserver | null = null;
+function observe(el: Element, fn: (on: boolean) => void): () => void {
+  if (typeof IntersectionObserver === 'undefined') {
+    fn(true);
+    return () => {};
+  }
+  io ??= new IntersectionObserver((es) => {
+    for (const e of es) seen.get(e.target)?.(e.isIntersecting);
+  }, { rootMargin: '120px' });
+  seen.set(el, fn);
+  io.observe(el);
+  return () => {
+    io?.unobserve(el);
+    seen.delete(el);
+  };
+}
+
+/**
+ * A tile's picture: asked for only while the tile is on screen (or about to be), heard only for its own key, and
+ * when the key changes (another skin or hair colour) the old picture stays up until the new one lands.
+ */
+function useLookThumb(el: Element | null, look: PlayerLook, kind: LookThumbKind): string | null {
+  // The nudity setting is part of the key (main.tsx updates it before components hear the store).
+  useProfile((s) => s.profile?.settings.nudity);
+  const key = lookThumbKey(look, kind);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => (el ? observe(el, setVisible) : undefined), [el]);
+  const url = useSyncExternalStore(
+    useCallback((cb: () => void) => onLookThumb(key, cb), [key]),
+    () => lookThumbUrl(key),
+  );
+  useEffect(() => {
+    if (!visible || url) return;
+    getLookThumb(look, kind, key);
+    return () => cancelLookThumb(key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, url, key]);
+  const last = useRef<string | null>(null);
+  if (url) last.current = url;
+  return url ?? last.current ?? lookThumbStale(key);
 }
 
 /** One option: a picture (or a colour chip), its name, highlighted when chosen. Hover/focus previews it. */
@@ -148,8 +191,9 @@ function Tile({
 }
 
 function Thumb({ look, kind }: { look: PlayerLook; kind: LookThumbKind }) {
-  const url = useLookThumb(look, kind);
-  return url ? <img src={url} alt="" draggable={false} /> : <i className="look-thumb-wait" />;
+  const [node, setNode] = useState<Element | null>(null);
+  const url = useLookThumb(node, look, kind);
+  return url ? <img ref={setNode} src={url} alt="" draggable={false} /> : <i ref={setNode} className="look-thumb-wait" />;
 }
 
 /** Arrow keys move between the options of a group (radio-group behaviour); Tab leaves it. */
@@ -163,6 +207,33 @@ function arrowNav(e: ReactKeyboardEvent<HTMLDivElement>) {
   const n = items.length;
   const j = e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : (i + (e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1) + n) % n;
   items[j]!.focus();
+}
+
+/** Nudity setting (Profile → Settings has it too): a profile setting, not part of the look. */
+export const NUDITY_HELP = 'Characters are adults. Nude shows unclothed body parts when no clothing covers them; clothing always covers.';
+function NudityToggle() {
+  const nudity = useProfile((s) => s.profile?.settings.nudity ?? 'nevernude');
+  const id = useId();
+  return (
+    <section className="look-group">
+      <h4 id={id}>Nudity</h4>
+      <div className="look-seg" role="radiogroup" aria-labelledby={id} onKeyDown={arrowNav}>
+        {(['nevernude', 'nude'] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            role="radio"
+            aria-checked={nudity === v}
+            className={`look-seg-btn${nudity === v ? ' on' : ''}`}
+            onClick={() => useProfile.getState().mutate((d) => (d.settings.nudity = v))}
+          >
+            {v === 'nude' ? 'Nude (adults only)' : 'Never nude'}
+          </button>
+        ))}
+      </div>
+      <p className="dim" style={{ fontSize: 12, margin: 0 }}>{NUDITY_HELP}</p>
+    </section>
+  );
 }
 
 function Group({ label, children, chips }: { label: string; children: ReactNode; chips?: boolean }) {
@@ -356,6 +427,7 @@ export function LookEditor({ draft, tab, setTab, apply, preview, setSex, bodyBas
             />
           ))}
         </Group>
+        <NudityToggle />
         <FineTune
           title="Fine tune build"
           keys={SHAPE_KEYS}
@@ -374,7 +446,8 @@ export function LookEditor({ draft, tab, setTab, apply, preview, setSex, bodyBas
       <>
         {/* Face identities (engine identity.ts; MPFB bodies): whole different people. "Mix in" blends a second one
             30% (picked again: off). The slider presets and parts below tune on top. */}
-        <Group label="Who">
+        {/* (Not on the old UBC bodies or with ?ids=0: they have no identities, every tile would be the same face.) */}
+        {!NO_IDENTITIES && <Group label="Who">
           {[null, ...IDENTITIES[sex]].map((d) => (
             <Tile
               key={d?.id ?? 'base'}
@@ -385,8 +458,8 @@ export function LookEditor({ draft, tab, setTab, apply, preview, setSex, bodyBas
               onPick={() => apply({ faceId: d?.id ?? undefined })}
             />
           ))}
-        </Group>
-        {mix.length > 0 && (
+        </Group>}
+        {mix.length > 0 && !NO_IDENTITIES && (
           <Group label="Mix in">
             {IDENTITIES[sex]
               .filter((d) => d.id !== mix[0]!.id)

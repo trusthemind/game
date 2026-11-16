@@ -5,6 +5,7 @@ import { App } from './ui/App';
 import { useApp } from './state/appStore';
 import { useProfile } from './state/profileStore';
 import { audio } from './audio/AudioEngine';
+import { setNudity } from './render/nudity';
 import './styles/global.css';
 import './ui/screens/hideout.css';
 import './ui/components/dialogue.css';
@@ -31,6 +32,10 @@ createRoot(document.getElementById('root')!).render(
     <App />
   ),
 );
+
+// Every human drawn follows the profile's nudity setting ('nevernude' until a profile is loaded).
+setNudity(useProfile.getState().profile?.settings.nudity);
+useProfile.subscribe((s) => setNudity(s.profile?.settings.nudity));
 
 // Button clicks get a soft UI tick; first gesture also unlocks WebAudio.
 document.addEventListener(

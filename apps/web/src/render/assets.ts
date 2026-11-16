@@ -111,6 +111,8 @@ export function getAssets(): AssetLibrary | null {
  * or roll back.
  */
 const HUMAN_SUFFIX = typeof window !== 'undefined' && /[?&]body=ubc(&|#|$)/.test(window.location.href) ? '_ubc' : '';
+/** The old UBC bodies are loaded: they have no face identities. */
+export const UBC_BODIES = HUMAN_SUFFIX === '_ubc';
 
 export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibrary> {
   if (pending) return pending;

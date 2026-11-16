@@ -54,8 +54,16 @@ export function loadAssetHair(): Promise<Map<string, THREE.Mesh>> {
         // (quantised attributes as floats first: applyMatrix4 on a normalised int16 one would clamp to [-1, 1])
         const geo = new THREE.BufferGeometry();
         for (const [k, a] of Object.entries(mesh.geometry.attributes)) {
-          const f = new Float32Array(a.count * a.itemSize);
-          for (let i = 0; i < a.count; i++) for (let c = 0; c < a.itemSize; c++) f[i * a.itemSize + c] = a.getComponent(i, c);
+          const n = a.count * a.itemSize;
+          const f = new Float32Array(n);
+          const src = (a as THREE.BufferAttribute).isInterleavedBufferAttribute ? null : (a as THREE.BufferAttribute).array;
+          if (src && !a.normalized) for (let i = 0; i < n; i++) f[i] = src[i]!;
+          else if (src && a.normalized) {
+            // (as three's denormalize: signed types clamp at -1)
+            const s = src instanceof Int8Array ? 127 : src instanceof Uint8Array ? 255 : src instanceof Int16Array ? 32767 : src instanceof Uint16Array ? 65535 : src instanceof Int32Array ? 2147483647 : src instanceof Uint32Array ? 4294967295 : 1;
+            const signed = src instanceof Int8Array || src instanceof Int16Array || src instanceof Int32Array;
+            for (let i = 0; i < n; i++) f[i] = signed ? Math.max(src[i]! / s, -1) : src[i]! / s;
+          } else for (let i = 0; i < a.count; i++) for (let c = 0; c < a.itemSize; c++) f[i * a.itemSize + c] = a.getComponent(i, c);
           geo.setAttribute(k, new THREE.BufferAttribute(f, a.itemSize));
         }
         geo.setIndex(mesh.geometry.index);

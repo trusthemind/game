@@ -242,18 +242,99 @@ function radius(f: Frame, az: number, el: number): number {
   return THREE.MathUtils.lerp(THREE.MathUtils.lerp(r(e0, a0), r(e0, a1), ta), THREE.MathUtils.lerp(r(e0 + 1, a0), r(e0 + 1, a1), ta), te);
 }
 
-/** Nearest body point (index into Frame.pts) to p; `headOnly` searches only the head's own. */
+/**
+ * A uniform grid over the first `n` of Frame.pts (CSR, ascending point order per cell), for exact nearest-point
+ * queries: a style's thousands of vertices each asked for their nearest of thousands of body points was most of
+ * a hairstyle's build time.
+ */
+interface PtGrid {
+  cell: number;
+  x0: number;
+  y0: number;
+  z0: number;
+  nx: number;
+  ny: number;
+  nz: number;
+  start: Int32Array;
+  items: Int32Array;
+}
+const GRIDS = new WeakMap<Frame, { all?: PtGrid; head?: PtGrid }>();
+function ptGrid(P: Float32Array, n: number, cell: number): PtGrid {
+  let ax = Infinity, ay = Infinity, az = Infinity, bx = -Infinity, by = -Infinity, bz = -Infinity;
+  for (let j = 0; j < n; j++) {
+    const x = P[j * 3]!, y = P[j * 3 + 1]!, z = P[j * 3 + 2]!;
+    if (x < ax) ax = x;
+    if (y < ay) ay = y;
+    if (z < az) az = z;
+    if (x > bx) bx = x;
+    if (y > by) by = y;
+    if (z > bz) bz = z;
+  }
+  const x0 = Math.floor(ax / cell), y0 = Math.floor(ay / cell), z0 = Math.floor(az / cell);
+  const nx = Math.floor(bx / cell) - x0 + 1, ny = Math.floor(by / cell) - y0 + 1, nz = Math.floor(bz / cell) - z0 + 1;
+  const cells = nx * ny * nz;
+  const of = new Int32Array(n);
+  const start = new Int32Array(cells + 1);
+  for (let j = 0; j < n; j++) {
+    const k = ((Math.floor(P[j * 3]! / cell) - x0) * ny + (Math.floor(P[j * 3 + 1]! / cell) - y0)) * nz + (Math.floor(P[j * 3 + 2]! / cell) - z0);
+    of[j] = k;
+    start[k + 1]!++;
+  }
+  for (let k = 0; k < cells; k++) start[k + 1]! += start[k]!;
+  const fill = start.slice(0, cells);
+  const items = new Int32Array(n);
+  for (let j = 0; j < n; j++) items[fill[of[j]!]!++] = j;
+  return { cell, x0, y0, z0, nx, ny, nz, start, items };
+}
+
+/** Nearest body point (index into Frame.pts) to p; `headOnly` searches only the head's own. Ties: the lowest index
+ * (as a plain scan in order finds). */
 function nearest(f: Frame, p: THREE.Vector3, headOnly: boolean): number {
   const n = headOnly ? f.headPts : f.pts.length / 3;
+  const P = f.pts;
+  if (!n) return 0;
+  let gs = GRIDS.get(f);
+  if (!gs) GRIDS.set(f, (gs = {}));
+  const g = headOnly ? (gs.head ??= ptGrid(P, n, 0.02)) : (gs.all ??= ptGrid(P, n, 0.03));
+  const { cell, nx, ny, nz, start, items } = g;
+  const cx = Math.floor(p.x / cell) - g.x0, cy = Math.floor(p.y / cell) - g.y0, cz = Math.floor(p.z / cell) - g.z0;
+  // Distance from p to the grid's box: rings nearer than that hold nothing.
+  const lox = g.x0 * cell, loy = g.y0 * cell, loz = g.z0 * cell;
+  const ox = Math.max(0, lox - p.x, p.x - (lox + nx * cell));
+  const oy = Math.max(0, loy - p.y, p.y - (loy + ny * cell));
+  const oz = Math.max(0, loz - p.z, p.z - (loz + nz * cell));
+  const outside = Math.sqrt(ox * ox + oy * oy + oz * oz);
+  const maxR = Math.max(nx, ny, nz) + Math.max(Math.abs(cx), Math.abs(cy), Math.abs(cz)) + 1;
   let best = 0;
   let bd = Infinity;
-  const P = f.pts;
-  for (let j = 0; j < n; j++) {
-    const dx = P[j * 3]! - p.x;
-    const dy = P[j * 3 + 1]! - p.y;
-    const dz = P[j * 3 + 2]! - p.z;
-    const d = dx * dx + dy * dy + dz * dz;
-    if (d < bd) (bd = d), (best = j);
+  for (let r = 0; r <= maxR; r++) {
+    // Every point not yet searched is at least (r - 1) cells (plus the in-cell offset ≥ 0) away from p.
+    if (bd < Infinity) {
+      const minD = Math.max(0, (r - 1) * cell, outside);
+      if (minD * minD > bd) break;
+    }
+    const x1 = Math.max(cx - r, 0), x2 = Math.min(cx + r, nx - 1);
+    const y1 = Math.max(cy - r, 0), y2 = Math.min(cy + r, ny - 1);
+    const z1 = Math.max(cz - r, 0), z2 = Math.min(cz + r, nz - 1);
+    for (let x = x1; x <= x2; x++) {
+      const ex = x === cx - r || x === cx + r;
+      for (let y = y1; y <= y2; y++) {
+        const exy = ex || y === cy - r || y === cy + r;
+        for (let z = z1; z <= z2; z++) {
+          if (!exy && z !== cz - r && z !== cz + r) continue;
+          const ci = (x * ny + y) * nz + z;
+          const e = start[ci + 1]!;
+          for (let s = start[ci]!; s < e; s++) {
+            const j = items[s]!;
+            const dx = P[j * 3]! - p.x;
+            const dy = P[j * 3 + 1]! - p.y;
+            const dz = P[j * 3 + 2]! - p.z;
+            const d = dx * dx + dy * dy + dz * dz;
+            if (d < bd || (d === bd && j < best)) (bd = d), (best = j);
+          }
+        }
+      }
+    }
   }
   return best;
 }

@@ -92,39 +92,91 @@ export function identityDeltas(g: THREE.BufferGeometry, mix: IdentityMix | null 
  */
 export class IdentityField {
   private cell = 0.02;
-  private grid = new Map<string, number[]>();
+  /** Integer cell grid (CSR): cells [x0..x0+nx) x … ; start[c]..start[c+1] index into items. */
+  private x0 = 0;
+  private y0 = 0;
+  private z0 = 0;
+  private nx = 0;
+  private ny = 0;
+  private nz = 0;
+  private start: Int32Array;
+  private items: Int32Array;
+  /** Bounding box of the skin points grown by the fade reach: outside it the field adds nothing. */
+  private lo = new Float64Array(3);
+  private hi = new Float64Array(3);
   constructor(
     private P: Float32Array,
     private D: Float32Array,
   ) {
     const n = P.length / 3;
+    const c = this.cell;
+    let ax = Infinity, ay = Infinity, az = Infinity, bx = -Infinity, by = -Infinity, bz = -Infinity;
     for (let i = 0; i < n; i++) {
-      const k = this.key(P[i * 3]!, P[i * 3 + 1]!, P[i * 3 + 2]!);
-      let a = this.grid.get(k);
-      if (!a) this.grid.set(k, (a = []));
-      a.push(i);
+      const x = P[i * 3]!, y = P[i * 3 + 1]!, z = P[i * 3 + 2]!;
+      if (x < ax) ax = x;
+      if (y < ay) ay = y;
+      if (z < az) az = z;
+      if (x > bx) bx = x;
+      if (y > by) by = y;
+      if (z > bz) bz = z;
     }
-  }
-  private key(x: number, y: number, z: number): string {
-    return `${Math.floor(x / this.cell)},${Math.floor(y / this.cell)},${Math.floor(z / this.cell)}`;
+    // Nearest skin point ≥ 7.5 cm away ⇒ fade 0 (exact early-out, same result as the full search).
+    const R = 0.0751;
+    this.lo.set([ax - R, ay - R, az - R]);
+    this.hi.set([bx + R, by + R, bz + R]);
+    this.x0 = Math.floor(ax / c);
+    this.y0 = Math.floor(ay / c);
+    this.z0 = Math.floor(az / c);
+    this.nx = Math.max(1, Math.floor(bx / c) - this.x0 + 1);
+    this.ny = Math.max(1, Math.floor(by / c) - this.y0 + 1);
+    this.nz = Math.max(1, Math.floor(bz / c) - this.z0 + 1);
+    const cells = this.nx * this.ny * this.nz;
+    const cellOf = new Int32Array(n);
+    const start = new Int32Array(cells + 1);
+    for (let i = 0; i < n; i++) {
+      const k =
+        ((Math.floor(P[i * 3]! / c) - this.x0) * this.ny + (Math.floor(P[i * 3 + 1]! / c) - this.y0)) * this.nz +
+        (Math.floor(P[i * 3 + 2]! / c) - this.z0);
+      cellOf[i] = k;
+      start[k + 1]!++;
+    }
+    for (let k = 0; k < cells; k++) start[k + 1]! += start[k]!;
+    const fill = start.slice(0, cells);
+    const items = new Int32Array(n);
+    // Same in-cell order as before (ascending index), so ties resolve identically.
+    for (let i = 0; i < n; i++) items[fill[cellOf[i]!]!++] = i;
+    this.start = start;
+    this.items = items;
   }
   private best = new Float64Array(6);
   private bi = new Int32Array(6);
   /** Adds the identity's displacement at p (model space) to out. */
   add(p: THREE.Vector3, out: THREE.Vector3): void {
+    const lo = this.lo, hi = this.hi;
+    if (p.x < lo[0]! || p.y < lo[1]! || p.z < lo[2]! || p.x > hi[0]! || p.y > hi[1]! || p.z > hi[2]!) return;
     const K = 6;
     const best = this.best.fill(Infinity);
     const bi = this.bi.fill(-1);
-    const cx = Math.floor(p.x / this.cell), cy = Math.floor(p.y / this.cell), cz = Math.floor(p.z / this.cell);
+    const cx = Math.floor(p.x / this.cell) - this.x0, cy = Math.floor(p.y / this.cell) - this.y0, cz = Math.floor(p.z / this.cell) - this.z0;
     const P = this.P;
+    const { nx, ny, nz, start, items } = this;
     for (let r = 1; r <= 4; r++) {
-      for (let x = -r; x <= r; x++)
-        for (let y = -r; y <= r; y++)
+      for (let x = -r; x <= r; x++) {
+        const gx = cx + x;
+        if (gx < 0 || gx >= nx) continue;
+        const ex = Math.abs(x) === r;
+        for (let y = -r; y <= r; y++) {
+          const gy = cy + y;
+          if (gy < 0 || gy >= ny) continue;
+          const exy = ex || Math.abs(y) === r;
           for (let z = -r; z <= r; z++) {
-            if (Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) !== r && r > 1) continue;
-            const a = this.grid.get(`${cx + x},${cy + y},${cz + z}`);
-            if (!a) continue;
-            for (const i of a) {
+            if (r > 1 && !exy && Math.abs(z) !== r) continue;
+            const gz = cz + z;
+            if (gz < 0 || gz >= nz) continue;
+            const ci = (gx * ny + gy) * nz + gz;
+            const e = start[ci + 1]!;
+            for (let s = start[ci]!; s < e; s++) {
+              const i = items[s]!;
               const dx = P[i * 3]! - p.x, dy = P[i * 3 + 1]! - p.y, dz = P[i * 3 + 2]! - p.z;
               const d = dx * dx + dy * dy + dz * dz;
               if (d >= best[K - 1]!) continue;
@@ -138,6 +190,8 @@ export class IdentityField {
               bi[j] = i;
             }
           }
+        }
+      }
       // Done once the K-th nearest lies within the searched cube.
       if (bi[K - 1]! >= 0 && Math.sqrt(best[K - 1]!) < (r - 0.5) * this.cell) break;
     }

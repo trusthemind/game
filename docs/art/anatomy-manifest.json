@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "note": "Optional nude setting of the MPFB base bodies: matter-of-fact, non-sexualised adult anatomy as the toggleable mesh group `anatomy` (CharLab: #charlab?view=mpfbbase&sex=m|f&anatomy=1&solo=1).",
+ "note": "Optional nude setting of the MPFB base bodies: matter-of-fact, non-sexualised adult anatomy as the toggleable mesh group `anatomy` (CharLab: #charlab?view=mpfbbase&sex=m|f&anatomy=1&solo=1). In game: Profile -> Settings and Customize -> Body 'Nudity' (profile settings.nudity, default 'nevernude'; 'nude' shows the group where no clothing covers the groin; dev override ?nude=1). The female group covers the groin only: in 'nude' the female chest is the base body's (no separate nipple geometry or texture).",
  "assets": [
   {
    "id": "anatomy_m",

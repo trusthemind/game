@@ -35,6 +35,7 @@ import { GearPanel } from '../inventory/GearPanel';
 import { ItemInspector } from '../inventory/ItemInspector';
 import { CharacterPreview } from '../components/CharacterPreview';
 import { CustomizeModal, firstCustomize } from '../components/CustomizeModal';
+import { NUDITY_HELP } from '../components/LookEditor';
 import { useEscape } from '../components/useEscape';
 import { makeProfileHost } from '../inventory/hosts';
 import { ItemArt } from '../inventory/ItemArt';
@@ -531,6 +532,14 @@ function StatsTab() {
               }}
             />
           </label>
+          <label className="row" title={NUDITY_HELP}>
+            <span>Nudity</span>
+            <select className="input" value={profile.settings.nudity ?? 'nevernude'} onChange={(e) => useProfile.getState().mutate((d) => (d.settings.nudity = e.target.value === 'nude' ? 'nude' : 'nevernude'))}>
+              <option value="nevernude">Never nude</option>
+              <option value="nude">Nude (adults only)</option>
+            </select>
+          </label>
+          <p className="dim" style={{ fontSize: 12, margin: 0 }}>{NUDITY_HELP}</p>
           <label className="row">
             <span>Auto-heal bleeds and fractures out of combat</span>
             <input type="checkbox" checked={profile.settings.autoHeal ?? true} onChange={(e) => useProfile.getState().mutate((d) => (d.settings.autoHeal = e.target.checked))} />
