@@ -25,21 +25,24 @@ export const SHAPE_KEYS: readonly (keyof BodyShape)[] = ['height', 'shoulders', 
 export const NEUTRAL_SHAPE: BodyShape = { height: 0, shoulders: 0, chest: 0, bust: 0, waist: 0, belly: 0, hips: 0, glutes: 0, thighs: 0, calves: 0, arms: 0 };
 
 const P = (s: Partial<BodyShape>): BodyShape => ({ ...NEUTRAL_SHAPE, ...s });
+// Calibrated against ANSUR II's 5th-95th percentiles of the measured shaped figures (tools/assets/mpfb-pilot/
+// measure_shapes.mjs): slim stayed above the 5th (was under it at the waist, hips and thighs), the curvy / pear / heavy
+// hips and the athletic calves under the 95th (were 120-170th).
 export const SHAPE_PRESETS: Record<Sex, Record<string, BodyShape>> = {
   m: {
     average: NEUTRAL_SHAPE,
-    slim: P({ height: 0.2, shoulders: -0.5, chest: -0.6, bust: -0.5, waist: -0.7, belly: -0.6, hips: -0.5, glutes: -0.4, thighs: -0.6, calves: -0.4, arms: -0.6 }),
-    athletic: P({ shoulders: 0.8, chest: 0.7, bust: 0.6, waist: -0.4, belly: -0.5, glutes: 0.2, thighs: 0.5, calves: 0.4, arms: 0.8 }),
-    heavy: P({ height: -0.1, shoulders: 0.4, chest: 0.6, bust: 0.5, waist: 0.85, belly: 0.9, hips: 0.5, glutes: 0.45, thighs: 0.6, calves: 0.4, arms: 0.6 }),
-    stocky: P({ height: -0.6, shoulders: 0.6, chest: 0.4, bust: 0.3, waist: 0.4, belly: 0.3, thighs: 0.5, calves: 0.5, arms: 0.5 }),
+    slim: P({ height: 0.2, shoulders: -0.35, chest: -0.4, bust: -0.4, waist: -0.25, belly: -0.35, hips: -0.15, glutes: -0.1, thighs: -0.2, calves: -0.2, arms: -0.4 }),
+    athletic: P({ shoulders: 0.6, chest: 0.5, bust: 0.5, waist: -0.2, belly: -0.5, glutes: 0.2, thighs: 0.35, calves: 0.1, arms: 0.5 }),
+    heavy: P({ height: -0.1, shoulders: 0.4, chest: 0.6, bust: 0.5, waist: 0.85, belly: 0.9, hips: 0.3, glutes: 0.3, thighs: 0.5, calves: 0.2, arms: 0.6 }),
+    stocky: P({ height: -0.6, shoulders: 0.6, chest: 0.4, bust: 0.3, waist: 0.4, belly: 0.3, thighs: 0.35, calves: 0.2, arms: 0.5 }),
   },
   f: {
     average: NEUTRAL_SHAPE,
-    slim: P({ height: 0.2, shoulders: -0.4, chest: -0.3, bust: -0.5, waist: -0.6, belly: -0.5, hips: -0.5, glutes: -0.4, thighs: -0.6, calves: -0.3, arms: -0.5 }),
-    curvy: P({ chest: 0.2, bust: 0.7, waist: -0.3, hips: 0.7, glutes: 0.6, thighs: 0.45, calves: 0.2 }),
-    pear: P({ shoulders: -0.3, chest: -0.2, bust: -0.2, hips: 0.75, glutes: 0.55, thighs: 0.6, calves: 0.3 }),
-    athletic: P({ shoulders: 0.5, chest: 0.1, bust: -0.2, waist: -0.4, belly: -0.5, glutes: 0.5, thighs: 0.5, calves: 0.5, arms: 0.5 }),
-    heavy: P({ height: -0.1, shoulders: 0.3, chest: 0.4, bust: 0.7, waist: 0.8, belly: 0.8, hips: 0.6, glutes: 0.5, thighs: 0.6, calves: 0.4, arms: 0.6 }),
+    slim: P({ height: 0.2, shoulders: -0.3, chest: -0.2, bust: -0.4, waist: -0.2, belly: -0.3, hips: -0.15, glutes: -0.15, thighs: -0.2, calves: -0.2, arms: -0.35 }),
+    curvy: P({ chest: 0.2, bust: 0.7, waist: -0.3, hips: 0.3, glutes: 0.4, thighs: 0.35, calves: 0.15 }),
+    pear: P({ shoulders: -0.3, chest: -0.2, bust: -0.2, hips: 0.35, glutes: 0.4, thighs: 0.45, calves: 0.2 }),
+    athletic: P({ shoulders: 0.5, chest: 0.1, bust: -0.2, waist: -0.2, belly: -0.5, glutes: 0.4, thighs: 0.4, calves: 0.25, arms: 0.5 }),
+    heavy: P({ height: -0.1, shoulders: 0.3, chest: 0.4, bust: 0.7, waist: 0.8, belly: 0.8, hips: 0.25, glutes: 0.35, thighs: 0.5, calves: 0.3, arms: 0.6 }),
   },
 };
 
@@ -168,6 +171,17 @@ export const FACE_PRESETS: Record<string, FaceShape> = {
   cleft: F({ cleft: 0.9, chin: 0.6, jaw: 0.6, chinShape: -0.5, brow: 0.4, noseBridge: 0.2, lips: -0.2, eyeTilt: -0.3 }),
   delicate: F({ headWidth: -0.3, jaw: -0.6, chin: -0.2, nose: -0.5, noseWidth: -0.6, lips: 0.5, mouthWidth: -0.4, eyeSize: 0.5, ears: -0.4, browHeight: 0.5 }),
   weathered: F({ brow: 0.7, browHeight: -0.5, eyeSize: -0.6, eyeTilt: -0.5, noseBridge: 0.6, nose: 0.4, cheekFull: -0.5, lips: -0.6, chinLength: 0.3, ears: 0.5 }),
+  // Eight attractive types (tools/assets/mpfb-pilot/refs/REFERENCES.md section 7). Each was fitted to the median facial
+  // ratios of 4 London Face Set faces with that type's traits (refs/face_targets.json, measure_face.mjs --fit), then
+  // pushed ~1.5x further from the base face so the types read apart; lips and brows set by eye. Women's types first.
+  adventurer: F({ cheeks: 0.7, cheekFull: -0.25, lips: 0.7, mouthWidth: 0.15, jaw: 0.15, eyeTilt: 0.45, brow: -0.15, browHeight: -0.15, noseWidth: -0.15, noseBridge: 0.15, chin: -0.15, headWidth: -0.1 }),
+  glamour: F({ cheekFull: 0.45, lips: 0.8, mouthWidth: -0.15, jaw: -0.45, chin: -0.15, eyeSize: 0.5, eyeTilt: -0.3, browHeight: 0.3, nose: -0.3, noseTip: 0.3, headWidth: -0.2 }),
+  statuesque: F({ cheeks: 0.65, lips: 0.8, noseWidth: 0.65, eyeSize: 0.25, eyeSpacing: 0.15, eyeTilt: 0.15, browHeight: 0.2, jaw: 0.25, chinLength: -0.3, headWidth: -0.25 }),
+  elegant: F({ headLength: 0.45, cheeks: 0.6, cheekFull: -0.45, lips: 0.1, noseWidth: -0.3, nose: 0.15, jaw: 0.25, chin: 0.15, chinLength: 0.2, headWidth: -0.15 }),
+  hero: F({ jaw: 0.7, chin: 0.6, chinShape: -0.3, cleft: 0.3, brow: 0.7, browHeight: -0.35, nose: 0.3, noseBridge: 0.3, headWidth: 0.1 }),
+  chiseled: F({ cheeks: 0.75, cheekFull: -0.5, jaw: 0.3, chin: 0.15, chinLength: 0.2, headLength: 0.3, noseWidth: -0.3, lips: -0.2, eyeTilt: -0.2, mouthWidth: 0.15 }),
+  brawny: F({ headWidth: 0.3, brow: 0.75, jaw: 0.45, cheekFull: 0.2, noseWidth: 0.35, noseBridge: 0.45, eyeSize: -0.15, eyeSpacing: -0.1, ears: 0.15 }),
+  stalwart: F({ cheeks: 0.45, jaw: 0.45, chin: 0.25, brow: 0.3, noseWidth: 0.6, lips: 0.5, mouthWidth: -0.1, eyeTilt: 0.2, headLength: 0.15, headWidth: 0.05 }),
 };
 
 /** Parts to mix into a face (the Face tab's Nose, Eyes, Mouth and Jaw tiles): each sets only its own sliders. */

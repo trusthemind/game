@@ -4,12 +4,14 @@ import {
   DEFAULT_HAIR,
   DEFAULT_LOOK,
   NATURAL_HAIR,
+  npcHair,
   FACE_PRESETS,
   facePresetOf,
   humanFace,
   humanShape,
   presetOf,
   randomHumanFace,
+  randomIdentity,
   randomHumanShape,
   resolveFace,
   resolveShape,
@@ -132,20 +134,23 @@ export function CustomizeModal({ onClose }: { onClose: () => void }) {
     setFaceBase(faceId);
     apply({
       skin: pick(SKIN_TONES),
-      hair: pick(HAIR[sex]),
+      // Weighted like a real crowd (everyday cuts over statement ones), now and then anything at all.
+      hair: Math.random() < 0.25 ? pick(HAIR[sex]) : npcHair(sex, Math.floor(Math.random() * 1e9), Math.random() < 0.6 ? 0 : 1),
       hairColor: pick(Math.random() < 0.08 ? HAIR_COLORS : NATURAL_HAIR),
       beard: sex === 'm' ? pick(Math.random() < 0.3 ? ['none'] : BEARD_STYLES.map((b) => b.id)) : 'none',
       beardColor: undefined,
       shape: randomHumanShape(sex, Math.random, body),
       // A whole face with a random nose, eyes, mouth and jaw blended in (kept believable: shape.ts humanFace).
       face: randomHumanFace(Math.random, faceId, true),
+      // A face identity (or a blend of two) under it: a different person, not the same head re-sculpted.
+      faceId: randomIdentity(sex, Math.random),
     });
   };
   const reset = () => {
     const sex = draft.sex;
     setBodyBase('average');
     setFaceBase('classic');
-    apply({ ...DEFAULT_LOOK, sex, hair: DEFAULT_HAIR[sex], beard: sex === 'm' ? DEFAULT_LOOK.beard : 'none', beardColor: undefined, shape: 'average', face: 'classic' });
+    apply({ ...DEFAULT_LOOK, sex, hair: DEFAULT_HAIR[sex], beard: sex === 'm' ? DEFAULT_LOOK.beard : 'none', beardColor: undefined, shape: 'average', face: 'classic', faceId: undefined });
   };
   const save = () => {
     const look = tidy(draft);

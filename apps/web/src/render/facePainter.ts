@@ -53,6 +53,12 @@ export function faceTexture(f: FaceSpec): THREE.CanvasTexture {
   return tex;
 }
 
+/** Frees every painted face (their GPU copies too); they are painted again when next asked for. */
+export function disposeFaceTextures(): void {
+  for (const t of cache.values()) t.dispose();
+  cache.clear();
+}
+
 export function faceDataUrl(f: FaceSpec): string {
   return (faceTexture(f).image as HTMLCanvasElement).toDataURL();
 }

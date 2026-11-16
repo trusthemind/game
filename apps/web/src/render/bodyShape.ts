@@ -14,7 +14,8 @@ import * as THREE from 'three';
  * Bones are not moved: most clips key every bone's position and scale, which would undo it (height is the
  * model's scale instead).
  */
-import { FACE_KEYS, NEUTRAL_SHAPE, type BodyShape, type FaceShape } from '@ashfall/engine';
+import { FACE_KEYS, NEUTRAL_FACE, NEUTRAL_SHAPE, type BodyShape, type FaceShape, type IdentityMix } from '@ashfall/engine';
+import { identityDeltas, type IdentityField } from './faceIdentity';
 export { NEUTRAL_SHAPE, SHAPE_PRESETS, shapeFromSeed, type BodyShape, type FaceShape } from '@ashfall/engine';
 
 /** The cache key of a body shape and face ('' for the modelled body and face as they are). */
@@ -68,8 +69,22 @@ export class ShapeField {
     private face: FaceShape | null = null,
   ) {
     this.k = heightFactor(s);
+    // The old (UBC) bodies' heads, corrected towards measured proportions (OLD_FIX): their own sliders are added to
+    // the face, the rest (cranium, eye line, lower face) are terms of faceAt. MPFB bodies (eyeX measured) are as built.
+    if (m.eye && m.eyeX === undefined) {
+      this.fix = OLD_FIX[sex];
+      const f = { ...(face ?? NEUTRAL_FACE) };
+      for (const [k, v] of Object.entries(this.fix.face) as [keyof FaceShape, number][]) f[k] = f[k] + v;
+      this.face = f;
+    }
     const out = { ...s };
-    for (const k of Object.keys(out) as (keyof BodyShape)[]) out[k] = out[k] > 0 ? out[k] * GAIN_UP : out[k] * GAIN_DOWN;
+    // MPFB bodies (eyeX measured) are fitted to real scans: their own waist / hips / legs are already realistic,
+    // so the presets' pushes are scaled down there (MPFB_GAIN) to stay inside ANSUR's 5th-95th percentiles.
+    const g = m.eyeX !== undefined ? MPFB_GAIN[sex] : null;
+    for (const k of Object.keys(out) as (keyof BodyShape)[]) {
+      const [up, down] = g?.[k] ?? [1, 1];
+      out[k] = out[k] > 0 ? out[k] * GAIN_UP * up : out[k] * GAIN_DOWN * down;
+    }
     this.s = out;
   }
 
@@ -94,18 +109,31 @@ export class ShapeField {
    * spacing, the head's width), scaled for the eye size and turned for the tilt. The face's other features move
    * the skin over the eyes, not the eyes.
    */
+  private fix: OldFix | null = null;
   eyesOnly(): ShapeField {
-    const f = new ShapeField(this.m, NEUTRAL_SHAPE, this.sex, this.face);
+    const f = new ShapeField(this.m, NEUTRAL_SHAPE, this.sex, null);
+    f.face = this.face;
+    f.fix = this.fix;
     f.s = this.s;
     (f as { k: number }).k = this.k;
     f.eyeMode = true;
+    f.mix = this.mix;
+    f.idField = this.idField;
     return f;
   }
   private eyeMode = false;
 
+  /** The face identity (faceIdentity.ts): meshes with its targets bake them per vertex, the rest take idField. */
+  mix: IdentityMix | null = null;
+  private idField: IdentityField | null = null;
+  setIdentity(mix: IdentityMix, f: IdentityField | null): void {
+    this.mix = mix;
+    this.idField = f;
+  }
+
   /** Kept for callers that want the body without the face. */
   bodyOnly(): ShapeField {
-    const f = new ShapeField(this.m, NEUTRAL_SHAPE, this.sex);
+    const f = new ShapeField({ ...this.m, eye: null }, NEUTRAL_SHAPE, this.sex);
     f.s = this.s;
     (f as { k: number }).k = this.k;
     return f;
@@ -159,6 +187,15 @@ export class ShapeField {
     // The skull's width (the sides of the head out, the face with it) and length (the crown up).
     out.x += F.headWidth * 0.008 * (dx / 0.08) * head;
     out.y += F.headLength * 0.009 * smooth(-0.02, 0.11, dy) * head;
+    const X = this.fix;
+    if (X) {
+      // Cranium narrower behind the face (the old male head was ~13% too broad for ANSUR; the face itself was not).
+      out.x += X.cranium * dx * head * (1 - smooth(-0.115, -0.08, dz));
+      // The face's vertical proportions: the eyes (and brows) a little lower, the nose base and mouth higher, the chin
+      // longer (eye -> subnasale / stomion / menton to the London medians), front of the face only.
+      const v = lin(X.vert, dy * 1000) / 1000;
+      out.y += v * smooth(-0.11, -0.03, dz) * (1 - smooth(0.07, 0.1, ax));
+    }
     if (socket) return;
     // Only the face: fading out towards the ears and behind the jaw.
     const front = smooth(-0.075, -0.02, dz);
@@ -177,6 +214,11 @@ export class ShapeField {
         out.y += (ex * Math.sin(th) + ey * (Math.cos(th) - 1) + ey * k * 1.2) * w;
         out.z += ez * k * 0.5 * w;
         out.x += sx * F.eyeSpacing * 0.006 * bump(d, 0, 0.04) * front;
+        // (old bodies) the lids' opening taller and the eye's length shorter, round its centre
+        if (this.fix) {
+          out.y += ey * this.fix.eyeOpen * w;
+          out.x += ex * this.fix.eyeLong * w;
+        }
       }
     }
     // Forehead: sloping back (-) or upright and full (+).
@@ -288,17 +330,20 @@ export class ShapeField {
   }
 
   /** D(p): the offset of a rest-pose point (model space). */
-  at(p: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
+  at(p: THREE.Vector3, out: THREE.Vector3, skipIdentity = false): THREE.Vector3 {
     out.set(0, 0, 0);
+    if (this.idField && !skipIdentity) this.idField.add(p, out);
     const { m, s } = this;
     const f = this.sex === 'f';
     const ax = Math.abs(p.x);
     const side = p.x >= 0 ? 0 : 1;
     // Which way the parts go: the arms beyond the shoulder (T-pose, along x), the legs below the crotch.
     const sx = Math.abs(m.ua[0]!.x);
-    const wArm = smooth(sx - 0.03, sx + 0.05, ax) * smooth(m.s3.y - 0.05, m.s3.y + 0.05, p.y);
+    // (A wide blend: a 8 cm one left a step round the top of the arm, a puffed sleeve at the shoulder.)
+    const wArm = smooth(sx - 0.06, sx + 0.09, ax) * smooth(m.s3.y - 0.05, m.s3.y + 0.05, p.y);
     const crotch = m.thigh[0]!.y - 0.1;
-    const wLeg = 1 - smooth(crotch - 0.06, crotch + 0.06, p.y);
+    // (Wide too: the torso's push and the thighs' meet here; a 12 cm blend creased a fuller hip into a tyre's edge.)
+    const wLeg = 1 - smooth(crotch - 0.1, crotch + 0.1, p.y);
     const wTorso = (1 - wArm) * (1 - wLeg) * (1 - smooth(m.neck.y - 0.02, m.neck.y + 0.06, p.y));
 
     // Torso: out from the spine in the horizontal plane, by height and angle (front = +z).
@@ -320,9 +365,11 @@ export class ShapeField {
         let d = 0;
         d += s.chest * (f ? 0.008 : 0.02) * bump(y, chestY, 0.13) * (0.4 + 0.6 * front);
         d += s.shoulders * 0.03 * bump(y, m.ua[0]!.y - 0.02, 0.1) * lat * lat;
-        d += s.waist * 0.032 * bump(y, waistY, 0.12) * (0.6 + 0.4 * lat);
-        d += s.belly * (s.belly > 0 ? 0.036 : 0.02) * bump(y, bellyY, 0.15) * front ** 1.5;
-        d += s.hips * 0.03 * bump(y, hipY, 0.13) * lat ** 1.5;
+        // (Broad: at 0.12 a heavy waist with the belly read as a tyre round the middle.)
+        d += s.waist * 0.032 * bump(y, waistY, 0.17) * (0.6 + 0.4 * lat);
+        // Fuller below the navel than above, fading slowly into the groin (a symmetric bump left a hard lower rim).
+        d += s.belly * (s.belly > 0 ? 0.036 : 0.02) * bump(y, bellyY - 0.02, y < bellyY - 0.02 ? 0.17 : 0.15) * front ** 1.5;
+        d += s.hips * 0.03 * bump(y, hipY - 0.02, 0.18) * lat ** 1.5;
         d += s.glutes * 0.035 * bump(y, hipY - 0.04, 0.12) * back ** 1.5;
         out.x += cx * d * wTorso;
         out.z += cz * d * wTorso;
@@ -358,7 +405,13 @@ export class ShapeField {
       const ua = m.ua[side]!;
       const hand = m.hand[side]!;
       const tE = ua.distanceTo(m.la[side]!) / Math.max(1e-6, ua.distanceTo(hand));
-      this.limb(p, ua, hand, wArm, (t) => s.arms * (t < tE ? 0.019 : THREE.MathUtils.lerp(0.014, 0, (t - tE) / (1 - tE))) + s.shoulders * 0.012 * bump(t, 0, tE * 1.2), out);
+      // The upper arm fullest at the biceps / triceps (a uniform tube read as a pipe), easing in from the shoulder; the
+      // shoulders a deltoid cap over the top of the arm, not a ring round it.
+      this.limb(p, ua, hand, wArm, (t, dir) => {
+        const u = t / tE;
+        const upper = t < tE ? 0.019 * (0.55 + 0.45 * bump(u, 0.5, 0.6)) * smooth(-0.1, 0.25, u) : THREE.MathUtils.lerp(0.012, 0, (t - tE) / (1 - tE));
+        return s.arms * upper + s.shoulders * 0.012 * bump(t, tE * 0.12, tE * 0.45) * (0.45 + 0.55 * Math.max(0, dir.y));
+      }, out);
     }
 
     // Legs: each thigh, then calf; hips and glutes carry on down the top of the thigh. Blend the sides at x = 0.
@@ -378,10 +431,23 @@ export class ShapeField {
           // Fullest at the top, tapering steadily to the knee (a thigh that stayed full to mid-length read as breeches).
           const thigh = t < tK ? 1 - 0.65 * (t / tK) : 0.35 * bump(t, tK, 0.12);
           const calf = bump(t, tK + (1 - tK) * 0.35, (1 - tK) * 0.55) * (0.5 + 0.5 * bk);
-          // Hips carry on down the thigh's outside at two thirds strength: at full strength wide hips stacked on
-          // thick thighs ballooned the top of the leg out ~16 cm a side (riding breeches, not a person).
-          return s.thighs * 0.02 * thigh + s.calves * 0.016 * calf + s.hips * 0.02 * top * lat ** 1.5 + s.glutes * 0.03 * top * bk ** 1.5;
+          // Hips carry on down the thigh's outside at ~0.85 strength (full strength ballooned the top of the leg out
+          // ~16 cm a side, riding breeches; two thirds left a crease where the torso's hips met the thigh's).
+          return s.thighs * 0.02 * thigh + s.calves * 0.016 * calf + s.hips * 0.026 * top * lat ** 1.5 + s.glutes * 0.03 * top * bk ** 1.5;
         }, out);
+      }
+    }
+    // (old bodies) the neck slimmer: his was ~30% over ANSUR's median girth. Radially round the neck's axis, between
+    // the shoulders' top and the jaw, not the trapezius (only within ~11 cm of the axis).
+    if (this.fix?.neck && !this.eyeMode) {
+      const n = m.neck;
+      const dx = p.x - n.x;
+      const dz = p.z - n.z;
+      const r = Math.hypot(dx, dz);
+      const w = bump(p.y, n.y + 0.05, 0.06) * (1 - smooth(0.095, 0.13, r));
+      if (w > 0 && r > 1e-5) {
+        out.x += dx * this.fix.neck * w;
+        out.z += dz * this.fix.neck * w;
       }
     }
     if (this.eyeMode) this.eyeAt(p, out);
@@ -396,8 +462,56 @@ export class ShapeField {
  */
 const GAIN_UP = 2.7;
 const GAIN_DOWN = 2.1;
+/**
+ * Per slider [up, down] on the scan-fitted MPFB bodies (tools/assets/mpfb-pilot/fit_scan.py), from measure_shapes.mjs
+ * against ANSUR II: at the old gains heavy reached the 147th percentile waist (a tyre), slim / athletic went under
+ * the 5th (waist, calves, thighs), pear's hips the 97th; the women's athletic shoulders puffed.
+ */
+const MPFB_GAIN: Record<'m' | 'f', Partial<Record<keyof BodyShape, readonly [number, number]>>> = {
+  m: { waist: [0.5, 0.55], belly: [0.45, 0.8], hips: [0.2, 0.7], glutes: [1, 0.7], thighs: [0.85, 0.7], calves: [1, 0.4] },
+  f: { waist: [0.7, 0.15], belly: [0.4, 0.6], hips: [0.8, 0.5], glutes: [1, 0.5], thighs: [1, 0.5], calves: [1, 0.4], shoulders: [0.7, 1] },
+};
 
 /** The eyeballs' centres from the landmark between the eyes (half their spacing; how far behind its front). */
+/** Piecewise linear through [x, y] knots (x ascending), flat beyond the ends. */
+function lin(k: readonly (readonly [number, number])[], x: number): number {
+  if (x <= k[0]![0]) return k[0]![1];
+  for (let i = 1; i < k.length; i++) if (x <= k[i]![0]) return THREE.MathUtils.lerp(k[i - 1]![1], k[i]![1], (x - k[i - 1]![0]) / (k[i]![0] - k[i - 1]![0]));
+  return k[k.length - 1]![1];
+}
+interface OldFix {
+  face: Partial<FaceShape>;
+  cranium: number;
+  /** Vertical shift (mm) by height round the eyes (mm, + up). */
+  vert: readonly (readonly [number, number])[];
+  eyeOpen: number;
+  eyeLong: number;
+  /** The neck's girth, relative (radial scale round its axis). */
+  neck: number;
+}
+/**
+ * The old (UBC) heads against the London Face Set medians and ANSUR II (tools/assets/mpfb-pilot: measure_face.mjs,
+ * measure_body.mjs): both had the eyes ~68 mm apart (London ~64), set high over a long nose (eye -> nose base 58 mm
+ * on him, London ~45) and a short chin; narrow noses; his eyes narrow, hers long thin slits; his skull ~13% too broad.
+ */
+const OLD_FIX: Record<'m' | 'f', OldFix> = {
+  m: {
+    face: { eyeSpacing: -0.3, noseWidth: 0.45 },
+    cranium: -0.15,
+    vert: [[-145, 0], [-123, -2], [-103, 0], [-78, 3.5], [-58, 6.5], [-40, 4], [-20, -1], [0, -5], [12, -6], [32, 0]],
+    eyeOpen: 0.3,
+    eyeLong: -0.2,
+    neck: -0.2,
+  },
+  f: {
+    face: { eyeSpacing: -0.42, noseWidth: 0.4, mouthWidth: 0.1 },
+    cranium: 0,
+    vert: [[-140, 0], [-119, 0], [-96, 0.5], [-73, 1.7], [-54, 5.8], [-37, 3], [-18, -1], [0, -3], [17, -4.5], [36, 0]],
+    eyeOpen: 0.45,
+    eyeLong: -0.5,
+    neck: 0,
+  },
+};
 const EYE_X = 0.034;
 const EYE_R = 0.017;
 const _ec = new THREE.Vector3();
@@ -407,9 +521,14 @@ const _eq = new THREE.Vector3();
 const _ab = new THREE.Vector3();
 const _ap = new THREE.Vector3();
 const _q = new THREE.Vector3();
+const _idv = new THREE.Vector3();
 
 /** Per neutral geometry: its shaped copies by `${sex}|${shapeKey}`. */
-const SHAPED = new WeakMap<THREE.BufferGeometry, Map<string, THREE.BufferGeometry>>();
+let SHAPED = new WeakMap<THREE.BufferGeometry, Map<string, THREE.BufferGeometry>>();
+/** Forgets every shaped copy (a dev carousel of ever-new looks would otherwise keep them all). */
+export function clearShapedGeometries(): void {
+  SHAPED = new WeakMap();
+}
 export const shapeStats = { builds: 0, ms: 0, verts: 0 };
 
 /**
@@ -518,6 +637,8 @@ function bakeShape(mesh: THREE.SkinnedMesh, src: THREE.BufferGeometry, model: TH
   const sw = src.attributes.skinWeight!;
   // Facial hair lifted off the skin says where on the skin it grows (aAnchor): it moves as that skin point does.
   const anchor = src.attributes.aAnchor as THREE.BufferAttribute | undefined;
+  // The face identity's own per-vertex targets (body, eyes, brows), geometry space; else its field (in field.at).
+  const idD = field.mix ? identityDeltas(src, field.mix) : null;
   const n = pos.count;
   const out = new Float32Array(n * 3);
   const Ms: Float32Array = new Float32Array(n * 16);
@@ -541,13 +662,16 @@ function bakeShape(mesh: THREE.SkinnedMesh, src: THREE.BufferGeometry, model: TH
     if (ws > 0 && Math.abs(ws - 1) > 1e-3) for (let k = 0; k < 16; k++) e[k]! /= ws;
     if (!ws) e[0] = e[5] = e[10] = e[15] = 1;
     Ms.set(e, i * 16);
-    v.fromBufferAttribute(pos, i).applyMatrix4(M).toArray(P, i * 3);
+    v.fromBufferAttribute(pos, i);
+    if (idD) v.add(_idv.set(idD[i * 3]!, idD[i * 3 + 1]!, idD[i * 3 + 2]!));
+    v.applyMatrix4(M).toArray(P, i * 3);
     if (anchor) v.fromBufferAttribute(anchor, i).applyMatrix4(M);
-    field.at(v, d).toArray(D, i * 3);
+    field.at(v, d, !!idD).toArray(D, i * 3);
   }
   if (rigid) rigidify(P, D, field);
   for (let i = 0; i < n; i++) {
     v.fromBufferAttribute(pos, i);
+    if (idD) v.add(_idv.set(idD[i * 3]!, idD[i * 3 + 1]!, idD[i * 3 + 2]!));
     d.fromArray(D, i * 3);
     if (d.lengthSq() > 1e-12) v.add(d.applyMatrix3(m3.setFromMatrix4(M.fromArray(Ms, i * 16)).invert()));
     v.toArray(out, i * 3);

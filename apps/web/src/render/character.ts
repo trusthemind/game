@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { actorVisorDown, CLOTHING_SLOTS, Rng, faceFromSeed, getDef, beardId, HAIR_PALETTE, NATURAL_HAIR, npcBeard, npcHair, humanFace, humanShape, NEUTRAL_SHAPE, npcShape, OUTFITS, resolveFace, resolveShape, SHAPE_PRESETS, type Actor, type ClothingSlot, type Corpse, type Equipment, type ItemInstance, type PlayerLook } from '@ashfall/engine';
+import { actorVisorDown, CLOTHING_SLOTS, Rng, faceFromSeed, identityKey, npcIdentity, resolveIdentity, type IdentityMix, getDef, beardId, HAIR_PALETTE, NATURAL_HAIR, npcBeard, npcHair, npcHairColor, humanFace, humanShape, NEUTRAL_SHAPE, npcShape, OUTFITS, resolveFace, resolveShape, SHAPE_PRESETS, type Actor, type ClothingSlot, type Corpse, type Equipment, type ItemInstance, type PlayerLook } from '@ashfall/engine';
 import { bodySettled, loadBodies, type AssetLibrary } from './assets';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
-import { faceTexture, type FaceSpec } from './facePainter';
+import { disposeFaceTextures, faceTexture, type FaceSpec } from './facePainter';
 import { buildGun, gunKey } from './gunsmith';
 import { armorModel, BACKPACK_TINT, hatModel, helmetModel, rigModel, slingModel } from './gear3d';
 import { bakeRigid } from './bakeRigid';
@@ -28,10 +28,12 @@ import {
   type HeadFit,
 } from './gearFit';
 import { attachSkinned, cloneHuman, pelvisRetarget, type HumanParts } from './human';
-import { heightFactor, restPoints, shapeKey, shapeMesh, ShapeField, withNeutral, type BodyShape, type FaceShape } from './bodyShape';
-import { fitToRest, gltfMeshNames } from './rebind';
-import { beardGeometry, disposeHairGen, hairGenMaterial, hairGeometry as proceduralHair, type HeadClip } from './hairGen';
+import { clearShapedGeometries, heightFactor, restPoints, shapeKey, shapeMesh, ShapeField, withNeutral, type BodyShape, type FaceShape } from './bodyShape';
+import { clearFittedGeometries, fitToRest, gltfMeshNames } from './rebind';
+import { beardGeometry, buildUnderlay, disposeHairGen, hairGenMaterial, hairGeometry as proceduralHair, hairUnderlay, UNDERLAY_GLSL, type HeadClip } from './hairGen';
 import { BEARD_SPECS, GLB_HAIR, HAIR_SPECS } from './hairStyles';
+import { ASSET_HAIR, assetHairGeometry, assetHairLoaded, assetHairMaterial, disposeAssetHair, loadAssetHair } from './assetHair';
+import { FACE_ID_GLSL, IDENTITIES_OFF, faceSkinUniforms, identityField, identityTexturedMaterial } from './faceIdentity';
 import { ease, newPalm, palmFrame, reachPalm, type Arm } from './armIK';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -92,6 +94,8 @@ export interface Appearance {
   shape?: BodyShape;
   /** Face sliders (shape.ts FaceShape): brow, jaw, chin, nose, cheekbones; unset is the modelled face. */
   face?: FaceShape;
+  /** Face identity (engine identity.ts): a blend of up to three; unset / empty is the base face. MPFB bodies only. */
+  faceId?: IdentityMix;
 }
 export type Worn = KitPiece & { slot: ClothingSlot; id: string };
 
@@ -131,6 +135,11 @@ export function lookFor(seed: number, archetype: string, npcId?: string, bossId?
     shape: npcShape(sex, seed * 31 + archetype.length),
     face: faceFromSeed(seed * 17 + archetype.length),
   };
+  // Hair by age: receding and grey on the older, the young cuts on the young (the rng's draws stay as they were).
+  base.hair = npcHair(sex, seed * 13 + archetype.length, base.age);
+  base.hairColor = npcHairColor(seed * 41 + archetype.length, base.age);
+  // A face identity (or a blend) by seed and age: one of NPC_IDENTITY_VARIANTS, so shaped heads are shared.
+  base.faceId = npcIdentity(sex, seed * 17 + archetype.length, base.age ?? 1);
   // Clothing: mix pack pieces and prints so a crowd doesn't look like clones.
   const civ = (): Partial<Appearance> => {
     const style = rng.weighted([
@@ -356,7 +365,7 @@ const ARMOR_FIT = new Map<string, { geos: THREE.BufferGeometry[]; over: TorsoFie
 
 /** The player's own survivor: persisted body/hair choices + a practical scavenger outfit. */
 export function playerAppearance(look: PlayerLook): Appearance {
-  const { shape, face, ...rest } = look;
+  const { shape, face, faceId, ...rest } = look;
   return {
     ...rest,
     hair: look.hair,
@@ -364,6 +373,7 @@ export function playerAppearance(look: PlayerLook): Appearance {
     // Kept to human proportions whatever was saved (older saves could stack every slider to the end).
     shape: humanShape(resolveShape(look.sex, shape)),
     face: humanFace(resolveFace(face)),
+    faceId: resolveIdentity(faceId, look.sex),
     top: 0x4b5138,
     topStyle: 'jacket',
     pants: 0x3a3a30,
@@ -1121,6 +1131,36 @@ function heightScale(src: THREE.Object3D, target: number): number {
 const humanMatCache = new Map<string, THREE.MeshStandardMaterial>();
 
 /**
+ * Skin micro-detail (tools/assets/mpfb-pilot/skin_detail.py): pores, the fine criss-cross creases and grain from
+ * CC0 skin photos, a 512 tile repeated over the body's UVs under its baked maps. Up close the skin has a real surface
+ * (not a soapy, waxy smoothness); its mips fade it out at game distance. RG: the detail normal; B: micro height.
+ */
+let skinDetail: THREE.Texture | null = null;
+/** `?skinx=0` (dev): without it, to compare looks and frame times. */
+const SKIN_DETAIL = typeof location === 'undefined' || !/[?&]skinx=0(&|#|$)/.test(location.href);
+function skinDetailMap(): THREE.Texture {
+  if (skinDetail) return skinDetail;
+  const flat = new THREE.DataTexture(new Uint8Array([128, 128, 128, 255]), 1, 1);
+  flat.needsUpdate = true;
+  skinDetail = flat;
+  if (typeof document !== 'undefined')
+    new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}textures/skin_detail.webp`, (t) => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.colorSpace = THREE.NoColorSpace;
+      t.anisotropy = 4;
+      t.generateMipmaps = true;
+      t.minFilter = THREE.LinearMipmapLinearFilter;
+      // Every skin material holds the same uniform object: swap its value in place.
+      skinDetailU.value = t;
+    });
+  skinDetailU.value = flat;
+  return skinDetail;
+}
+const skinDetailU: { value: THREE.Texture | null } = { value: null };
+// Started with the module (it is small and arrives before the bodies), so even the first portraits have it.
+skinDetailMap();
+
+/**
  * PBR skin: the photographic texture re-tinted to the actor's skin tone, all over (a body with nothing on is
  * bare). Parts under worn garments are cut away along the smooth hem lines (markCuts).
  */
@@ -1156,8 +1196,20 @@ function humanBodyMaterial(
   const hide = [0, 0, on('top') ? 1 : 0, on('top') && !top?.short ? 1 : 0, legs ? 1 : 0, on('boots') ? 1 : 0, 0, 0, kitFor(a).some((k) => k.slot === 'hat' && k.underHelmet) && clothed ? 1 : 0];
   // Round the waist: where the garments really end (measureCover; filled in once they're fitted).
   const cover = coverFor(src, clothed ? kitKey(a) : '');
+  // The scalp under the hair (hairGen.ts buildUnderlay; filled in when the hair is built).
+  const under = hairUnderlay(`${src.uuid}|${a.hair}`);
+  const hairCol = new THREE.Color(a.zombie ? 0x3a3530 : a.hairColor);
+  // The face identity's skin character (faceIdentity.ts): its own detail and roughness over the face.
+  const idU = faceSkinUniforms(src, a.sex, a.faceId);
   patchWorldMaterial(m, u, {
     pre: (shader) => {
+      Object.assign(shader.uniforms, under);
+      if (idU) Object.assign(shader.uniforms, idU);
+      shader.uniforms.uHairCol = { value: hairCol };
+      skinDetailMap();
+      shader.uniforms.uSkinDetail = skinDetailU;
+      // Body UVs: tiles per UV unit (the head's island is drawn larger in the texture, so it tiles less there).
+      shader.uniforms.uDetailTile = { value: src.normalMap ? 22 : 16 };
       shader.uniforms.uHide = { value: hide };
       shader.uniforms.uPantsCut = { value: cover.pants };
       shader.uniforms.uTopCut = { value: cover.top };
@@ -1179,7 +1231,7 @@ function humanBodyMaterial(
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform vec3 uSkinTint;\nuniform float uHide[9];\nuniform float uPantsCut[16];\nuniform float uTopCut[16];\nuniform vec2 uCoverC;\nuniform float uBootCut[32];\nuniform vec2 uFootC[2];\nflat varying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vCutA;\nvarying vec2 vCutB;',
+          '#include <common>\nuniform vec3 uSkinTint;\nuniform sampler2D uSkinDetail;\nuniform float uDetailTile;\nvec4 skDet = vec4(0.5, 0.5, 0.5, 0.0);\nuniform sampler2D uHairMap;\nuniform vec3 uHairC;\nuniform float uHairR;\nuniform vec3 uHairCol;\nuniform float uHide[9];\nfloat idRough = 0.0;\n' + (idU ? 'uniform sampler2D uIdFace;\nuniform vec4 uIdRect;\nuniform vec2 uIdGrid;\nuniform vec3 uIdTiles;\nuniform vec3 uIdW;\n' : '') + 'uniform float uPantsCut[16];\nuniform float uTopCut[16];\nuniform vec2 uCoverC;\nuniform float uBootCut[32];\nuniform vec2 uFootC[2];\nflat varying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vCutA;\nvarying vec2 vCutB;',
         )
         .replace(
           '#include <map_fragment>',
@@ -1215,10 +1267,64 @@ function humanBodyMaterial(
             int f1 = f0 == 15 ? 0 : f0 + 1;
             if (uHide[5] > 0.5 && vCutB.y < mix(uBootCut[fs * 16 + f0], uBootCut[fs * 16 + f1], fract(ft))) discard;
           } else for (int i = 0; i < 9; i++) if (i == ri && uHide[i] > 0.5) discard;
-          diffuseColor.rgb = min(diffuseColor.rgb * uSkinTint, vec3(1.0));`,
+          diffuseColor.rgb = min(diffuseColor.rgb * uSkinTint, vec3(1.0));
+          ${idU ? `if (int(vRegion + 0.5) == 0) {${FACE_ID_GLSL}}` : ''}
+          if (int(vRegion + 0.5) == 0 || int(vRegion + 0.5) == 8) {${UNDERLAY_GLSL}
+          }`,
+        )
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = clamp(roughnessFactor + idRough, 0.12, 1.0);')
+        .replace(
+          SKIN_DETAIL ? '#include <roughnessmap_fragment>' : '#skin-detail-off',
+          `#include <roughnessmap_fragment>
+          #ifdef USE_MAP
+          {
+            // Two samples of the tile, one turned and scaled, so it never reads as a repeat: pores and fine creases.
+            bool skHead = int(vRegion + 0.5) == 0 || int(vRegion + 0.5) == 8;
+            vec2 skUv = vMapUv * uDetailTile * (skHead ? 0.6 : 1.0);
+            vec4 d1 = texture2D(uSkinDetail, skUv);
+            vec4 d2 = texture2D(uSkinDetail, mat2(0.8, -0.6, 0.6, 0.8) * skUv * 1.37 + 0.31);
+            // Faded out where the tile is finer than a few pixels (it would only shimmer; the mips grey it anyway).
+            float skFade = 1.0 - smoothstep(0.35, 1.2, max(length(dFdx(skUv)), length(dFdy(skUv))) * 512.0 / 4.0);
+            // A coarser octave of the same (the skin's grain and orange-peel, ~5x larger) that still reads from the
+            // game camera: it breaks the broad, plastic highlight up.
+            vec2 skUv2 = mat2(0.6, 0.8, -0.8, 0.6) * skUv * 0.3 + 0.53;
+            vec4 d3 = texture2D(uSkinDetail, skUv2);
+            float skFade2 = 1.0 - smoothstep(0.35, 1.4, max(length(dFdx(skUv2)), length(dFdy(skUv2))) * 512.0 / 4.0);
+            float skK = skHead ? 0.7 : 0.9;
+            float skK2 = skHead ? 0.15 : 0.3;
+            vec2 skN2 = (d1.xy * 0.62 + d2.xy * 0.38 - 0.5) * skFade * skK + (d3.xy - 0.5) * skFade2 * skK2;
+            skDet = vec4(0.5 + skN2, 0.5 + ((d1.z * 0.6 + d2.z * 0.4) - 0.5) * skFade + (d3.z - 0.5) * skFade2 * skK2, max(skFade, skFade2));
+            // Pores and creases hold less oil: a touch rougher; the open skin between a touch smoother. The body a
+            // little more matte than the face (no oily sheen on the chest and arms).
+            roughnessFactor = clamp(roughnessFactor * (skHead ? 1.0 : 1.12) * (1.0 + (0.5 - skDet.z) * 1.1), 0.15, 1.0);
+          }
+          #endif`,
+        )
+        .replace(
+          SKIN_DETAIL ? '#include <normal_fragment_maps>' : '#skin-detail-off',
+          `#include <normal_fragment_maps>
+          #ifdef USE_MAP
+          if (skDet.w > 0.001) {
+            // The detail normal in the surface's own frame (from the UVs' screen derivatives: the old bodies have no
+            // tangents), added onto the shading normal.
+            vec3 skQ0 = dFdx(-vViewPosition);
+            vec3 skQ1 = dFdy(-vViewPosition);
+            vec2 skS0 = dFdx(vMapUv);
+            vec2 skS1 = dFdy(vMapUv);
+            vec3 skN = normal;
+            vec3 skQ1p = cross(skQ1, skN);
+            vec3 skQ0p = cross(skN, skQ0);
+            vec3 skT = skQ1p * skS0.x + skQ0p * skS1.x;
+            vec3 skB = skQ1p * skS0.y + skQ0p * skS1.y;
+            float skDetM = max(dot(skT, skT), dot(skB, skB));
+            float skSc = skDetM == 0.0 ? 0.0 : inversesqrt(skDetM);
+            vec2 skD = (skDet.xy * 2.0 - 1.0) * 0.85;
+            normal = normalize(skN + (skT * skSc) * skD.x + (skB * skSc) * skD.y);
+          }
+          #endif`,
         );
     },
-    key: 'human',
+    key: idU ? 'human_id' : 'human',
   });
   humanMatCache.set(key, m);
   return m;
@@ -1248,11 +1354,11 @@ function hairMaterial(src: THREE.MeshStandardMaterial, color: number, u: WorldUn
  * colour alone (the texture gives only the coverage), thickened (alpha x4; x6 turned the haze round the strands into a solid bar on the men)
  * from the game camera.
  */
-function browMaterial(src: THREE.MeshStandardMaterial, color: number, u: WorldUniforms): THREE.MeshStandardMaterial {
+function browMaterial(src: THREE.MeshStandardMaterial, color: number, u: WorldUniforms, sex: 'm' | 'f' = 'm'): THREE.MeshStandardMaterial {
   // (The second body's materials come out of Blender as "brows.001": by that name they fell through to the hair
   // material, which keeps the texture's own dark colour, so her brows never took the hair colour.)
   if (!/^brows(\.\d+)?$/.test(src.name)) return hairMaterial(src, color, u);
-  const key = `${src.uuid}|brow|${color}`;
+  const key = `${src.uuid}|brow|${color}|${sex}`;
   let m = humanMatCache.get(key);
   if (m) return m;
   m = src.clone();
@@ -1266,9 +1372,10 @@ function browMaterial(src: THREE.MeshStandardMaterial, color: number, u: WorldUn
   m.roughness = 0.8;
   patchWorldMaterial(m, u, {
     pre: (shader) => {
-      shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb = diffuse;\ndiffuseColor.a = min(diffuseColor.a * 4.0, 1.0);');
+      shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb = diffuse;\ndiffuseColor.a = min(diffuseColor.a * ' + (sex === 'f' ? '2.4' : '4.0') + ', 1.0);');
     },
-    key: 'brow',
+    // Women's brows thinner (x2.4): at x4 hers closed into a heavy, hard-edged bar with a sharp peak.
+    key: sex === 'f' ? 'brow_f' : 'brow',
   });
   humanMatCache.set(key, m);
   return m;
@@ -1710,8 +1817,8 @@ export class CharacterView {
         if (!m) continue;
         m.material =
           m === human.brows
-            ? browMaterial(m.material as THREE.MeshStandardMaterial, look.zombie ? 0x2a2a24 : look.hairColor, u)
-            : worldMat(m.material as THREE.MeshStandardMaterial, u, m === human.eyes && look.zombie ? 0xc8c0a0 : null);
+            ? browMaterial(identityTexturedMaterial('brows', look.sex, look.faceId, m.material as THREE.MeshStandardMaterial), look.zombie ? 0x2a2a24 : look.hairColor, u, look.sex)
+            : worldMat(m === human.eyes ? identityTexturedMaterial('eyes', look.sex, look.faceId, m.material as THREE.MeshStandardMaterial) : (m.material as THREE.MeshStandardMaterial), u, m === human.eyes && look.zombie ? 0xc8c0a0 : null);
         m.castShadow = shadows && human.underwear.includes(m);
         m.frustumCulled = false;
       }
@@ -1891,6 +1998,13 @@ export class CharacterView {
    * Run `fn` with our skeleton in its rest pose (fitToRest carries pieces onto the bones as they stand, and the
    * clips may have moved them since), then put the pose back.
    */
+  private atRestValue<T>(fn: () => T): T {
+    let out!: T;
+    this.atRest(() => void (out = fn()));
+    return out;
+  }
+  private disposed = false;
+
   private atRest(fn: () => void): void {
     const bones = this.human?.body.skeleton.bones;
     if (!bones || !this.restPose.length) return fn();
@@ -1976,8 +2090,33 @@ export class CharacterView {
       this.hairMeshes.push(h);
       return;
     }
-    const spec = HAIR_SPECS[a.hair] ?? HAIR_SPECS[a.sex === 'f' ? 'ponytail' : 'short']!;
-    const built = proceduralHair(human.body, a.sex, a.hair, spec);
+    // Modelled (asset) hair on the MPFB bodies (assetHair.ts): loaded on first use, then the hair is rebuilt.
+    const asset = ASSET_HAIR[a.hair];
+    if (asset && human.lashes && !IDENTITIES_OFF) {
+      if (!assetHairLoaded()) {
+        void loadAssetHair().then(() => {
+          if (this.disposed || !this.human || this.look.hair !== a.hair) return;
+          for (const m of this.hairMeshes) m.parent?.remove(m);
+          this.hairMeshes = [];
+          this.atRest(() => withNeutral([this.human!.body], () => this.buildHair()));
+          this.applyShape();
+        });
+      } else {
+        const geo = this.atRestValue(() => withNeutral([human.body], () => assetHairGeometry(human.body, this.model, a.sex, a.hair)));
+        const mat = assetHairMaterial(a.hair, color, this.u, this.headClip);
+        if (geo && mat) {
+          buildUnderlay(`${human.srcMaterial.uuid}|${a.hair}`, human.body, a.sex, HAIR_SPECS[asset.underlay] ?? HAIR_SPECS.bob!);
+          const h = this.mountSkinned(geo, mat, `HairAsset_${a.hair}`);
+          h.castShadow = this.shadows;
+          this.hairMeshes.push(h);
+          return;
+        }
+      }
+    }
+    const pid = asset ? asset.underlay : a.hair;
+    const spec = HAIR_SPECS[pid] ?? HAIR_SPECS[a.sex === 'f' ? 'ponytail' : 'short']!;
+    const built = proceduralHair(human.body, a.sex, pid, spec);
+    buildUnderlay(`${human.srcMaterial.uuid}|${a.hair}`, human.body, a.sex, spec);
     const mat = hairGenMaterial(color, this.u, this.headClip);
     // The scalp part goes under hats and helmets; what hangs below them (Long) stays.
     for (const [geo, name] of [[built.scalp, `Hair_${a.hair}`], [built.long, `HairLong_${a.hair}`]] as const) {
@@ -2061,8 +2200,11 @@ export class CharacterView {
    * geometry and shape; anything already shaped is left as it is.
    */
   private applyShape(): void {
-    const key = shapeKey(this.look.shape, this.look.face);
-    if (!this.human || !key) return;
+    // The old (UBC) bodies' heads always take the field: it carries their proportion fix (bodyShape.ts OLD_FIX).
+    const idk = this.human?.lashes ? identityKey(this.look.faceId) : '';
+    const key0 = shapeKey(this.look.shape, this.look.face) || (this.human && !this.human.lashes && this.human.eyes ? 'base' : '');
+    if (!this.human || (!key0 && !idk)) return;
+    const key = `${key0}|${idk}`;
     this.atRest(() => {
       const field = (this.shapeField ??= ShapeField.fromBones(
         this.human!.body.skeleton.bones,
@@ -2074,6 +2216,8 @@ export class CharacterView {
         // The old bodies' eyes were what EYE_X / EYE_R were measured on; the MPFB ones are measured here.
         this.human!.lashes ? this.eyeDims : null,
       ));
+      // The face identity: baked per vertex where a mesh has its targets (body, eyes, brows), else by its field.
+      if (idk && !field.mix) field.setIdentity(this.look.faceId!, identityField(this.human!.body, this.model, this.look.faceId));
       const all: THREE.SkinnedMesh[] = [];
       this.model.traverse((o) => (o as THREE.SkinnedMesh).isSkinnedMesh && all.push(o as THREE.SkinnedMesh));
       const eyes = this.human!.eyes;
@@ -2200,6 +2344,7 @@ export class CharacterView {
       if (this.human) {
         h.visible = !maskOn;
         if ((h.material as THREE.Material).name === 'hairgen') h.material = hairGenMaterial(hairColor, this.u, this.headClip);
+        else if ((h.material as THREE.Material).name === 'mhhair') h.material = assetHairMaterial(this.look.hair, hairColor, this.u, this.headClip) ?? h.material;
       } else h.visible = !maskOn && (!(s.helmet || capOn || (hat && hat !== 'bandana')) || /Long/.test(h.name));
     }
     // Brows and a beard are under it too (they'd poke through the knit).
@@ -3427,6 +3572,7 @@ export class CharacterView {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.mixer.stopAllAction();
   }
 }
@@ -3471,6 +3617,10 @@ export function disposeCharacterCaches(): void {
   bodyMatCache.clear();
   flatMatCache.clear();
   disposeHairGen();
+  disposeAssetHair();
+  disposeFaceTextures();
+  clearShapedGeometries();
+  clearFittedGeometries();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3480,8 +3630,8 @@ export function disposeCharacterCaches(): void {
 const portraitCache = new Map<string, string>();
 
 /** A head shot ('head') or the whole figure ('body', for build pictures), as a PNG data URL (cached). */
-export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, framing: 'head' | 'face' | 'body' | 'hair' | 'back' | 'mug' | 'side' | 'bodyback' | 'torso' | 'profile' = 'head', slots: Equipment['slots'] = {} as Equipment['slots']): string {
-  const key = JSON.stringify(look) + size + framing + JSON.stringify(slots);
+export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, framing: 'head' | 'face' | 'body' | 'hair' | 'back' | 'mug' | 'side' | 'bodyback' | 'torso' | 'profile' = 'head', slots: Equipment['slots'] = {} as Equipment['slots'], yaw?: number): string {
+  const key = JSON.stringify(look) + size + framing + JSON.stringify(slots) + (yaw ?? '');
   const hit = portraitCache.get(key);
   if (hit) return hit;
   // Shared with the item pictures (offscreen.ts), so everything they change is set here too.
@@ -3505,8 +3655,11 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, 
     pos: { x: 0, y: 0 },
     vel: { x: 0, y: 0 },
     // Hair pictures turn the head to show its side and back (ponytails, length); 'back' shows the back.
+    // `yaw` (dev checks of the hair all round): degrees the head is turned from the camera (90: its left side).
     facing:
-      framing === 'hair'
+      yaw !== undefined
+        ? Math.PI / 2 - THREE.MathUtils.degToRad(yaw)
+        : framing === 'hair'
         ? Math.PI / 2 - 1.05
         : framing === 'back' || framing === 'bodyback'
           ? -Math.PI / 2 + 0.3
@@ -3549,6 +3702,14 @@ export function renderPortrait(lib: AssetLibrary, look: Appearance, size = 256, 
     const mid = hp.y * 0.53;
     cam.position.set(0.5, mid + 0.25, (hp.y + 0.25) * 2.3);
     cam.lookAt(0, mid, 0);
+  } else if (yaw !== undefined && framing === 'face') {
+    // The face tiles turned (dev identity grid): the face framing, the head turned by yaw.
+    cam.position.set(hp.x, hp.y + 0.06, hp.z + 0.62);
+    cam.lookAt(hp.x, hp.y + 0.035, hp.z);
+  } else if (yaw !== undefined) {
+    // Close round the scalp at head height (slightly from above, as the game camera sees it).
+    cam.position.set(hp.x, hp.y + 0.13, hp.z + 0.6);
+    cam.lookAt(hp.x, hp.y + 0.07, hp.z);
   } else if (framing === 'hair' || framing === 'back') {
     cam.position.set(hp.x + 0.1, hp.y + 0.24, hp.z + 0.78);
     cam.lookAt(hp.x, hp.y + 0.06, hp.z);

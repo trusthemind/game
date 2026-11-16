@@ -38,28 +38,36 @@ os.makedirs(OUT, exist_ok=True)
 # Athletic survivor build (macros + measure / muscle targets) and a deliberate face per sex, instead of the pilot's
 # 'average' macros + seeded face noise (read as a smooth, bland mannequin).
 BUILD = {
-    "m": dict(macro=dict(weight=0.42, muscle=0.78, height=0.5, proportions=0.9),
-              targets=[("torso-vshape-incr", 0.55), ("measure-shoulder-dist-incr", 0.35), ("torso-muscle-pectoral-incr", 0.45),
-                       ("torso-muscle-dorsi-incr", 0.45), ("measure-waist-circ-decr", 0.25), ("stomach-pregnant-decr", 0.35),
+    "m": dict(macro=dict(weight=0.5, muscle=0.7, height=0.5, proportions=0.9),
+              targets=[("torso-vshape-incr", 0.3), ("torso-muscle-pectoral-incr", 0.35),
+                       ("torso-muscle-dorsi-incr", 0.3), ("stomach-pregnant-decr", 0.25),
                        ("measure-neck-circ-incr", 0.35), ("buttocks-volume-incr", 0.1)]
-              + [(f"{s}-{t}", v) for s in "lr" for t, v in [("upperarm-muscle-incr", 0.55), ("upperarm-shoulder-muscle-incr", 0.55),
-                 ("lowerarm-muscle-incr", 0.45), ("upperleg-muscle-incr", 0.45), ("lowerleg-muscle-incr", 0.45)]],
-              face=[("head-square", 0.55), ("chin-prominent-incr", 0.3), ("chin-width-incr", 0.35), ("chin-jaw-drop-incr", 0.15),
-                    ("head-fat-decr", 0.35), ("head-scale-vert-decr", 0.15), ("nose-scale-horiz-incr", 0.1), ("nose-point-width-decr", 0.2),
-                    ("mouth-scale-horiz-incr", 0.1), ("eyebrows-trans-down", 0.2), ("forehead-temple-decr", 0.2)]
-                   + [(f"{s}-{t}", v) for s in "lr" for t, v in [("cheek-bones-incr", 0.35), ("cheek-volume-decr", 0.35)]],
+              + [(f"{s}-{t}", v) for s in "lr" for t, v in [("upperarm-muscle-incr", 0.45), ("upperarm-shoulder-muscle-incr", 0.4),
+                 ("lowerarm-muscle-incr", 0.35), ("upperleg-muscle-incr", 0.5), ("lowerleg-muscle-incr", 0.0)]],
+              # Face tuned to the London Face Set's male medians (refs/face_targets.json, measure_face.mjs): the stock head's
+              # nose / upper lip were long and the chin short (mouth low in the face), the eyes narrow slits.
+              face=[("head-square", 0.45), ("chin-prominent-incr", 0.3), ("chin-width-incr", 0.3), ("chin-jaw-drop-incr", 0.1),
+                    ("head-fat-decr", 0.3), ("nose-scale-horiz-incr", 0.35), ("nose-point-width-decr", 0.1), ("mouth-scale-horiz-decr", 0.15), ("chin-height-decr", 0.4),
+                    ("nose-scale-vert-decr", 0.6), ("nose-trans-up", 0.3), ("mouth-trans-up", 1.0), ("forehead-temple-decr", 0.2)]
+                   + [(f"{s}-{t}", v) for s in "lr" for t, v in [("cheek-bones-incr", 0.35), ("cheek-volume-decr", 0.3),
+                      ("eye-height2-incr", 0.7), ("eye-scale-incr", 0.1), ("eye-trans-down", 0.6)]],
               skin="young_caucasian_male", eyes="brownlight", brow="eyebrow011", lashes="eyelashes02"),
-    "f": dict(macro=dict(weight=0.4, muscle=0.66, height=0.5, proportions=0.9, cupsize=0.5, firmness=1.0),
-              targets=[("torso-vshape-incr", 0.15), ("measure-waist-circ-decr", 0.2), ("stomach-pregnant-decr", 0.35),
-                       ("buttocks-volume-incr", 0.25), ("measure-shoulder-dist-incr", 0.1), ("breast-trans-up", 0.3), ("breast-point-decr", 0.2)]
-              + [(f"{s}-{t}", v) for s in "lr" for t, v in [("upperarm-muscle-incr", 0.35), ("upperarm-shoulder-muscle-incr", 0.35),
-                 ("lowerarm-muscle-incr", 0.25), ("upperleg-muscle-incr", 0.35), ("lowerleg-muscle-incr", 0.4)]],
+    "f": dict(macro=dict(weight=0.52, muscle=0.55, height=0.5, proportions=0.9, cupsize=0.7, firmness=1.0),
+              targets=[("torso-vshape-incr", 0.1), ("stomach-pregnant-decr", 0.15), ("buttocks-volume-incr", 0.3),
+                       ("measure-shoulder-dist-incr", 0.35), ("breast-trans-up", 0.3), ("breast-point-decr", 0.2), ("measure-thigh-circ-incr", 0.35),
+                       ("measure-neck-circ-incr", 0.3), ("l-leg-valgus-decr", 0.4), ("r-leg-valgus-decr", 0.4)]
+              + [(f"{s}-{t}", v) for s in "lr" for t, v in [("upperarm-muscle-incr", 0.25), ("upperarm-shoulder-muscle-incr", 0.45),
+                 ("lowerarm-muscle-incr", 0.2), ("upperleg-muscle-incr", 0.3), ("lowerleg-muscle-incr", 0.35)]],
               # (Hollow cheeks under high cheekbones read as dark blotches there in game; bigger eyes as dark ones.)
+              # Face tuned to the London Face Set's female medians (refs/face_targets.json, measure_face.mjs): the stock head
+              # was wide and short for its eyes, with narrow eyes, a long nose, a small mouth and low-set brows.
               face=[("head-oval", 0.5), ("chin-width-decr", 0.1), ("chin-prominent-incr", 0.1), ("head-fat-decr", 0.15),
-                    ("head-scale-vert-decr", 0.12), ("nose-scale-horiz-decr", 0.15), ("nose-point-width-decr", 0.2),
-                    ("mouth-upperlip-volume-incr", 0.25), ("mouth-lowerlip-volume-incr", 0.3)]
-                   + [(f"{s}-{t}", v) for s in "lr" for t, v in [("cheek-bones-incr", 0.25), ("cheek-volume-incr", 0.1), ("eye-scale-incr", 0.06)]],
-              skin="young_caucasian_female", eyes="brownlight", brow="eyebrow003", lashes="eyelashes04"),
+                    ("head-scale-horiz-decr", 0.25), ("chin-height-incr", 0.15), ("mouth-trans-down", 0.3), ("nose-point-width-decr", 0.1),
+                    ("nose-scale-vert-decr", 0.6), ("mouth-scale-horiz-incr", 0.25), ("eyebrows-trans-up", 0.3),
+                    ("mouth-upperlip-volume-incr", 0.1), ("mouth-lowerlip-volume-incr", 0.45)]
+                   + [(f"{s}-{t}", v) for s in "lr" for t, v in [("cheek-bones-incr", 0.25), ("cheek-volume-incr", 0.1), ("eye-scale-incr", 0.35),
+                      ("eye-trans-down", 0.4), ("eye-trans-out", 0.4)]],
+              skin="young_caucasian_female", eyes="brownlight", brow="eyebrow010", lashes="eyelashes04"),
 }
 TEX_DIR = os.path.join(HERE, "base", "tex")
 
@@ -80,6 +88,12 @@ for s in "lr":
         AIM[f"{f}_02_{s}"] = f"{f}_03_{s}"
         AIM[f"{f}_03_{s}"] = f"{f}_04_leaf_{s}"
 TO_MPFB = {"Head": "head", "root": "Root"}
+# The spine, neck and clavicles keep MPFB's own (natural, upright) rest directions: swinging them to the old body's
+# bone directions bent the torso into a deep sway-back with the head pushed forward and the shoulders pulled back.
+# Our clips are rotation-only on fixed rest rotations (fix_skeleton.mjs), so they play the same on either spine shape;
+# only the limbs (A-pose -> T-pose) need the swing.
+CLAV_BACK = float(os.environ.get("ASHFALL_CLAV_BACK", "10"))  # deg, see the T-pose loop
+NO_AIM = {"pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "clavicle_l", "clavicle_r"}
 def export(rig, path):
     bpy.ops.object.select_all(action="DESELECT")
     rig.select_set(True)
@@ -92,6 +106,10 @@ def export(rig, path):
 
 
 exec(compile(open(os.path.join(HERE, "skin_bake.py"), encoding="utf-8").read(), "skin_bake.py", "exec"))
+# Body shape fitted to the averaged real scans (fit_scan.py; ASHFALL_FIT_SCAN=0 -> the plain MPFB macro body).
+exec(compile(open(os.path.join(HERE, "fit_scan.py"), encoding="utf-8").read(), "fit_scan.py", "exec"))
+FIT_SCAN = os.environ.get("ASHFALL_FIT_SCAN", "1") == "1"
+FIT_DEBUG = os.environ.get("ASHFALL_FIT_DEBUG")  # dir for scan / posed-body OBJs (silhouette overlays)
 
 
 def ours_dir(sex, a, b):
@@ -260,6 +278,11 @@ def build(sex):
     others = [o for o in rig.children if o.type == "MESH" and o is not body]
     if anatomy and anatomy not in others:
         others.append(anatomy)
+    pre_fit_normals = fit_to_scan(sex, body, rig, others, FIT_DEBUG, info, settings) if FIT_SCAN else None
+    if os.environ.get("ASHFALL_VARIANTS"):  # dir: fitted body + MPFB weight / muscle macro deltas, for measuring
+        export_variants(sex, body, info, settings, os.environ["ASHFALL_VARIANTS"])
+    if os.environ.get("ASHFALL_FIT_ONLY") == "1":
+        raise SystemExit(0)
 
     # Decimate the body to the budget, UV-seam vertices protected, then copy the full mesh's normals back so the
     # collapse leaves no shading creases (shoulders / neck).
@@ -274,10 +297,21 @@ def build(sex):
         for p in ref.data.polygons:
             p.use_smooth = True
         cur = [v.normal.copy() for v in ref.data.vertices]
-        DEF_K = 3.0 if sex == "m" else 1.5
+        # (3.0 / 1.5 painted dark valleys round the pecs and shoulders -- dirt, not muscle; the muscle is in the mesh now.)
+        DEF_K = 1.2 if sex == "m" else 0.7
         neck_z = (rig.matrix_world @ rig.data.bones["neck_01"].head_local).z
         ws = [DEF_K * min(1.0, max(0.0, (neck_z - v.co.z) / 0.06)) for v in ref.data.vertices]  # not on the face
-        ref.data.normals_split_custom_set_from_vertices([(c + (d - c) * w).normalized() for c, d, w in zip(cur, def_normals, ws)])
+        # Nor on the front of the chest: the max-muscle pecs' steep undersides tilted the normals there straight down
+        # -> a black crescent under his pecs / her breasts in game light (it stayed with shadows and AO off).
+        def chest_w(v, n):
+            dz = neck_z - v.co.z
+            band = min(1.0, max(0.0, (dz - 0.02) / 0.05)) * min(1.0, max(0.0, (0.36 - dz) / 0.06))
+            return band * min(1.0, max(0.0, (-n.y - 0.1) / 0.3))
+        ws = [w * (1 - chest_w(v, c)) for w, v, c in zip(ws, ref.data.vertices, cur)]
+        # After the scan fit the definition is the max-muscle normals' offset from the pre-fit MPFB normals, carried
+        # onto the fitted surface (not MPFB's own normals, which would paint the old silhouette back into the map).
+        pre = pre_fit_normals if pre_fit_normals is not None and len(pre_fit_normals) == len(cur) else cur
+        ref.data.normals_split_custom_set_from_vertices([(c + (d - p) * w).normalized() for c, d, p, w in zip(cur, def_normals, pre, ws)])
         print("DEF normals applied", len(cur), flush=True)
     else:
         print("DEF normals skipped", None if def_normals is None else len(def_normals), len(ref.data.vertices), flush=True)
@@ -311,6 +345,11 @@ def build(sex):
         apply_mod(body, "normals")
     skin_path = AssetService.find_asset_absolute_path(cfg["skin"] + ".mhmat", "skins")
     bpy.context.scene["ashfall_skin_photo"] = mhmat_texture(skin_path)
+    # An older skin of the same sex (same UV layout): its creases, for the folds at the joints (skin_bake.py).
+    try:
+        bpy.context.scene["ashfall_skin_photo_old"] = mhmat_texture(AssetService.find_asset_absolute_path(("old_caucasian_male" if sex == "m" else "old_caucasian_female") + ".mhmat", "skins"))
+    except Exception as e:  # noqa: BLE001
+        print("no old skin photo", e)
     bpy.context.scene["ashfall_brow_png"] = mhmat_texture(AssetService.find_asset_absolute_path(cfg["brow"] + ".mhmat", "eyebrows"))
     hair_col = (0.045, 0.03, 0.02) if sex == "m" else (0.06, 0.035, 0.022)
     bpy.context.scene["ashfall_hair_col"] = [float(c) for c in hair_col]
@@ -332,7 +371,7 @@ def build(sex):
             groups["brows"].append(o)
         elif "brow" in n:
             p = mhmat_texture(AssetService.find_asset_absolute_path(cfg["brow"] + ".mhmat", "eyebrows"))
-            o.data.materials.append(card_material("brows", hair_card_texture(p, os.path.join(TEX_DIR, sex, "brows.png"), hair_col, 0.55)))
+            o.data.materials.append(card_material("brows", hair_card_texture(p, os.path.join(TEX_DIR, sex, "brows.png"), hair_col, 0.55 if sex == "m" else 0.75)))
             # A little off the skin: the decimated brow ridge swallowed parts of the cards (the men's brows read faint).
             for v in o.data.vertices:
                 v.co += v.normal * 0.0012
@@ -368,7 +407,16 @@ def build(sex):
     for name in order:
         ours_name = {"head": "Head", "Root": "root"}.get(name, name)
         child = AIM.get(ours_name)
-        if not child:
+        if ours_name in ("clavicle_l", "clavicle_r") and CLAV_BACK:
+            # Shoulders drawn back (retracted) round the clavicle's inner end: MPFB's rest shoulders sit ~8 cm ahead
+            # of the hips (ours ~3.5); with our Idle that read as round-shouldered / hunched.
+            pb = pbs[name]
+            bpy.context.view_layer.update()
+            head = pb.head.copy()
+            R = Matrix.Rotation(math.radians(CLAV_BACK if name.endswith("_l") else -CLAV_BACK), 4, "Z")
+            pb.matrix = Matrix.Translation(head) @ R @ Matrix.Translation(-head) @ pb.matrix
+            continue
+        if not child or ours_name in NO_AIM:
             continue
         child_m = TO_MPFB.get(child, child)
         pb = pbs[name]

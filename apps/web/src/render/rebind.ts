@@ -129,7 +129,11 @@ for (const s of ['l', 'r']) {
 /** Foot to head along the joints, to size a body that wasn't exported standing up. */
 const CHAIN = ['foot_l', 'calf_l', 'thigh_l', 'pelvis', 'spine_01', 'spine_02', 'spine_03', 'neck_01', 'Head'];
 
-const geoCache = new WeakMap<THREE.BufferGeometry, Map<string, THREE.BufferGeometry>>();
+let geoCache = new WeakMap<THREE.BufferGeometry, Map<string, THREE.BufferGeometry>>();
+/** Forgets every fitted garment geometry. */
+export function clearFittedGeometries(): void {
+  geoCache = new WeakMap();
+}
 
 const clean = (name: string) =>
   name

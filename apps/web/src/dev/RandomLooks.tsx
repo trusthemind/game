@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { createItem, resolveShape, FACE_PARTS, FACE_PRESETS, getDef, NEUTRAL_FACE, type FaceShape, BEARD_STYLES, DEFAULT_LOOK, faceFromSeed, hairStylesFor, NATURAL_HAIR, npcBeard, npcHair, npcShape, randomHumanFace, randomHumanShape, Rng, type PlayerLook, type Sex } from '@ashfall/engine';
+import { createItem, IDENTITIES, resolveShape, FACE_PARTS, FACE_PRESETS, getDef, NEUTRAL_FACE, type FaceShape, BEARD_STYLES, DEFAULT_LOOK, faceFromSeed, hairStylesFor, NATURAL_HAIR, npcBeard, npcHair, npcShape, randomHumanFace, randomHumanShape, Rng, type PlayerLook, type Sex } from '@ashfall/engine';
 import { loadAssets, loadBodies } from '../render/assets';
+import { loadAssetHair } from '../render/assetHair';
 import { kitSources, lookBodies, playerAppearance, renderPortrait, SKIN_TONES, wearClothes } from '../render/character';
 import { beardStats, hairStats } from '../render/hairGen';
 
@@ -21,6 +22,7 @@ export function RandomLooks() {
     let alive = true;
     void (async () => {
       const lib = await loadAssets();
+      await loadAssetHair();
       const rng = new Rng(Number(q.get('seed') ?? 7));
       const rnd = () => rng.next();
       const out: [string, string][] = [];
@@ -71,18 +73,52 @@ export function StyleGrid() {
   const busts = q.get('view') === 'bustgrid';
   const sex: Sex = q.get('sex') === 'f' ? 'f' : 'm';
   const size = Number(q.get('size') ?? 150);
-  const [cells, setCells] = useState<[string, string, string][]>([]);
+  const [cells, setCells] = useState<[string, ...string[]][]>([]);
+  // `&yaws=0,90,180,270`: each style turned through these angles (close round the scalp) instead of the two views;
+  // `&shape=`/`&skin=`: the body preset and skin tone.
+  const yaws = (q.get('yaws') ?? '').split(',').filter(Boolean).map(Number);
   useEffect(() => {
     let alive = true;
     void (async () => {
       const lib = await loadAssets();
-      const out: [string, string, string][] = [];
+      await loadAssetHair();
+      const out: [string, ...string[]][] = [];
       const faceList: [string, string, FaceShape][] = faces
         ? [
             ...Object.entries(FACE_PRESETS).map(([id, f]) => [id, id, f] as [string, string, FaceShape]),
             ...Object.entries(FACE_PARTS).flatMap(([part, ps]) => Object.entries(ps).map(([id, p]) => [`${part}:${id}`, `${part}: ${id}`, { ...NEUTRAL_FACE, ...p }] as [string, string, FaceShape])),
           ]
         : [];
+      // view=identities: every face identity of the sex (and the base face first), front, three-quarter and profile
+      // (`&yaws=` other angles), on the plain sliders; `&hair=` / `&skin=` / `&helmet=` as below.
+      if (q.get('view') === 'identities') {
+        const ys = yaws.length ? yaws : [0, 30, 90];
+        const hw = q.get('helmet');
+        const slots = (hw ? { [getDef(hw).category === 'helmet' ? 'helmet' : 'hat']: createItem(hw) } : {}) as never;
+        for (const d of [null, ...IDENTITIES[sex]]) {
+          const look: PlayerLook = { ...DEFAULT_LOOK, sex, hair: q.get('hair') ?? (sex === 'm' ? 'buzz' : 'topknot'), beard: 'none', face: 'classic', shape: 'average', hairColor: Number(q.get('color') ?? 0x4a3020), ...(q.get('skin') ? { skin: Number(q.get('skin')) } : {}), ...(d ? { faceId: d.id } : {}) };
+          const a = playerAppearance(look);
+          await loadBodies(lib, lookBodies(hw ? wearClothes(a, { slots } as never) : a));
+          if (!alive) return;
+          out.push([d ? `${d.label} (${d.desc})` : 'base face (before)', ...ys.map((y) => renderPortrait(lib, a, size, 'face', slots, y))]);
+          setCells([...out]);
+          await new Promise((r) => setTimeout(r, 0));
+        }
+        (window as unknown as { __labReady?: boolean }).__labReady = true;
+        return;
+      }
+      // view=skin: each skin tone close up (the face, the torso and arms) and whole (as small as the game shows it).
+      if (q.get('view') === 'skin') {
+        for (const skin of SKIN_TONES) {
+          const look: PlayerLook = { ...DEFAULT_LOOK, sex, skin, hair: sex === 'm' ? 'buzz' : 'ballerina', beard: 'none', face: 'classic', shape: 'average' };
+          const a = playerAppearance(look);
+          await loadBodies(lib, lookBodies(a));
+          out.push([`#${skin.toString(16)}`, renderPortrait(lib, a, size, 'mug'), renderPortrait(lib, a, size, 'torso'), renderPortrait(lib, a, Math.round(size / 3), 'body')]);
+          setCells([...out]);
+        }
+        (window as unknown as { __labReady?: boolean }).__labReady = true;
+        return;
+      }
       if (busts) {
         const eqIds = (q.get('eq') ?? '').split(',').filter(Boolean);
         const slots = Object.fromEntries(eqIds.map((id) => [getDef(id).category === 'helmet' ? 'helmet' : getDef(id).category === 'armor' ? 'armor' : getDef(id).clothing?.slot ?? 'rig', createItem(id)])) as never;
@@ -104,7 +140,7 @@ export function StyleGrid() {
         const fq = q.get('face');
         const face = faces ? faceList.find((f) => f[0] === id)![2] : fq?.startsWith('{') ? { ...NEUTRAL_FACE, ...JSON.parse(fq) } : ((fq as never) ?? 'classic');
         const hair = faces ? (sex === 'm' ? 'buzz' : 'topknot') : beards ? 'short' : id;
-        const look: PlayerLook = { ...DEFAULT_LOOK, sex, hair, beard: beards ? id : 'none', hairColor: Number(q.get('color') ?? 0x5b3d25), face, shape: 'average' };
+        const look: PlayerLook = { ...DEFAULT_LOOK, sex, hair, beard: beards ? id : 'none', hairColor: Number(q.get('color') ?? 0x5b3d25), face, shape: (q.get('shape') as never) ?? 'average', ...(q.get('skin') ? { skin: Number(q.get('skin')) } : {}) };
         const a = playerAppearance(look);
         await loadBodies(lib, lookBodies(a));
         if (!alive) return;
@@ -112,7 +148,8 @@ export function StyleGrid() {
         const hw = q.get('helmet');
         const slots = (hw ? { [getDef(hw).category === 'helmet' ? 'helmet' : 'hat']: createItem(hw) } : {}) as never;
         if (hw) await loadBodies(lib, lookBodies(wearClothes(a, { slots } as never)));
-        out.push([label, renderPortrait(lib, a, size, faces ? 'mug' : beards ? (q.get('b1') as 'mug' | null) ?? 'face' : 'hair', slots), renderPortrait(lib, a, size, faces ? 'head' : beards ? (q.get('b2') as 'profile' | null) ?? 'head' : 'back', slots)]);
+        if (yaws.length) out.push([label, ...yaws.map((y) => renderPortrait(lib, a, size, 'hair', slots, y))]);
+        else out.push([label, renderPortrait(lib, a, size, faces ? 'mug' : beards ? (q.get('b1') as 'mug' | null) ?? 'face' : 'hair', slots), renderPortrait(lib, a, size, faces ? 'head' : beards ? (q.get('b2') as 'profile' | null) ?? 'head' : 'back', slots)]);
         setCells([...out]);
         await new Promise((r) => setTimeout(r, 0));
       }
@@ -124,11 +161,12 @@ export function StyleGrid() {
   }, []);
   return (
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(${q.get('cols') ?? 7}, 1fr)`, alignContent: 'start', gap: 2, padding: 2, background: '#3a3f3b', height: '100vh', overflow: 'auto', font: '11px sans-serif', color: '#ddd' }}>
-      {cells.map(([label, a, b]) => (
+      {cells.map(([label, ...imgs]) => (
         <div key={label} style={{ background: '#2a2e2b', textAlign: 'center' }}>
           <div style={{ display: 'flex' }}>
-            <img src={a} style={{ width: '50%', display: 'block' }} />
-            <img src={b} style={{ width: '50%', display: 'block' }} />
+            {imgs.map((u, i) => (
+              <img key={i} src={u} style={{ width: `${100 / imgs.length}%`, display: 'block' }} />
+            ))}
           </div>
           {label}
         </div>

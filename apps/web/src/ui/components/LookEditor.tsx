@@ -10,6 +10,8 @@ import {
   hairStylesFor,
   HUMAN_LIMIT,
   humanFace,
+  IDENTITIES,
+  resolveIdentity,
   humanShape,
   resolveFace,
   resolveShape,
@@ -88,8 +90,8 @@ const ALL_TABS: { id: Tab; label: string }[] = [
 // The looks the tile pictures show: only the sex, skin and the option itself vary (hair colour too for hair and
 // beards), so each picture is drawn once per sex and skin and reused.
 const BASE_HAIR_COLOR = 0x3a281b;
-const faceThumb = (sex: Sex, skin: number, face: string | FaceShape): PlayerLook => ({
-  sex, skin, face, hair: sex === 'm' ? 'bald' : 'topknot', hairColor: BASE_HAIR_COLOR, beard: 'none', shape: 'average',
+const faceThumb = (sex: Sex, skin: number, face: string | FaceShape, faceId?: string): PlayerLook => ({
+  sex, skin, face, hair: sex === 'm' ? 'bald' : 'topknot', hairColor: BASE_HAIR_COLOR, beard: 'none', shape: 'average', ...(faceId ? { faceId } : {}),
 });
 const hairThumb = (sex: Sex, skin: number, hair: string, hairColor: number): PlayerLook => ({
   sex, skin, hair, hairColor, beard: 'none', face: 'classic', shape: 'average',
@@ -299,6 +301,7 @@ export function LookEditor({ draft, tab, setTab, apply, preview, setSex, bodyBas
   const face = resolveFace(draft.face);
   const shapeId = typeof draft.shape === 'string' ? draft.shape : null;
   const faceId = typeof draft.face === 'string' ? draft.face : null;
+  const mix = resolveIdentity(draft.faceId, sex);
   const tabsRef = useRef<HTMLDivElement>(null);
   const tabIds = useId();
   const pv = (patch: Partial<PlayerLook>) => (on: boolean) => preview(on ? patch : null);
@@ -369,6 +372,31 @@ export function LookEditor({ draft, tab, setTab, apply, preview, setSex, bodyBas
   else if (tab === 'face')
     content = (
       <>
+        {/* Face identities (engine identity.ts; MPFB bodies): whole different people. "Mix in" blends a second one
+            30% (picked again: off). The slider presets and parts below tune on top. */}
+        <Group label="Who">
+          {[null, ...IDENTITIES[sex]].map((d) => (
+            <Tile
+              key={d?.id ?? 'base'}
+              label={d ? `${d.label} (${d.desc})` : 'Base face'}
+              selected={(mix[0]?.id ?? null) === (d?.id ?? null)}
+              thumb={{ look: faceThumb(sex, draft.skin, 'classic', d?.id), kind: 'mug' }}
+              onPreview={pv({ faceId: d?.id ?? undefined })}
+              onPick={() => apply({ faceId: d?.id ?? undefined })}
+            />
+          ))}
+        </Group>
+        {mix.length > 0 && (
+          <Group label="Mix in">
+            {IDENTITIES[sex]
+              .filter((d) => d.id !== mix[0]!.id)
+              .map((d) => {
+                const on = mix.some((e) => e.id === d.id);
+                const next = on ? mix[0]!.id : [{ id: mix[0]!.id, w: 0.7 }, { id: d.id, w: 0.3 }];
+                return <Tile key={d.id} label={`+ ${d.label}`} selected={on} thumb={{ look: faceThumb(sex, draft.skin, 'classic', d.id), kind: 'mug' }} onPreview={pv({ faceId: next })} onPick={() => apply({ faceId: next })} />;
+              })}
+          </Group>
+        )}
         <Group label="Overall">
           {Object.keys(FACE_PRESETS).map((id) => (
             <Tile

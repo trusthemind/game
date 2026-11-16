@@ -1,3 +1,13 @@
 base/tex/
 base/prev/
 base/before/
+refs/data/
+refs/hair-assets/
+refs/browse/
+refs/female/
+refs/sfmlab/
+hairpass/
+ident/
+/*.jpg
+/*.png
+base/*.jpg

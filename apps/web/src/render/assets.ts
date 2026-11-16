@@ -4,6 +4,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { addSketchfabFurniture } from './furnitureSf';
 import { cleanModel } from './cleanModel';
+import { preloadIdentityTextures } from './faceIdentity';
 
 /**
  * Loads the CC0 model packs once per session (see tools/assets/build.mjs) and hands out clones.
@@ -105,10 +106,11 @@ export function getAssets(): AssetLibrary | null {
 }
 
 /**
- * The base bodies: human_m / human_f are the MPFB2 ones (tools/assets/mpfb-pilot); `?body=ubc` (also after a
- * `#route?`) loads the old Universal Base Characters bodies (human_{m,f}_ubc.glb) instead, to compare or roll back.
+ * The base bodies: by default the old Universal Base Characters ones (human_{m,f}_ubc.glb), since the MPFB2 bodies
+ * (human_{m,f}.glb, tools/assets/mpfb-pilot) were rejected for body shape and faces; `?body=mpfb` (also after a
+ * `#route?`) loads the MPFB2 ones to keep working on them.
  */
-const HUMAN_SUFFIX = typeof window !== 'undefined' && /[?&]body=ubc(&|#|$)/.test(window.location.href) ? '_ubc' : '';
+const HUMAN_SUFFIX = typeof window !== 'undefined' && /[?&]body=mpfb(&|#|$)/.test(window.location.href) ? '' : '_ubc';
 
 export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibrary> {
   if (pending) return pending;
@@ -125,7 +127,7 @@ export function loadAssets(onProgress?: (p: number) => void): Promise<AssetLibra
     for (const c of g.scene.children) m.set(c.name, c);
     return m;
   };
-  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature'), load('mods'), load(`human_m${HUMAN_SUFFIX}`).catch(() => null), load(`human_f${HUMAN_SUFFIX}`).catch(() => null), load('hair').catch(() => null), load('furniture').catch(() => null), load('gear').catch(() => null), load('vehicles').catch(() => null), load('furniture_sf').catch(() => null)]).then(
+  pending = Promise.all([load('character'), load('character_f').catch(() => null), load('weapons'), load('melee'), load('props'), load('nature'), load('mods'), load(`human_m${HUMAN_SUFFIX}`).catch(() => null), load(`human_f${HUMAN_SUFFIX}`).catch(() => null), load('hair').catch(() => null), load('furniture').catch(() => null), load('gear').catch(() => null), load('vehicles').catch(() => null), load('furniture_sf').catch(() => null), HUMAN_SUFFIX ? null : preloadIdentityTextures()]).then(
     ([character, characterF, weapons, melee, props, nature, mods, humanM, humanF, hairDoc, furniture, gearDoc, vehicleDoc, furnitureSf]) => {
       const hair = new Map<string, THREE.SkinnedMesh>();
       hairDoc?.scene.traverse((o) => {

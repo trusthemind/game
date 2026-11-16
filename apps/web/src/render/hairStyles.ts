@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { HAIR_CATALOG } from './hairCatalog';
 import { hairCurls, hairLin, hairNoise, hairline, zones, type BeardSpec, type DrapeSpec, type HairSpec, type ScalpPt, type TailSpec } from './hairGen';
 
 /**
@@ -188,6 +189,7 @@ export const HAIR_SPECS: Record<string, HairSpec> = {
     },
     drape: { el: -4, len: (a, az) => (az > 30 ? 0 : a < 52 ? 0 : a < 95 ? side(a, 52, 80, 22) : 24), flare: 0.4 },
   },
+  ...HAIR_CATALOG,
 };
 
 // ── Beards ───────────────────────────────────────────────────────────────────
@@ -244,7 +246,8 @@ const chinDrop = (xN: number, yN: number, len: number) => len * sm(yN, -0.2, -0.
 export const BEARD_SPECS: Record<string, BeardSpec | null> = {
   none: null,
   // Shadow-stubble: densest on the chin, upper lip and jaw, thinning up the cheek.
-  stubble: ({ xN, yN, faz }) => ({ t: 0.04, cov: area(xN, yN, faz, -0.03), dens: 0.5 * (0.55 + 0.45 * sm(yN, -0.08, -0.32)) }),
+  // (At 0.5 it vanished at the Customize close-up on the MPFB heads; 0.72 reads as a 2-3 day shadow there.)
+  stubble: ({ xN, yN, faz }) => ({ t: 0.04, cov: area(xN, yN, faz, -0.03), dens: 0.72 * (0.55 + 0.45 * sm(yN, -0.08, -0.32)) }),
   scruff: ({ xN, yN, faz }) => ({ t: 0.14, cov: area(xN, yN, faz, -0.02), dens: 0.85 * (0.7 + 0.3 * sm(yN, -0.08, -0.32)) }),
   chinstrap: ({ xN, yN, faz }) => ({ t: 0.45, cov: area(xN, yN, faz) * sm(yN - jawEdge(faz), 0.13, 0.08) }),
   soulpatch: ({ xN, yN }) => ({ t: 0.5, cov: sm(xN, 0.09, 0.05) * sm(yN, -0.35, -0.32) * sm(yN, -0.235, -0.255) }),

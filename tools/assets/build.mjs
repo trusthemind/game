@@ -511,7 +511,9 @@ async function buildHumans() {
 async function buildMpfbHumans() {
   const dir = path.join(ROOT, 'tools/assets/mpfb-pilot/base');
   for (const sex of ['m', 'f']) {
-    const src = path.join(dir, `human_${sex}_mpfb.glb`);
+    // With face identities (add_identities.mjs: head-only morph targets), else the plain body.
+    const withIds = path.join(dir, `human_${sex}_mpfb_id.glb`);
+    const src = fs.existsSync(withIds) ? withIds : path.join(dir, `human_${sex}_mpfb.glb`);
     if (!fs.existsSync(src)) {
       console.warn(`  ! ${path.relative(ROOT, src)} missing (run build_base.py + fix_skeleton.mjs)`);
       continue;

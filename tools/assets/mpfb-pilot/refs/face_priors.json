@@ -1,0 +1,11 @@
+{
+ "_note": "Taste priors per archetype (REFERENCES.md section 7, FaceShape sliders -1..1); the fit in measure_face.mjs --fit starts here and is pulled back to it.",
+ "f_adventurer": {"cheeks": 0.5, "cheekFull": -0.1, "lips": 0.5, "mouthWidth": 0.3, "jaw": 0.1, "eyeTilt": 0.3, "brow": -0.1, "browHeight": -0.1, "noseWidth": -0.2, "noseBridge": 0.1},
+ "f_glamour": {"cheekFull": 0.3, "lips": 0.6, "jaw": -0.3, "chin": -0.1, "eyeSize": 0.3, "eyeTilt": -0.2, "browHeight": 0.2, "nose": -0.2, "noseTip": 0.2},
+ "f_statuesque": {"cheeks": 0.4, "lips": 0.5, "noseWidth": 0.4, "eyeSpacing": 0.1, "eyeSize": 0.2, "jaw": 0.1},
+ "f_elegant": {"headLength": 0.3, "cheeks": 0.4, "cheekFull": -0.3, "lips": -0.1, "noseWidth": -0.3, "nose": 0.1, "chinLength": 0.2, "jaw": 0.2},
+ "m_hero": {"jaw": 0.6, "chin": 0.4, "cleft": 0.2, "brow": 0.5, "browHeight": -0.3, "nose": 0.2, "noseBridge": 0.2, "headWidth": 0.1},
+ "m_model": {"cheeks": 0.5, "cheekFull": -0.4, "jaw": 0.2, "chinLength": 0.3, "headLength": 0.2, "noseWidth": -0.2, "lips": -0.3, "eyeTilt": -0.1},
+ "m_rugged": {"headWidth": 0.3, "brow": 0.5, "jaw": 0.4, "noseBridge": 0.3, "noseWidth": 0.2, "ears": 0.1},
+ "m_strong": {"headWidth": 0.2, "cheeks": 0.3, "jaw": 0.4, "noseWidth": 0.4, "lips": 0.3, "chin": 0.2}
+}

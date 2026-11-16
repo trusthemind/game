@@ -12,6 +12,8 @@ import {
   NATURAL_HAIR,
   npcBeard,
   npcHair,
+  npcHairColor,
+  GREY_HAIR,
   PROFILE_VERSION,
   tidyLook,
   type PlayerLook,
@@ -21,14 +23,24 @@ describe('hair catalogue', () => {
   it('offers a wide choice per sex, with unique ids', () => {
     expect(new Set(HAIR_STYLES.map((h) => h.id)).size).toBe(HAIR_STYLES.length);
     expect(new Set(BEARD_STYLES.map((b) => b.id)).size).toBe(BEARD_STYLES.length);
-    expect(hairStylesFor('m').length).toBeGreaterThanOrEqual(16);
-    expect(hairStylesFor('f').length).toBeGreaterThanOrEqual(16);
+    expect(hairStylesFor('m').length).toBeGreaterThanOrEqual(40);
+    expect(hairStylesFor('f').length).toBeGreaterThanOrEqual(40);
     expect(BEARD_STYLES.filter((b) => b.id !== 'none').length).toBeGreaterThanOrEqual(10);
     expect(HAIR_PALETTE.some((c) => c.dyed)).toBe(true);
   });
 
   it('keeps every id older saves could hold', () => {
     for (const id of ['bald', 'buzz', 'short', 'messy', 'long', 'ponytail', 'bob', 'bun']) expect(HAIR_BY_ID[id]).toBeDefined();
+  });
+
+  it('gives older NPCs thinning cuts and grey, never the young ones', () => {
+    const old = new Set<string>();
+    for (let s = 0; s < 400; s++) old.add(npcHair('m', s, 2));
+    expect(['receding', 'thinning', 'horseshoe'].some((id) => old.has(id))).toBe(true);
+    for (const id of old) expect(HAIR_BY_ID[id]!.age).not.toBe('young');
+    for (let s = 0; s < 50; s++) expect(npcHair('m', s, 0) === 'horseshoe').toBe(false);
+    expect(GREY_HAIR.length).toBeGreaterThan(2);
+    expect(Array.from({ length: 100 }, (_, s) => npcHairColor(s, 2)).filter((c) => GREY_HAIR.includes(c)).length).toBeGreaterThan(50);
   });
 
   it('reads old true/false beards', () => {

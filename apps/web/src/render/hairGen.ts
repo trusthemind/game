@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { HAIR_COLOR_BY_HEX } from '@ashfall/engine';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
 
 /**
@@ -33,6 +34,8 @@ export interface Frame {
   front: number;
   earTop: number;
   earBot: number;
+  /** How far round (|az|, degrees) the back of the ear is. */
+  earBack: number;
   R: Float32Array;
   head: number;
   /** Body vertices (head, neck, torso, arms near the shoulders) for collisions and skin weights. */
@@ -184,9 +187,46 @@ export function headFrame(body: THREE.SkinnedMesh, sex: 'm' | 'f'): Frame | null
     for (let k = 0; k < 4; k++) (wIdx[j * 4 + k] = si.getComponent(v, k)), (wVal[j * 4 + k] = sw.getComponent(v, k));
   });
   const L = sex === 'f' ? { front: 0.8, earTop: 0.41, earBot: -0.06 } : { front: 0.72, earTop: 0.47, earBot: 0.06 };
-  const f: Frame = { c, W, cm: W / 15, tipY, topY, span, ...L, R, head, pts, nrm, wIdx, wVal, headPts, body: geo, sex };
+  const f: Frame = { c, W, cm: W / 15, tipY, topY, span, ...L, earBack: 105, R, head, pts, nrm, wIdx, wVal, headPts, body: geo, sex };
+  measureLandmarks(f, pos, dom);
   FRAMES.set(geo, f);
   return f;
+}
+
+/**
+ * The head's own landmarks, measured (the defaults were fitted to one head; on another the hairline drawn from
+ * them left bare skin at the temples, over and behind the ears): the ears are what stands out of the skull at the
+ * sides; the front hairline is a face-third (~4.8 cm) above the brow, which is about level with the ears' top.
+ */
+function measureLandmarks(f: Frame, pos: THREE.BufferAttribute, dom: Int32Array): void {
+  const v = new THREE.Vector3();
+  let eTop = -Infinity;
+  let eBot = Infinity;
+  let eBack = 0;
+  for (let i = 0; i < pos.count; i++) {
+    if (dom[i] !== f.head) continue;
+    v.fromBufferAttribute(pos, i).sub(f.c);
+    const r = v.length();
+    const az = Math.abs(THREE.MathUtils.radToDeg(Math.atan2(v.x, v.z)));
+    const el = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(v.y / r, -1, 1)));
+    if (az < 72 || az > 125) continue;
+    const out = (r - radius(f, az, el)) / f.cm;
+    if (out < 0.7) continue;
+    const yN = (v.y + f.c.y - f.tipY) / f.span;
+    if (yN < -0.45 || yN > 0.75) continue;
+    eTop = Math.max(eTop, yN);
+    eBot = Math.min(eBot, yN);
+    eBack = Math.max(eBack, az);
+  }
+  if (eTop > eBot + 0.15 && eTop - eBot < 0.8) {
+    f.earTop = eTop;
+    f.earBot = eBot;
+  }
+  // The front hairline: about a hand's width over the brow, which is near the ears' top. (From the chin up, by
+  // thirds, it read the neck as the chin on some meshes.)
+  const front = f.earTop + (f.sex === 'f' ? 5.4 : 4.8) / (f.span / f.cm);
+  if (front > 0.55 && front < 0.85) f.front = front;
+  f.earBack = eBack || 105;
 }
 
 /** Skull radius towards (az, el), bilinear on the grid. */
@@ -355,6 +395,10 @@ export interface ScalpOut {
   /** Extra lift up / forward, cm (a quiff, a pompadour). */
   up?: number;
   fwd?: number;
+  /** Swept towards the head's left (+x), cm (a side sweep, a comb-over). */
+  side?: number;
+  /** Clipper-short growth here (0..1): drawn on the scalp only (a fade's gradient, a shaved side, a part). */
+  shade?: number;
 }
 export interface DrapeSpec {
   /** The ring it hangs from (elevation, degrees from the head's centre). */
@@ -371,7 +415,8 @@ export interface DrapeSpec {
   curl?: number;
 }
 export interface TailSpec {
-  kind: 'tube' | 'braid' | 'bun';
+  /** lock: a twisted rope (a loc, a twist, a box braid's fine plait). */
+  kind: 'tube' | 'braid' | 'bun' | 'lock';
   az: number;
   yN: number;
   /** Path from the root, cm (x the head's left, y up, z the face's way). */
@@ -380,13 +425,25 @@ export interface TailSpec {
   r: (s: number) => number;
   /** Ties: fractions along the path. */
   ties?: number[];
+  /** Lies along the scalp first: from (az, yN) over the skull to (azTo, to), `out` cm off it; `path` then
+   * continues from there (offsets from that point). */
+  follow?: { to: number; azTo?: number; out?: number; via?: [number, number][] };
+  /** Sides round a tube and segments along it (fewer for many thin ones). */
+  ring?: number;
+  segs?: number;
+  /** A bun's surface: lumps of curls, cm. */
+  bump?: number;
+  /** Colour of a tie (the tint), or the tube's own (1: the hair's). */
+  tint?: number;
 }
 export interface HairSpec {
   shell?: (p: ScalpPt) => ScalpOut;
-  /** A shaved-scalp shadow (stubble) under the hair wherever the natural hairline is. */
-  shadow?: number;
+  /** A shaved-scalp shadow (stubble) under the hair wherever the natural hairline is (a function: its density
+   * per point, a fade's gradient). */
+  shadow?: number | ((p: ScalpPt) => number);
   drape?: DrapeSpec;
-  tails?: TailSpec[];
+  /** Ponytails, braids, buns, locs (a function: placed by the head's own landmarks). */
+  tails?: TailSpec[] | ((f: Frame) => TailSpec[]);
 }
 
 const sm = THREE.MathUtils.smoothstep;
@@ -416,35 +473,47 @@ interface Line {
   ears?: boolean;
   feather?: number;
 }
-/** The hairline: 1 where hair grows (soft edge). */
+/**
+ * The hairline: 1 where hair grows (soft edge). It follows the head's measured landmarks (measureLandmarks): down
+ * the temple to the sideburn in front of the ear, arching tight over the ear, down again behind it to the earlobe's
+ * level and round the nape. `ears`: long hair over the ears (the line then runs below them).
+ */
 export function hairline(p: ScalpPt, o: Line = {}): number {
   const f = p.f;
   const front = f.front + (o.front ?? 0);
-  const temple = front - 0.1 + (o.temple ?? 0);
-  const side = o.ears ? f.earBot - 0.2 : f.earTop + 0.02;
-  // A man's sideburn runs down in front of the ear; a woman's hairline turns round above it (a sideburn down the
-  // cheek read as a beard on her).
-  const burn = o.burn ?? (f.sex === 'f' ? f.earTop - 0.04 : f.earBot + 0.05);
-  const nape = o.nape ?? -0.22;
+  const temple = front - 0.08 + (o.temple ?? 0);
+  const eT = f.earTop;
+  const eB = f.earBot;
+  const eK = THREE.MathUtils.clamp(f.earBack, 92, 112);
+  const eF = eK - 22;
+  const below = eB - 0.2;
+  // A man's sideburn runs down in front of the ear (to about its middle); a woman's hairline turns round at the
+  // top of the ear (a sideburn down the cheek read as a beard on her).
+  const burn = o.burn ?? (f.sex === 'f' ? eT + 0.02 : eT - 0.45 * (eT - eB));
+  const over = eT + 0.03;
+  const behind = eB + 0.08;
+  const nape = eB - 0.14 + (o.nape !== undefined ? o.nape + 0.22 : 0);
   const y = lin(
     [
       [0, front],
       [28, front - 0.02],
-      [50, temple],
-      [66, temple - 0.08],
-      [76, o.ears ? side : burn],
-      [84, o.ears ? side : burn],
-      [90, side],
-      [114, side],
-      [130, (side + nape) / 2],
+      [48, temple],
+      [62, Math.max(temple - 0.07, burn + 0.1)],
+      [eF - 6, o.ears ? below : burn],
+      [eF + 1, o.ears ? below : burn],
+      [eF + 7, o.ears ? below : over],
+      [eK - 3, o.ears ? below : over],
+      [eK + 7, o.ears ? below : behind],
+      [eK + 22, o.ears ? (below + nape) / 2 : behind - 0.03],
       [150, nape],
       [180, nape],
     ],
     p.a,
   );
   // Not a ruled line: it wanders a little (more round the front and temples, where it shows).
-  const wob = (vnoise(p.az * 0.11 + 3.3, 0.5, 1.7) - 0.5) * 0.05 + (vnoise(p.az * 0.37 + 9.1, 2.5, 0.3) - 0.5) * 0.025;
-  const fe = o.feather ?? 0.085;
+  const wob = (vnoise(p.az * 0.11 + 3.3, 0.5, 1.7) - 0.5) * 0.05 + (vnoise(p.az * 0.37 + 9.1, 2.5, 0.3) - 0.5) * 0.03 + (vnoise(p.az * 1.3 + 1.1, 4.5, 2.3) - 0.5) * 0.02;
+  // Softer across the forehead (fine baby hairs) than round the ears.
+  const fe = (o.feather ?? 0.06) * (1 + 0.4 * ss(50, 20, p.a));
   return sm(p.yN, y + wob - fe, y + wob + fe);
 }
 
@@ -522,7 +591,7 @@ function buildShell(f: Frame, shell: (p: ScalpPt) => ScalpOut, drape: DrapeSpec 
       lenHere *= sm(anchorCov, 0.3, 0.9);
       if (lenHere < 1.5) lenHere = 0;
     }
-    const RAMP = 10;
+    const RAMP = 8;
     const ramp = (ie: number) => {
       let sum = 0;
       for (let k = 0; k <= RAMP; k++) sum += THREE.MathUtils.clamp(outs[Math.min(NE - 1, ie + k)]!.cov, 0, 1);
@@ -543,10 +612,11 @@ function buildShell(f: Frame, shell: (p: ScalpPt) => ScalpOut, drape: DrapeSpec 
         cov = THREE.MathUtils.clamp(o.cov, 0, 1);
         // Thinning out to the skin over the soft hairline and the hair just above it, so its edge is a taper.
         const r = Math.min(cov, ramp(ie));
-        const out = (GAP + Math.max(0, o.t) * sm(cov, 0.1, 1) ** 2 * sm(r, 0.05, 1) ** 1.5) * cm;
+        const out = (GAP + Math.max(0, o.t) * sm(cov, 0.1, 1) ** 2 * sm(r, 0.0, 1) ** 2.2) * cm;
         p.copy(sp.d).multiplyScalar(radius(f, az, el) + out).add(f.c);
         p.y += (o.up ?? 0) * cm * cov * sm(r, 0.2, 1);
         p.z += (o.fwd ?? 0) * cm * cov * sm(r, 0.2, 1);
+        p.x += (o.side ?? 0) * cm * cov * sm(r, 0.2, 1);
         clear(f, p, Math.max(GAP * cm, out * 0.6), true);
         dens = o.dens ?? 1;
         edge = cov;
@@ -648,10 +718,22 @@ function rootAt(f: Frame, az: number, yN: number, out: number): THREE.Vector3 {
   return dir(az, el).multiplyScalar(radius(f, az, el) + out * f.cm).add(f.c);
 }
 
-function buildTail(f: Frame, t: TailSpec, out: Buf, tint = 1): void {
+/** Points over the scalp from (az, yN) to (azTo, to), `out` cm off the skull. */
+function overScalp(f: Frame, az: number, yN: number, azTo: number, to: number, out: number): THREE.Vector3[] {
+  const n = Math.max(2, Math.ceil(Math.abs(to - yN) / 0.06 + Math.abs(azTo - az) / 12));
+  const pts: THREE.Vector3[] = [];
+  for (let i = 0; i <= n; i++) {
+    const s = i / n;
+    pts.push(rootAt(f, THREE.MathUtils.lerp(az, azTo, s), THREE.MathUtils.lerp(yN, to, s), out));
+  }
+  return pts;
+}
+
+function buildTail(f: Frame, t: TailSpec, out: Buf, tint0 = 1): void {
   const cm = f.cm;
-  const root = rootAt(f, t.az, t.yN, 0.4);
-  const RING = 24;
+  const tint = t.tint ?? tint0;
+  const root = rootAt(f, t.az, t.yN, t.follow?.out ?? 0.4);
+  const RING = t.ring ?? 24;
   if (t.kind === 'bun') {
     // A ball of hair, its strands wound round it.
     const r = t.r(0) * cm;
@@ -666,7 +748,10 @@ function buildTail(f: Frame, t: TailSpec, out: Buf, tint = 1): void {
       for (let k = 0; k <= RING; k++) {
         const th = (k / RING) * Math.PI * 2;
         // A wound coil: a soft twist round the ball, not lumps.
-        const bump = 1 + 0.025 * Math.sin(th * 2 + ph * 3) * Math.sin(ph);
+        const bump =
+          1 +
+          0.025 * Math.sin(th * 2 + ph * 3) * Math.sin(ph) +
+          (t.bump ? ((t.bump / (r / cm)) * (vnoise(Math.cos(th) * 2.2 + 5, Math.cos(ph) * 2.2, Math.sin(th) * 2.2) - 0.5) * 2 * Math.sin(ph) ** 0.5) : 0);
         const p = new THREE.Vector3(Math.sin(ph) * Math.cos(th), Math.cos(ph) * 0.8, Math.sin(ph) * Math.sin(th)).multiplyScalar(r * bump).add(c);
         row.push(out.add(p, (k / RING) * 2 * Math.PI * (r / cm) + v * 6, v * Math.PI * (r / cm) + k * 0.4, 1, 1, tint, headW(f)));
       }
@@ -676,15 +761,27 @@ function buildTail(f: Frame, t: TailSpec, out: Buf, tint = 1): void {
       for (let k = 0; k < RING; k++) out.idx.push(grid[i]![k]!, grid[i + 1]![k]!, grid[i]![k + 1]!, grid[i]![k + 1]!, grid[i + 1]![k]!, grid[i + 1]![k + 1]!);
     return;
   }
-  // Tube: a smooth path from the root, kept clear of the body.
-  const ctrl = [root.clone(), ...t.path.map(([x, y, z]) => root.clone().add(new THREE.Vector3(x, y, z).multiplyScalar(cm)))];
+  // Tube: a smooth path from the root (over the scalp first, if it lies along it), kept clear of the body.
+  let lead = [root.clone()];
+  if (t.follow) {
+    const way: [number, number][] = [[t.az, t.yN], ...(t.follow.via ?? []), [t.follow.azTo ?? t.az, t.follow.to]];
+    lead = [];
+    for (let i = 0; i + 1 < way.length; i++) {
+      const seg = overScalp(f, way[i]![0], way[i]![1], way[i + 1]![0], way[i + 1]![1], t.follow.out ?? 0.4);
+      lead.push(...(i ? seg.slice(1) : seg));
+    }
+  }
+  const end = lead[lead.length - 1]!;
+  const ctrl = [...lead, ...t.path.map(([x, y, z]) => end.clone().add(new THREE.Vector3(x, y, z).multiplyScalar(cm)))];
   const curve = new THREE.CatmullRomCurve3(ctrl, false, 'centripetal');
-  const N = 40;
+  const N = t.segs ?? 40;
+  // Along the scalp the tube may sit closer than its radius would (it lies on the hair under it).
+  const onScalp = t.follow ? lead.length / ctrl.length : 0;
   const pts = curve.getSpacedPoints(N);
   const js: number[] = [];
   pts.forEach((p, i) => {
     const s = i / N;
-    js.push(clear(f, p, (t.r(s) + 0.35) * cm, false));
+    js.push(clear(f, p, (s < onScalp ? t.r(s) * 0.6 + 0.3 : t.r(s) + 0.35) * cm, s < onScalp));
   });
   // Smooth after pushing so it doesn't kink.
   for (let it = 0; it < 2; it++) for (let i = 1; i < N; i++) pts[i]!.lerp(pts[i - 1]!.clone().add(pts[i + 1]!).multiplyScalar(0.5), 0.5);
@@ -703,14 +800,17 @@ function buildTail(f: Frame, t: TailSpec, out: Buf, tint = 1): void {
       const th = (k / RING) * Math.PI * 2;
       let r = r0;
       if (t.kind === 'braid') {
-        const ph = (len / 2.2) * Math.PI;
+        const ph = (len / (2.2 * Math.max(0.5, r0 / 1.6))) * Math.PI;
         r *= 0.8 + 0.32 * Math.abs(Math.cos(1.5 * th + ph));
+      } else if (t.kind === 'lock') {
+        // A two-ply twist: the rope's section is a lobed one turning along it.
+        r *= 0.86 + 0.18 * Math.abs(Math.cos(th + (len / Math.max(0.6, r0 * 2.2)) * Math.PI));
       }
       if (tie) r = r0 * 1.08 + 0.12;
       const p = pts[i]!.clone()
         .addScaledVector(Ns[i]!, Math.cos(th) * r * cm)
         .addScaledVector(Bs[i]!, Math.sin(th) * r * cm);
-      const across = t.kind === 'braid' ? th * r0 + len * 1.3 : th * r0;
+      const across = t.kind === 'braid' || t.kind === 'lock' ? th * r0 + len * 1.3 : th * r0;
       row.push(out.add(p, across, len, s > 0.92 ? 1 - sm(s, 0.92, 1) : 1, 1, tie ? 0.28 : tint, w));
     }
     grid.push(row);
@@ -732,14 +832,103 @@ export function hairGeometry(body: THREE.SkinnedMesh, sex: 'm' | 'f', id: string
   if (hit) return hit;
   const scalp = new Buf();
   const long = new Buf();
-  if (spec.shadow) buildShell(f, (p) => ({ t: 0.04, cov: hairline(p, { feather: 0.08 }), dens: spec.shadow }), undefined, scalp, long, 0.75);
+  const shadow = spec.shadow;
+  if (shadow) {
+    const at = typeof shadow === 'number' ? () => shadow : shadow;
+    buildShell(f, (p) => {
+      const d = at(p);
+      return { t: 0.04, cov: d > 0.02 ? hairline(p, { feather: 0.08 }) : 0, dens: d };
+    }, undefined, scalp, long, 0.75);
+  }
   if (spec.shell) buildShell(f, spec.shell, spec.drape, scalp, long);
-  for (const t of spec.tails ?? []) buildTail(f, t, long);
+  for (const t of typeof spec.tails === 'function' ? spec.tails(f) : spec.tails ?? []) buildTail(f, t, long);
   hairStats[id] = (scalp.idx.length + long.idx.length) / 3;
   const out = { scalp: scalp.geometry(), long: long.geometry() };
   HAIR_CACHE.set(key, out);
   return out;
 }
+
+// ── Scalp underlay ───────────────────────────────────────────────────────────
+
+/**
+ * What the scalp skin under a style looks like (the body's material draws it, humanBodyMaterial): where hair grows
+ * the skin is the hair's roots, so wherever the shell is thin or see-through (its soft hairline, between tufts and
+ * curls, over the ears, a fade) it shows hair, never bare skin. A grid over the head like the skull's (NA x NE,
+ * az/elevation from Frame.c): R the style's growth (its hairline times its density), G a shaved shadow's.
+ */
+export interface HairUnderlay {
+  uHairMap: { value: THREE.DataTexture | null };
+  uHairC: { value: THREE.Vector3 };
+  uHairR: { value: number };
+}
+const UNDERLAYS = new Map<string, HairUnderlay>();
+const BLANK = (() => {
+  const t = new THREE.DataTexture(new Uint8Array(4), 1, 1);
+  t.needsUpdate = true;
+  return t;
+})();
+
+/** The (shared, filled in once the hair is built) underlay uniforms for this body material and style. */
+export function hairUnderlay(key: string): HairUnderlay {
+  let u = UNDERLAYS.get(key);
+  if (!u) UNDERLAYS.set(key, (u = { uHairMap: { value: BLANK }, uHairC: { value: new THREE.Vector3() }, uHairR: { value: 0 } }));
+  return u;
+}
+
+/** Fill `key`'s underlay for a style on this body. */
+export function buildUnderlay(key: string, body: THREE.SkinnedMesh, sex: 'm' | 'f', spec: HairSpec): void {
+  const u = hairUnderlay(key);
+  const f = headFrame(body, sex);
+  if (!f || u.uHairMap.value !== BLANK) return;
+  const data = new Uint8Array(NA * NE * 4);
+  let maxR = 0;
+  for (let ie = 0; ie < NE; ie++)
+    for (let ia = 0; ia < NA; ia++) {
+      const sp = scalpPoint(f, (ia / NA) * 360, 90 - ie * DEL);
+      maxR = Math.max(maxR, radius(f, (ia / NA) * 360, 90 - ie * DEL));
+      let g = 0;
+      if (spec.shell) {
+        const o = spec.shell(sp);
+        // Stubble-short growth (a buzz, a fade's sides) is a shadow, not a full root colour.
+        const dens = (o.dens ?? 1) * THREE.MathUtils.clamp(0.45 + o.t / 0.6, 0, 1);
+        g = THREE.MathUtils.clamp(o.cov, 0, 1) * dens;
+      }
+      let sh = spec.shadow ? hairline(sp, { feather: 0.08 }) * (typeof spec.shadow === 'number' ? spec.shadow : spec.shadow(sp)) : 0;
+      if (spec.shell) sh = Math.max(sh, spec.shell(sp).shade ?? 0);
+      const k = (ie * NA + ia) * 4;
+      data[k] = Math.round(g * 255);
+      data[k + 1] = Math.round(sh * 255);
+      data[k + 3] = 255;
+    }
+  const tex = new THREE.DataTexture(data, NA, NE);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  u.uHairMap.value = tex;
+  u.uHairC.value.copy(f.c);
+  u.uHairR.value = maxR;
+}
+
+/** GLSL (humanBodyMaterial's fragment shader, after the skin colour): the scalp under the hair is its roots. */
+export const UNDERLAY_GLSL = /* glsl */ `
+  if (uHairR > 0.0) {
+    vec3 hd = vObjPos - uHairC;
+    float hr = length(hd);
+    vec3 hn = hd / max(hr, 1e-5);
+    vec2 huv = vec2(atan(hn.x, hn.z) / 6.2831853 + ${(0.5 / NA).toFixed(5)}, ((90.0 - degrees(asin(clamp(hn.y, -1.0, 1.0)))) / ${DEL.toFixed(1)} + 0.5) / ${NE.toFixed(1)});
+    vec4 hs = texture2D(uHairMap, huv);
+    // Only the head's own skin (not a shoulder the same way round from the centre).
+    float hnear = 1.0 - smoothstep(uHairR * 1.12, uHairR * 1.3, hr);
+    // Roots: the hair's colour, darker (in the shade of the hair over it), with a little of the skin through it.
+    float hk = smoothstep(0.02, 0.75, hs.r) * 0.92 * hnear;
+    // Clipper-short growth: the hairs' dark ends in the skin (as dense as the growth), a shade of the roots.
+    float hsk = hs.g * 0.8 * hnear;
+    vec3 hroot = uHairCol * 0.62;
+    diffuseColor.rgb = mix(diffuseColor.rgb, mix(diffuseColor.rgb * 0.8, hroot * 1.2, 0.75), hsk);
+    diffuseColor.rgb = mix(diffuseColor.rgb, hroot, hk);
+  }`;
 
 // ── Facial hair ──────────────────────────────────────────────────────────────
 
@@ -997,9 +1186,20 @@ export function hairGenMaterial(color: number, u: WorldUniforms, clip?: HeadClip
   const C = clip?.c ?? new THREE.Vector3();
   const R = clip?.r ?? new THREE.Vector3(1, 1, 1);
   const rim = new THREE.Vector4(clip?.rim ?? 0, clip?.slope ?? 0, clip?.pivotZ ?? 0, clip?.band ?? 0.01);
+  // A colour's treatment (engine hair.ts HAIR_PALETTE): lighter ends, grown-out roots, grey strands.
+  const def = HAIR_COLOR_BY_HEX.get(color);
+  const base = new THREE.Color(color);
+  const tips = def?.tips !== undefined ? new THREE.Color(def.tips) : base.clone();
+  const roots = def?.roots !== undefined ? new THREE.Color(def.roots) : base.clone();
+  const tipK = new THREE.Vector3(tips.r / Math.max(base.r, 1e-3), tips.g / Math.max(base.g, 1e-3), tips.b / Math.max(base.b, 1e-3));
+  const rootK = new THREE.Vector3(roots.r / Math.max(base.r, 1e-3), roots.g / Math.max(base.g, 1e-3), roots.b / Math.max(base.b, 1e-3));
+  const grey = def?.grey ?? 0;
   patchWorldMaterial(m, u, {
     key: `hairgen${on}`,
     pre: (sh) => {
+      sh.uniforms.uTipK = { value: tipK };
+      sh.uniforms.uRootK = { value: rootK };
+      sh.uniforms.uGrey = { value: grey };
       sh.uniforms.uClipOn = { value: on };
       sh.uniforms.uClipC = { value: C };
       sh.uniforms.uClipR = { value: R };
@@ -1047,6 +1247,9 @@ export function hairGenMaterial(color: number, u: WorldUniforms, clip?: HeadClip
           uniform vec3 uClipR;
           uniform vec4 uClipRim;
           uniform float uClipF;
+          uniform vec3 uTipK;
+          uniform vec3 uRootK;
+          uniform float uGrey;
           float hgH(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
           float hgN(vec2 p) {
             vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -1089,7 +1292,16 @@ export function hairGenMaterial(color: number, u: WorldUniforms, clip?: HeadClip
           // Darker under the surface and at the hairline (roots), lighter strands on top.
           float hgRoot = mix(0.84, 1.0, smoothstep(0.0, 0.8, vHair.x));
           diffuseColor.rgb *= (0.62 + 0.62 * hgS) * vHair.z * hgRoot;
-          diffuseColor.rgb *= vec3(1.0 + 0.12 * hgHue, 1.0 + 0.02 * hgHue, 1.0 - 0.1 * hgHue);`,
+          diffuseColor.rgb *= vec3(1.0 + 0.12 * hgHue, 1.0 + 0.02 * hgHue, 1.0 - 0.1 * hgHue);
+          // Ends lighter (sun, balayage: by strand clump, not a flat band), roots darker (grown-out dye).
+          float hgTip = smoothstep(6.0, 22.0, vStrand.y + (hgN(vStrand * vec2(2.0, 0.05) + 13.0) - 0.5) * 10.0);
+          diffuseColor.rgb *= mix(vec3(1.0), uTipK, hgTip);
+          diffuseColor.rgb *= mix(uRootK, vec3(1.0), smoothstep(1.5, 4.5, vStrand.y + hgN(vStrand * vec2(4.0, 0.3)) * 2.0));
+          // Grey strands through it: single hairs, finer than the clumps.
+          if (uGrey > 0.0) {
+            float hgG = step(1.0 - uGrey, hgN(vStrand * vec2(37.0, 0.5) + 61.0) * 0.7 + hgN(vStrand * vec2(5.0, 0.1) + 3.0) * 0.3);
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.76, 0.72) * (0.75 + 0.4 * hgS), hgG * 0.9);
+          }`,
         )
         .replace(
           '#include <roughnessmap_fragment>',
@@ -1109,4 +1321,6 @@ export function disposeHairGen(): void {
   BEARD_CACHE.clear();
   for (const m of MATS.values()) m.dispose();
   MATS.clear();
+  for (const u of UNDERLAYS.values()) if (u.uHairMap.value !== BLANK) u.uHairMap.value?.dispose();
+  UNDERLAYS.clear();
 }

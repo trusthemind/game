@@ -381,6 +381,18 @@ def _composite(sex, body, rig, others, out_dir, A):
         return smooth(r, r * 0.6, d), t
     fa, ft = seg(bone("lowerarm_l"), bone("hand_l"), 0.06)
     forearm = fa * smooth(0.2, 0.55, ft)
+    # Where the skin folds: finger joints, knuckles, wrists, elbows, knees, the front and sides of the neck, the eye
+    # corners (crow's feet), between the brows.
+    fing = 0
+    for f_ in ["thumb", "index", "middle", "ring", "pinky"]:
+        for k_ in ("01", "02", "03"):
+            nb = f"{f_}_{k_}_l"
+            if nb in rig.data.bones:
+                fing = np.maximum(fing, sph(bone(nb), 0.014))
+    wrist = joint("hand_l", 0.035)
+    neck_f = smooth(chin_z - 0.02, chin_z - 0.05, z) * smooth(head[2] - 0.08, head[2] - 0.03, z) * smooth(0.1, -0.4, ny) * (1 - inhead * 0.5)
+    crow = np.exp(-(((ax - (eye_x + 0.03)) / 0.012) ** 2 + ((z - eye_z) / 0.012) ** 2)) * inhead
+    folds = np.clip(np.maximum.reduce([np.asarray(fing + 0 * z), elbows * 0.9, knees * 0.9, wrist * 0.7, neck_f * 0.6, crow * 0.5, knuck if np.ndim(knuck) else 0 * z]), 0, 1) * valid
     stubble = 0
     if sex == "m":
         jaw = smooth(nose[2] - 0.004, nose[2] - 0.016, z) * smooth(chin_z - 0.035, chin_z - 0.005, z) * inhead
@@ -404,7 +416,19 @@ def _composite(sex, body, rig, others, out_dir, A):
     pubic = sph((0, th[1] - 0.08, th[2] - 0.04), 0.13, sym=False) * smooth(-0.1, -0.5, ny)
     # ... and the photo's eye makeup / lid shadow (read as dark, sunken eyes on the women).
     det = det ** (1 - np.clip(0.85 * scalp + pubic + 0.65 * socket, 0, 1)[..., None])
-    det = det ** 0.85
+    # (Body: a little flatter -- the photo's own broad shading / blotches read as dirt on the chest and shoulders --
+    # but its fine grain kept: flattened all over, the skin read as soap.)
+    det_lo = blur(det, 6)
+    det = (det / det_lo) ** 0.95 * det_lo ** (0.5 + 0.35 * inhead)[..., None]
+    # Fine wrinkles at the joints (knuckles, the backs of the fingers, elbows, knees, the neck's rings, round the
+    # eyes): the CC0 older-skin photo's own creases (same UV layout), high-passed, where skin folds.
+    old_path = bpy.context.scene.get("ashfall_skin_photo_old")
+    creases_h = np.zeros((H, W), np.float32)
+    if old_path and os.path.exists(old_path):
+        oph = s2l(img_np(bpy.data.images.load(old_path, check_existing=True))[..., :3])
+        if oph.shape[0] == H:
+            ol = oph.mean(-1)
+            creases_h = np.clip(np.log(np.clip(ol / (blur(ol, 10) + 1e-4), 0.3, 3.0)), -0.6, 0.6)
     base = np.broadcast_to(TEX_SKIN, (H, W, 3)).copy()
     Pv = Pf
     hue = fbm(Pv, 9.0).reshape(H, W) - 0.5
@@ -413,8 +437,9 @@ def _composite(sex, body, rig, others, out_dir, A):
     # Blotchy hue/value variation: redder / yellower patches.
     # (Gentler on the face, the women's most: there the blotches read as bruises under the cheekbones.)
     face = front * inhead
-    bk = 0.07 * (1 - face * (0.65 if sex == "f" else 0.4))
-    alb *= 1 + np.stack([0.10, 0.02, -0.06]) * hue[..., None] * 1.4 + (bk * blot)[..., None]
+    # (Halved: at 0.07 / 1.4 the body's patches read as dirty skin, not as an even tone.)
+    bk = 0.035 * (1 - face * (0.65 if sex == "f" else 0.4))
+    alb *= 1 + np.stack([0.10, 0.02, -0.06]) * hue[..., None] * 0.8 + (bk * blot)[..., None]
     red = np.array([1.12, 0.86, 0.84])
     def tint(mask, col, k=1.0):
         nonlocal alb
@@ -439,12 +464,19 @@ def _composite(sex, body, rig, others, out_dir, A):
     tint(pores, [0.93, 0.91, 0.91], 0.7)
     tint(nails, [1.25, 1.1, 1.1], 0.9)
     tint(toe_nails, [1.2, 1.08, 1.08], 0.7)
+    # The fold creases in the colour: a shade darker in their valleys.
+    alb *= (1 + 0.35 * np.minimum(creases_h, 0) * folds + 0.08 * np.maximum(creases_h, 0) * folds)[..., None]
+    # Moles: a few small, soft-edged darker brown spots (shoulders, back, arms, face), very sparse.
+    mol = smooth(0.955, 0.975, vnoise(Pv + 12.1, 160.0).reshape(H, W)) * smooth(0.55, 0.8, fbm(Pv + 4.2, 3.0).reshape(H, W))
+    tint(mol * (1 - lips_m) * (1 - nails), [0.62, 0.5, 0.45], 0.85)
+    # Inner wrists / inner forearms: the bluish veins a little more (thin skin there).
+    inner = smooth(0.0, 0.5, -N[..., 2]) * forearm
     # Freckles / blemishes: sparse small spots, mostly face / shoulders / forearms.
     spots = smooth(0.72, 0.8, vnoise(Pv + 7.7, 420.0).reshape(H, W)) * smooth(0.5, 0.75, fbm(Pv + 1.3, 6.0).reshape(H, W))
-    tint(spots * (0.5 + 0.5 * front + 0.6 * forearm), [0.86, 0.8, 0.78], 0.6)
+    tint(spots * (0.25 + 0.5 * face + 0.3 * forearm), [0.86, 0.8, 0.78], 0.6)
     # Veins: thin ridged noise on the forearms / backs of the hands / feet.
     rv = 1 - np.abs(fbm(Pv + 5.5, 38.0, 2).reshape(H, W) - 0.5) * 2
-    veins = smooth(0.9, 0.97, rv) * np.clip(forearm + hands * 0.8 + feet * 0.6, 0, 1)
+    veins = smooth(0.9, 0.97, rv) * np.clip(forearm * (1 + 0.6 * inner) + hands * 0.8 + feet * 0.6, 0, 1)
     tint(veins, [0.9, 0.94, 1.04], 0.55)
     if sex == "m":
         # Stubble shadow: a cool grey-blue cast over the jaw / lip / throat, with dark hair-tip dots in it.
@@ -452,6 +484,24 @@ def _composite(sex, body, rig, others, out_dir, A):
         dots = smooth(0.5, 0.78, vnoise(Pv + 3.3, 2600.0).reshape(H, W))
         tint(stubble, [0.86, 0.87, 0.9], 0.8)
         tint(stubble * (0.35 * speck + 0.65 * dots), [0.72, 0.73, 0.77], 0.7)
+        # Body hair (ASHFALL_BODY_HAIR, 0 = off): faint, sparse dark hairs over the sternum / round the nipples,
+        # thinning out over the pecs, and a thin trail navel -> pubis. Baked in (no runtime toggle).
+        bh = float(os.environ.get("ASHFALL_BODY_HAIR", "0.85"))
+        if bh > 0:
+            zc = top * 0.725
+            torso = smooth(-0.15, -0.45, ny) * (1 - inhead) * valid
+            sternum = smooth(0.06, 0.0, ax) * smooth(zc - 0.12, zc - 0.04, z) * smooth(zc + 0.14, zc + 0.07, z)
+            pecs = near((0.085, 0, zc), 0.075) * 0.55
+            pecs = np.maximum(pecs, smooth(0.13, 0.04, ax) * smooth(zc - 0.06, zc, z) * smooth(zc + 0.1, zc + 0.04, z) * 0.35)
+            th_ = bone("thigh_l")
+            trail = smooth(0.025, 0.006, ax) * smooth(th_[2] - 0.06, th_[2] + 0.0, z) * smooth(zc - 0.12, zc - 0.2, z) * 0.8
+            dens = np.clip(np.maximum.reduce([sternum, pecs, trail]), 0, 1) * torso
+            dens *= 0.6 + 0.4 * fbm(Pv + 6.6, 14.0).reshape(H, W)
+            # strands: noise stretched along the body (short vertical hairs), two scales
+            Ps = Pv * np.array([1.0, 1.0, 0.3])
+            hairs = smooth(0.56, 0.78, vnoise(Ps + 8.8, 1100.0).reshape(H, W)) * 0.8 + smooth(0.6, 0.85, vnoise(Ps + 2.4, 2000.0).reshape(H, W)) * 0.5
+            tint(dens * np.clip(hairs, 0, 1), [0.5, 0.43, 0.38], bh)
+            tint(dens * 0.3, [0.9, 0.86, 0.83], bh)
     if "brow" in A:
         bw = np.clip(blur(A["brow"][..., 0], 2) * 1.6, 0, 1) * inhead * front
         # Only a neutral shade under the brow cards (which take the hair colour in game): a painted dark brow stayed
@@ -464,7 +514,7 @@ def _composite(sex, body, rig, others, out_dir, A):
     cav = blur(cav, 2)
     cavd = np.clip(1 + 0.05 * np.minimum(cav, 0.6), 0.8, 1.03)
     # (Less AO round the eyes: the ORM occlusion darkens the sockets again in game.)
-    aok = 0.38 * (1 - 0.55 * socket)
+    aok = (0.12 + 0.1 * inhead) * (1 - 0.55 * socket)  # (body less: the AO under the pecs read as a black band)
     alb *= (cavd * (1 - aok + aok * ao ** 1.3))[..., None]
     # Muscle separation / form shading from the baked normal map's curvature (valleys darker, crests a hair lighter),
     # the painted-in definition stylised-realistic bodies carry.
@@ -474,7 +524,8 @@ def _composite(sex, body, rig, others, out_dir, A):
     div = blur(np.where(valid, div, 0), 4)
     dv = div[valid]
     div = np.clip(div / (dv.std() * 2.5 + 1e-6), -1, 1) * (1 - inhead)  # body only: on the face it read as blotches
-    alb *= (1 + 0.22 * np.minimum(div, 0) + 0.05 * np.maximum(div, 0))[..., None]
+    # (0.22 drew dark smudges round the pecs / shoulders: the muscles now are in the mesh, this only hints at them.)
+    alb *= (1 + 0.07 * np.minimum(div, 0) + 0.03 * np.maximum(div, 0))[..., None]
     # Renormalise so the mean of plain skin is TEX_SKIN (the game tints relative to it).
     plain = valid & (lips_m < 0.1) & (nails < 0.1) & (stubble < 0.1 if np.ndim(stubble) else True)
     mean = alb[plain].mean(axis=0)
@@ -492,6 +543,11 @@ def _composite(sex, body, rig, others, out_dir, A):
     hmap = pore * 0.7 + pore2 * 0.25
     s = (0.55 + 0.85 * front * inhead + 0.35 * nose_m + 0.25 * cheeks) * (1 - 0.8 * lips_m) * (1 - nails) * valid
     hmap *= s
+    # The photo's own relief (its fine light / dark grain is mostly the skin's surface lit), and the fold creases.
+    phl = np.log(np.clip(det.mean(-1), 0.3, 3.0))
+    phl = phl - blur(phl, 4)
+    hmap += 0.55 * phl * (1 - 0.8 * lips_m) * valid
+    hmap += 0.9 * creases_h * folds
     gx = (np.roll(hmap, -1, 1) - np.roll(hmap, 1, 1)) * 0.35
     gy = (np.roll(hmap, -1, 0) - np.roll(hmap, 1, 0)) * 0.35
     nx = nm[..., 0] - gx
@@ -504,13 +560,18 @@ def _composite(sex, body, rig, others, out_dir, A):
     # ── ORM ──
     rough = np.full((H, W), 0.53, np.float32)
     tzone = (near((0, nose[1] + 0.02, eye_z + 0.04), 0.035, sym=False) + nose_m) * front
-    rough -= 0.08 * np.clip(tzone, 0, 1)
-    rough += 0.07 * np.clip(elbows + knees + toes * 0.5, 0, 1) + 0.04 * hands
+    rough -= 0.11 * np.clip(tzone, 0, 1)
+    rough += 0.11 * np.clip(elbows + knees + toes * 0.5, 0, 1) + 0.05 * hands + 0.04 * (1 - inhead) * (1 - np.clip(elbows + knees, 0, 1))
+    # (dry, matte joints; the body a little matter than the face; the creases rougher still)
+    rough += 0.06 * folds * np.clip(-creases_h * 3, 0, 1)
     rough = rough * (1 - lips_m) + 0.32 * lips_m
     rough = rough * (1 - nails) + 0.28 * nails
     rough += 0.04 * (fbm(Pv + 2.2, 60.0, 2).reshape(H, W) - 0.5) + 0.02 * np.maximum(-cav, 0) * 0.3
     rough += 0.04 * scalp
-    occ = np.clip(0.25 + 0.75 * ao, 0, 1)
+    # Occlusion floor: 0.25 on the head (sockets, ears), 0.6 on the body -- at 0.25 the crease under his pecs and
+    # under her breasts went black in game light (not self-shadowing: it stayed with shadows off).
+    lo_occ = 0.25 + 0.35 * (1 - inhead)
+    occ = np.clip(lo_occ + (1 - lo_occ) * ao, 0, 1)
     occ = occ + (1 - occ) * 0.5 * socket
     orm = np.stack([occ, np.clip(rough, 0.2, 0.8), np.zeros_like(occ)], -1)
     orm = save_png(orm, os.path.join(out_dir, "orm.png"), f"{sex}_orm", non_color=True)

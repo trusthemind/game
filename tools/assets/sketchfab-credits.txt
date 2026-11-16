@@ -142,3 +142,5 @@
 "David - LOD Man character" by Egunoff (https://sketchfab.com/3d-models/david-lod-man-character-a483b7dc67da43e0a8fefed635dd911c) — CC BY 4.0 — clothing: brown button shirt, trail shoes (plainclothes set)
 "Jamal - LOD Man character" by Egunoff (https://sketchfab.com/3d-models/jamal-lod-man-character-a169a23fa24f4df39daace6c55b24194) — CC BY 4.0 — clothing: baseball cap (plainclothes set)
 "Andrew - LOD Man character" by Egunoff (https://sketchfab.com/3d-models/andrew-lod-man-character-3aaaf5c42dae43a1bd1ca447964f65b8) — CC BY 4.0 — clothing: white shirt, white trainers (plainclothes set)
+"Generic Man" by Scanlab Photogrammetry Inc. (https://sketchfab.com/3d-models/generic-man-9b4527d4bc524c31bed48054f0c04b71) — CC BY 4.0 — reference only: body shape of the MPFB male base (human_m.glb) derived from this scan (fit_scan.py); scan mesh / textures not shipped
+"Generic Woman" by Scanlab Photogrammetry Inc. (https://sketchfab.com/3d-models/generic-woman-ff5571cf3b484f4385c305e0cd70ad21) — CC BY 4.0 — reference only: body shape of the MPFB female base (human_f.glb) derived from this scan (fit_scan.py); scan mesh / textures not shipped

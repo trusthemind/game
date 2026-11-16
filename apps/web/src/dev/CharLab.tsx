@@ -23,11 +23,13 @@ import { buildGun } from '../render/gunsmith';
 import { GEAR_MODEL, wornGear } from '../render/gearModels';
 import { assembleGun, loadWeaponParts } from '../render/weaponAssembly';
 import { attachSkinned, cloneHuman } from '../render/human';
-import { actorLook, CharacterView, lookFor, renderPortrait, type Appearance } from '../render/character';
+import { actorLook, CharacterView, lookFor, renderPortrait, SKIN_TONES, type Appearance } from '../render/character';
 import { SHAPE_PRESETS, shapeStats } from '../render/bodyShape';
 import { FACE_PRESETS } from '@ashfall/engine';
 import type { WorldUniforms } from '../render/patches';
 import { RandomLooks, StyleGrid } from './RandomLooks';
+import { Carousel } from './Carousel';
+import { loadAssetHair } from '../render/assetHair';
 
 /** Dev-only lineup of characters/outfits/weapons (open /#charlab). Used for visual checks and screenshots. */
 /** Fill every empty socket with the first part that fits (rails a part brings get filled too). */
@@ -42,7 +44,8 @@ function modAll(it: ItemInstance): void {
 
 export function CharLab() {
   const view = new URLSearchParams(location.hash.split('?')[1] ?? '').get('view');
-  return view === 'randoms' ? <RandomLooks /> : view === 'hair' || view === 'beards' || view === 'facegrid' || view === 'bustgrid' ? <StyleGrid /> : <CharLabScene />;
+  if (view === 'carousel') return <Carousel />;
+  return view === 'randoms' ? <RandomLooks /> : view === 'hair' || view === 'beards' || view === 'facegrid' || view === 'identities' || view === 'bustgrid' || view === 'skin' ? <StyleGrid /> : <CharLabScene />;
 }
 
 function CharLabScene() {
@@ -257,7 +260,7 @@ function CharLabScene() {
     }
     if (view === 'helmets') {
       // Every helmet on one head, close up: `&sex=f`, `&ids=altyn,zsh`, `&face=<FACE_PRESETS name>`,
-      // `&shape=<SHAPE_PRESETS name>`, `&visor=1` faceplates down. `__look(i, 'front'|'side'|'top', 0.7, 'head')`.
+      // `&shape=<SHAPE_PRESETS name>`, `&visor=1` faceplates down, `&hair=`, `&fid=` (identity). `__look(i, 'front'|'side'|'top', 0.7, 'head')`.
       cast.length = 0;
       const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
       const sex: 'm' | 'f' = q.get('sex') === 'f' ? 'f' : 'm';
@@ -270,7 +273,9 @@ function CharLabScene() {
       const faces = q.get('faces')?.split(',');
       for (const [id, fc] of faces ? faces.map((f) => [ids[0]!, f] as const) : ids.map((id) => [id, face] as const)) {
         const look = {
-          ...lookFor(61, 'scav'), sex, hair: sex === 'f' ? ('bob' as const) : ('buzz' as const), beard: 'none', hat: null, clothed: true, shape,
+          // `&hair=` a hairstyle (asset hair: mh_*), `&fid=` a face identity (MPFB bodies).
+          ...lookFor(61, 'scav'), sex, hair: (q.get('hair') ?? (sex === 'f' ? 'bob' : 'buzz')) as never, beard: 'none', hat: null, clothed: true, shape,
+          ...(q.get('fid') ? { faceId: [{ id: q.get('fid')!, w: 1 }] } : {}),
           ...(fc && FACE_PRESETS[fc] ? { face: FACE_PRESETS[fc] } : {}),
         };
         cast.push({ look, eq: ['c_bomber:top', 'c_trousers:pants', 'c_shoes:boots', `${id}:helmet`], active: 'melee', speed: 0, visor: q.get('visor') === '1' });
@@ -291,6 +296,21 @@ function CharLabScene() {
       cam.position.set(0, 1.62, 2.6);
       cam.lookAt(0, 1.6, 0);
       (window as unknown as { __bodyCam: THREE.Camera }).__bodyCam = cam;
+    }
+    if (view === 'archetypes') {
+      // The eight attractive face types (shape.ts adventurer..stalwart), each as its type is described (skin, hair,
+      // beard), bare-headed: women then men. For `__sheet(['front','side'], 0.62, 300)` close-ups.
+      cast.length = 0;
+      const T: [string, 'm' | 'f', number, string, string, number][] = [
+        ['adventurer', 'f', 1, 'ponytail', 'none', 0x3a2416], ['glamour', 'f', 0, 'wavy', 'none', 0x8a5a2b], ['statuesque', 'f', 4, 'curlylong', 'none', 0x140e0a], ['elegant', 'f', 0, 'lowbun', 'none', 0x2a1a10],
+        ['hero', 'm', 1, 'short', 'stubble', 0x2a1a10], ['chiseled', 'm', 0, 'slick', 'stubble', 0x3a2416], ['brawny', 'm', 2, 'messy', 'full', 0x4a2e1a], ['stalwart', 'm', 4, 'fade', 'scruff', 0x140e0a],
+      ];
+      for (const [face, sex, skin, hair, beard, hairColor] of T) {
+        const look = { ...lookFor(61, 'scav'), sex, skin: SKIN_TONES[skin]!, hair, hairColor, beard, hat: null, clothed: true, shape: SHAPE_PRESETS[sex].average, face: FACE_PRESETS[face] } as Appearance;
+        cast.push({ look, eq: ['c_bomber:top', 'c_trousers:pants', 'c_shoes:boots'], active: 'melee', speed: 0 });
+      }
+      cam.position.set(0, 1.62, 6);
+      cam.lookAt(0, 1.2, 0);
     }
     if (view === 'gestures') {
       // Reloads and treatment by hand, looping: AK, pistol, pump gun; dressing an arm, a leg, splint, injector.
@@ -430,6 +450,7 @@ function CharLabScene() {
     const mixers: THREE.AnimationMixer[] = [];
     loadAssets().then(async (lib) => {
       await loadBodies(lib, [...BODY_IDS, ...CLOTH_SOURCES]);
+      await loadAssetHair();
       if (view === 'gearlab') {
         // Raw armour / helmet models from gear.glb, each scaled into a 0.6 m box, as exported (to check which way
         // they face): +X is right, +Z towards the camera. `&ids=altyn,fast` picks some.

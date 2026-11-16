@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { AssetLibrary } from './assets';
+import { takeIdentityMorphs } from './faceIdentity';
 
 export interface HumanParts {
   model: THREE.Object3D;
@@ -44,6 +45,8 @@ export function pelvisRetarget(body: THREE.SkinnedMesh, sex: 'm' | 'f'): [number
 export function cloneHuman(lib: AssetLibrary, sex: 'm' | 'f'): HumanParts | null {
   const src = sex === 'f' ? lib.humanF : lib.humanM;
   if (!src) return null;
+  // Face identities are baked on the CPU (faceIdentity.ts): their morph targets off the source, once.
+  takeIdentityMorphs(src.scene);
   const model = SkeletonUtils.clone(src.scene);
   const meshes: THREE.SkinnedMesh[] = [];
   model.traverse((o) => {

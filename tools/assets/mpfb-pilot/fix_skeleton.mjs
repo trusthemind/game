@@ -52,6 +52,7 @@ for (const sex of ['m', 'f']) {
   const ours = await io.read(fs.existsSync(ubc) ? ubc : path.join(pub, `human_${sex}.glb`));
   const ourRot = new Map(ours.getRoot().listSkins()[0].listJoints().map((j) => [j.getName(), j.getRotation()]));
   const file = path.join(dir, `human_${sex}_mpfb.glb`);
+  if (!fs.existsSync(file)) continue;
   const doc = await io.read(file);
   const root = doc.getRoot();
   const skins = root.listSkins();
@@ -73,12 +74,31 @@ for (const sex of ['m', 'f']) {
     for (const c of j.listChildren()) if (joints.includes(c)) visit(c);
   };
   joints.filter((j) => !parent.has(j)).forEach(visit);
+  // The spine laid out as ours (UBC), proportionally between the pelvis and the Head: our clips are rotation-only,
+  // so a joint's offset from its parent is the lever they swing. MPFB's spine_03 sits ~15 cm lower (a 35 cm
+  // spine_03 -> neck lever, ours 21) and tilted forward where ours leans back: Idle's forward spine curl then pushed
+  // the neck ~20 cm ahead of the chest (ours ~4) -- the hunched stance. Weights stay MPFB's (only the pivots move).
+  const spineFix = new Map();
+  if (process.env.ASHFALL_SPINE_FROM_UBC !== '0') {
+    const oj = new Map(ours.getRoot().listSkins()[0].listJoints().map((j) => [j.getName(), j.getWorldTranslation()]));
+    const byName = (n) => world.get(joints.find((j) => j.getName() === n));
+    const [op, oh, mp, mh] = [oj.get('pelvis'), oj.get('Head'), byName('pelvis'), byName('Head')];
+    for (const n of ['spine_01', 'spine_02', 'spine_03', 'neck_01']) {
+      const o = oj.get(n);
+      const f = (o[1] - op[1]) / (oh[1] - op[1]);
+      const zLineO = op[2] + f * (oh[2] - op[2]);
+      const y = mp[1] + f * (mh[1] - mp[1]);
+      const zLineM = mp[2] + f * (mh[2] - mp[2]);
+      const kk = (mh[1] - mp[1]) / (oh[1] - op[1]);
+      spineFix.set(n, [0, y, zLineM + (o[2] - zLineO) * kk]);
+    }
+  }
   const wq = new Map();
   const wp = new Map();
   for (const j of order) {
     const p = parent.get(j);
     const q = ourRot.get(j.getName()) ?? j.getRotation();
-    const pos = world.get(j).map((v) => v * k);
+    const pos = (spineFix.get(j.getName()) ?? world.get(j)).map((v) => v * k);
     const pq = p ? wq.get(p) : [0, 0, 0, 1];
     const pp = p ? wp.get(p) : [0, 0, 0];
     j.setRotation(q).setScale([1, 1, 1]).setTranslation(qrot(qinv(pq), sub(pos, pp)));

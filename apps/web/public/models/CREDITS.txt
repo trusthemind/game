@@ -195,6 +195,11 @@ MPFB / MakeHuman base bodies human_m_mpfb.glb, human_f_mpfb.glb (tools/assets/mp
     "Male swimming trunks 01" (mindfront_male_swimming_trunks_01) — Mindfront (Sweden), CC BY 4.0
       (https://creativecommons.org/licenses/by/4.0/), pants03 pack — http://www.makehumancommunity.org/node/329
       (recoloured solid fabric, offset a few mm off the skin)
+  Body shape: the MPFB body surface is fitted to (only our mesh's vertex positions are derived from) the averaged
+  real body scans "Generic Man" (https://sketchfab.com/3d-models/generic-man-9b4527d4bc524c31bed48054f0c04b71) and
+  "Generic Woman" (https://sketchfab.com/3d-models/generic-woman-ff5571cf3b484f4385c305e0cd70ad21) by Scanlab
+  Photogrammetry Inc., CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); changes: scaled, posed and
+  shrink-fitted onto our own topology (tools/assets/mpfb-pilot/fit_scan.py); no scan geometry or texture is shipped.
   Optional nude anatomy (group `anatomy`), retrieved 2026-11-13 from files.makehumancommunity.org (provenance and
   licence check: tools/assets/mpfb-pilot/anatomy/PROVENANCE.json):
     male   — "man genital" by ukiyoe, CC0 1.0, nid 3223
@@ -203,3 +208,16 @@ MPFB / MakeHuman base bodies human_m_mpfb.glb, human_f_mpfb.glb (tools/assets/mp
     female — "Female generic with simplified genitals (fixed)" by spamrakuen, CC0 1.0, nid 3396
              http://files.makehumancommunity.org/sites/default/files/proxies/6454/1683292766/female_generic_with_simplified_genitals_fixed.proxy
              (derived from wolgade's CC0 nid 757 and the official CC0 female_generic proxy; only the genital patch used)
+  Face identities (morph targets on human_{m,f}.glb; textures/ident/face_*.webp, eyes_*.webp, brows_*.webp;
+  tools/assets/mpfb-pilot/build_identities.py, add_identities.mjs, identities.json): MPFB2 / MakeHuman face targets,
+  race / age macros, skin photos (young / middleage / old, african / asian / caucasian), iris textures and eyebrow
+  assets eyebrow001-012 — all MakeHuman system assets (CC0 1.0), http://www.makehumancommunity.org. Recorded for
+  provenance only.
+
+Modelled hair hair_mh.glb (apps/web/src/render/assetHair.ts; fitted to the MPFB bodies by build_identities.py, textures
+greyscaled for tinting, resized; geometry unchanged):
+  bob01, bob02, long01, ponytail01, short01-04, afro01 — MakeHuman system assets, CC0 1.0 — http://www.makehumancommunity.org
+  toigo_blunt_bob, toigo_curled_under_bob_with_bangs — MRT / Margaret Toigo, CC0 1.0, hair01 pack —
+    https://static.makehumancommunity.org/assets/assetpacks/hair01.html
+  elvs_wavy_bob, elvs_hazel_hair, elvs_50s_updo, elvs_katherine_hair — Elvaerwyn, CC BY 4.0
+    (https://creativecommons.org/licenses/by/4.0/), hair02 pack — https://static.makehumancommunity.org/assets/assetpacks/hair02.html

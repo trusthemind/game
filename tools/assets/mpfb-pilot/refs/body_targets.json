@@ -1,0 +1,178 @@
+{
+ "m": {
+  "n": 984,
+  "stature_mm": 1757.0,
+  "head_h": 0.1355,
+  "head_breadth": 0.0871,
+  "head_circ": 0.3238,
+  "face_h_sellion_menton": 0.0694,
+  "bizygomatic": 0.0797,
+  "neck_circ": 0.2157,
+  "acromial_h": 0.8162,
+  "biacromial": 0.2334,
+  "bideltoid": 0.2772,
+  "chest_circ": 0.5595,
+  "chest_breadth": 0.1588,
+  "chest_depth": 0.132,
+  "chest_h": 0.7348,
+  "waist_circ": 0.4769,
+  "waist_breadth": 0.1685,
+  "waist_h": 0.6056,
+  "hip_breadth": 0.1867,
+  "buttock_circ": 0.5452,
+  "crotch_h": 0.4838,
+  "knee_h": 0.2789,
+  "thigh_circ": 0.329,
+  "calf_circ": 0.2114,
+  "upperarm_len": 0.1901,
+  "forearm_len": 0.152,
+  "biceps_circ": 0.189,
+  "span": 1.031,
+  "gh_spacing_est": 0.2106,
+  "spread": {
+   "chest_circ": [
+    0.5223,
+    0.6021,
+    0.6842
+   ],
+   "waist_circ": [
+    0.4376,
+    0.5334,
+    0.64
+   ],
+   "buttock_circ": [
+    0.5136,
+    0.5807,
+    0.6533
+   ],
+   "hip_breadth": [
+    0.1769,
+    0.1963,
+    0.22
+   ],
+   "thigh_circ": [
+    0.3017,
+    0.3564,
+    0.4105
+   ],
+   "calf_circ": [
+    0.1967,
+    0.2231,
+    0.2522
+   ],
+   "neck_circ": [
+    0.2031,
+    0.2255,
+    0.2534
+   ],
+   "chest_breadth": [
+    0.1492,
+    0.1645,
+    0.1821
+   ],
+   "crotch_h": [
+    0.459,
+    0.4811,
+    0.5055
+   ],
+   "biacromial": [
+    0.2209,
+    0.2365,
+    0.2535
+   ],
+   "waist_breadth": [
+    0.1555,
+    0.1857,
+    0.2185
+   ]
+  }
+ },
+ "f": {
+  "n": 644,
+  "stature_mm": 1627.0,
+  "head_h": 0.1364,
+  "head_breadth": 0.0904,
+  "head_circ": 0.3423,
+  "face_h_sellion_menton": 0.0688,
+  "bizygomatic": 0.0811,
+  "neck_circ": 0.1961,
+  "acromial_h": 0.8181,
+  "biacromial": 0.2225,
+  "bideltoid": 0.2667,
+  "chest_circ": 0.5495,
+  "chest_breadth": 0.1598,
+  "chest_depth": 0.1414,
+  "chest_h": 0.7207,
+  "waist_circ": 0.4874,
+  "waist_breadth": 0.1721,
+  "waist_h": 0.6045,
+  "hip_breadth": 0.2084,
+  "buttock_circ": 0.5993,
+  "crotch_h": 0.4813,
+  "knee_h": 0.2747,
+  "thigh_circ": 0.3583,
+  "calf_circ": 0.22,
+  "upperarm_len": 0.1905,
+  "forearm_len": 0.1475,
+  "biceps_circ": 0.1767,
+  "span": 1.0148,
+  "gh_spacing_est": 0.1979,
+  "spread": {
+   "chest_circ": [
+    0.5067,
+    0.5756,
+    0.6722
+   ],
+   "waist_circ": [
+    0.4411,
+    0.5232,
+    0.6354
+   ],
+   "buttock_circ": [
+    0.5597,
+    0.6244,
+    0.7012
+   ],
+   "hip_breadth": [
+    0.1928,
+    0.2166,
+    0.2427
+   ],
+   "thigh_circ": [
+    0.3258,
+    0.377,
+    0.4332
+   ],
+   "calf_circ": [
+    0.2037,
+    0.2281,
+    0.2595
+   ],
+   "neck_circ": [
+    0.1853,
+    0.2013,
+    0.2244
+   ],
+   "chest_breadth": [
+    0.1483,
+    0.1649,
+    0.1846
+   ],
+   "crotch_h": [
+    0.4562,
+    0.4797,
+    0.5053
+   ],
+   "biacromial": [
+    0.2083,
+    0.2245,
+    0.24
+   ],
+   "waist_breadth": [
+    0.155,
+    0.1828,
+    0.2188
+   ]
+  }
+ }
+}

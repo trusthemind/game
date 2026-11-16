@@ -10,6 +10,7 @@ import { applyRaidToTasks, type TaskState } from './tasks';
 import { newHideout, type HideoutState } from './hideout';
 import { resolveFace, resolveShape, SHAPE_PRESETS, type FaceSpec, type ShapeSpec } from './shape';
 import { beardId, DEFAULT_HAIR, HAIR_BY_ID } from './hair';
+import { resolveIdentity, type IdentitySpec } from './identity';
 import { companionLevel, companionRaidXp, companionState, gearTierFor, upgradeCompanionGear, type CompanionState } from './companions';
 
 export const PROFILE_VERSION = 13;
@@ -48,6 +49,9 @@ export interface PlayerLook {
   shape?: ShapeSpec;
   /** Face (shape.ts): a preset's id or the sliders. Unset reads as 'classic' (the modelled face). */
   face?: FaceSpec;
+  /** Face identity (identity.ts): an id or a blend of up to three (MPFB bodies; the sliders tune on top). Optional
+   * since v13 (older saves: unset, the base face). */
+  faceId?: IdentitySpec;
 }
 
 export const DEFAULT_LOOK: PlayerLook = { sex: 'm', skin: 0xe3b08e, hair: 'short', hairColor: 0x3a281b, beard: 'full', shape: 'average' };
@@ -88,6 +92,11 @@ export function tidyLook(look: PlayerLook): PlayerLook {
   if (typeof look.hairColor !== 'number') look.hairColor = DEFAULT_LOOK.hairColor;
   look.beard = look.sex === 'f' ? 'none' : beardId(look.beard);
   if (look.beardColor !== undefined && (typeof look.beardColor !== 'number' || look.sex === 'f')) delete look.beardColor;
+  if (look.faceId !== undefined) {
+    const mix = resolveIdentity(look.faceId, look.sex === 'f' ? 'f' : 'm');
+    if (!mix.length) delete look.faceId;
+    else look.faceId = mix.length === 1 && mix[0]!.w >= 0.999 ? mix[0]!.id : mix;
+  }
   return look;
 }
 
