@@ -95,9 +95,15 @@ export function StyleGrid() {
         const ys = yaws.length ? yaws : [0, 30, 90];
         const hw = q.get('helmet');
         const slots = (hw ? { [getDef(hw).category === 'helmet' ? 'helmet' : 'hat']: createItem(hw) } : {}) as never;
+        // `&only=ai_f1,...` just those (`base` the base face).
+        const onlyIds = (q.get('only') ?? '').split(',').filter(Boolean);
         for (const d of [null, ...IDENTITIES[sex]]) {
-          const look: PlayerLook = { ...DEFAULT_LOOK, sex, hair: q.get('hair') ?? (sex === 'm' ? 'buzz' : 'topknot'), beard: 'none', face: 'classic', shape: 'average', hairColor: Number(q.get('color') ?? 0x4a3020), ...(q.get('skin') ? { skin: Number(q.get('skin')) } : {}), ...(d ? { faceId: d.id } : {}) };
-          const a = playerAppearance(look);
+          if (onlyIds.length && !onlyIds.includes(d?.id ?? 'base')) continue;
+          // An identity's designed look (`suggest`, the AI-sheet pilots) unless `&hair=` / `&color=` / `&skin=` pin one;
+          // `&shape=` a body preset.
+          const sg = d?.suggest;
+          const look: PlayerLook = { ...DEFAULT_LOOK, sex, hair: q.get('hair') ?? sg?.hair ?? (sex === 'm' ? 'buzz' : 'topknot'), beard: q.get('hair') ? 'none' : sg?.beard ?? 'none', face: 'classic', shape: (q.get('shape') as never) ?? 'average', hairColor: Number(q.get('color') ?? sg?.hairColor ?? 0x4a3020), ...(q.get('skin') ? { skin: Number(q.get('skin')) } : sg?.skin !== undefined ? { skin: sg.skin } : {}), ...(d ? { faceId: d.id } : {}) };
+          const a = { ...playerAppearance(look), ...(sg?.eyes !== undefined ? { eyes: sg.eyes } : {}), ...(d?.pilot ? { age: d.age } : {}) };
           await loadBodies(lib, lookBodies(hw ? wearClothes(a, { slots } as never) : a));
           if (!alive) return;
           out.push([d ? `${d.label} (${d.desc})` : 'base face (before)', ...ys.map((y) => renderPortrait(lib, a, size, 'face', slots, y))]);

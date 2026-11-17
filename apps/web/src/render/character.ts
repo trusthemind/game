@@ -33,7 +33,8 @@ import { clearFittedGeometries, fitToRest, gltfMeshNames } from './rebind';
 import { beardGeometry, buildUnderlay, disposeHairGen, hairGenMaterial, hairGeometry as proceduralHair, hairUnderlay, UNDERLAY_GLSL, type HeadClip } from './hairGen';
 import { BEARD_SPECS, GLB_HAIR, HAIR_SPECS } from './hairStyles';
 import { ASSET_HAIR, assetHairGeometry, assetHairLoaded, assetHairMaterial, disposeAssetHair, loadAssetHair } from './assetHair';
-import { FACE_ID_GLSL, IDENTITIES_OFF, faceSkinUniforms, identityField, identityTexturedMaterial } from './faceIdentity';
+import { SCULPT, SCULPT_EYE_GLSL, SCULPT_RIM_GLSL, SCULPT_SKIN_GLSL, faceMarkUniform, sculptFace, sculptMix, setFaceMarks, wrappedLightsChunk } from './lookStyle';
+import { FACE_ID_GLSL, IDENTITIES_OFF, faceSkinUniforms, identityField, identityTexturedMaterial, identityTint } from './faceIdentity';
 import { ease, newPalm, palmFrame, reachPalm, type Arm } from './armIK';
 import { nudity, nudityVersion } from './nudity';
 
@@ -1218,6 +1219,9 @@ function humanBodyMaterial(
   tint.r /= TEX_SKIN.r;
   tint.g /= TEX_SKIN.g;
   tint.b /= TEX_SKIN.b;
+  // An identity with its own skin hue (fitted to an image-to-3D head): the body takes it with the face.
+  const idTint = identityTint(a.sex, a.faceId);
+  if (idTint) tint.multiply(idTint);
   if (dead) tint.multiplyScalar(0.7);
   // Bare skin everywhere: no painted base layer (shirt, trousers, gloves, shoes). Clothes come only from the
   // garments worn (clothKit); under them the body isn't drawn (uHide): what it would show is inside them.
@@ -1236,9 +1240,19 @@ function humanBodyMaterial(
   const hairCol = new THREE.Color(a.zombie ? 0x3a3530 : a.hairColor);
   // The face identity's skin character (faceIdentity.ts): its own detail and roughness over the face.
   const idU = faceSkinUniforms(src, a.sex, a.faceId);
+  // The sculpt look (lookStyle.ts): painted skin, less photographic relief.
+  if (SCULPT && m.normalScale) m.normalScale.multiplyScalar(0.45);
   patchWorldMaterial(m, u, {
     pre: (shader) => {
       Object.assign(shader.uniforms, under);
+      if (SCULPT) {
+        shader.uniforms.uFaceM = faceMarkUniform(src);
+        shader.uniforms.uJawCool = { value: a.sex === 'm' ? 1 : 0.4 };
+        shader.uniforms.uSkDetK = { value: 0.22 };
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <lights_physical_pars_fragment>', wrappedLightsChunk())
+          .replace('#include <opaque_fragment>', SCULPT_RIM_GLSL + '\n#include <opaque_fragment>');
+      }
       if (idU) Object.assign(shader.uniforms, idU);
       shader.uniforms.uHairCol = { value: hairCol };
       skinDetailMap();
@@ -1266,7 +1280,7 @@ function humanBodyMaterial(
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform vec3 uSkinTint;\nuniform sampler2D uSkinDetail;\nuniform float uDetailTile;\nvec4 skDet = vec4(0.5, 0.5, 0.5, 0.0);\nuniform sampler2D uHairMap;\nuniform vec3 uHairC;\nuniform float uHairR;\nuniform vec3 uHairCol;\nuniform float uHide[9];\nfloat idRough = 0.0;\n' + (idU ? 'uniform sampler2D uIdFace;\nuniform vec4 uIdRect;\nuniform vec2 uIdGrid;\nuniform vec3 uIdTiles;\nuniform vec3 uIdW;\n' : '') + 'uniform float uPantsCut[16];\nuniform float uTopCut[16];\nuniform vec2 uCoverC;\nuniform float uBootCut[32];\nuniform vec2 uFootC[2];\nflat varying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vCutA;\nvarying vec2 vCutB;',
+          '#include <common>\n' + (SCULPT ? 'uniform mat4 uFaceM;\nuniform float uJawCool;\nuniform float uSkDetK;\n' : '') + 'uniform vec3 uSkinTint;\nuniform sampler2D uSkinDetail;\nuniform float uDetailTile;\nvec4 skDet = vec4(0.5, 0.5, 0.5, 0.0);\nuniform sampler2D uHairMap;\nuniform vec3 uHairC;\nuniform float uHairR;\nuniform vec3 uHairCol;\nuniform float uHide[9];\nfloat idRough = 0.0;\n' + (idU ? 'uniform sampler2D uIdFace;\nuniform vec4 uIdRect;\nuniform vec2 uIdGrid;\nuniform vec3 uIdTiles;\nuniform vec3 uIdW;\n' : '') + 'uniform float uPantsCut[16];\nuniform float uTopCut[16];\nuniform vec2 uCoverC;\nuniform float uBootCut[32];\nuniform vec2 uFootC[2];\nflat varying float vRegion;\nvarying vec3 vObjPos;\nvarying vec3 vCutA;\nvarying vec2 vCutB;',
         )
         .replace(
           '#include <map_fragment>',
@@ -1303,7 +1317,8 @@ function humanBodyMaterial(
             if (uHide[5] > 0.5 && vCutB.y < mix(uBootCut[fs * 16 + f0], uBootCut[fs * 16 + f1], fract(ft))) discard;
           } else for (int i = 0; i < 9; i++) if (i == ri && uHide[i] > 0.5) discard;
           diffuseColor.rgb = min(diffuseColor.rgb * uSkinTint, vec3(1.0));
-          ${idU ? `if (int(vRegion + 0.5) == 0) {${FACE_ID_GLSL}}` : ''}
+          ${SCULPT ? `#ifdef USE_MAP\n${SCULPT_SKIN_GLSL}\n#endif` : ''}
+          ${idU ? `if (int(vRegion + 0.5) == 0) {${SCULPT ? FACE_ID_GLSL.replace('texture2D(uIdFace, (cr + tq) / uIdGrid)', 'texture2D(uIdFace, (cr + tq) / uIdGrid, 2.0)').replace('idRatio += s.rgb * 2.0 * w;', 'idRatio += mix(vec3(0.5), s.rgb, 0.6) * 2.0 * w;') : FACE_ID_GLSL}}` : ''}
           if (int(vRegion + 0.5) == 0 || int(vRegion + 0.5) == 8) {${UNDERLAY_GLSL}
           }`,
         )
@@ -1327,11 +1342,11 @@ function humanBodyMaterial(
             float skFade2 = 1.0 - smoothstep(0.35, 1.4, max(length(dFdx(skUv2)), length(dFdy(skUv2))) * 512.0 / 4.0);
             float skK = skHead ? 0.7 : 0.9;
             float skK2 = skHead ? 0.15 : 0.3;
-            vec2 skN2 = (d1.xy * 0.62 + d2.xy * 0.38 - 0.5) * skFade * skK + (d3.xy - 0.5) * skFade2 * skK2;
+            vec2 skN2 = (d1.xy * 0.62 + d2.xy * 0.38 - 0.5) * skFade * skK + (d3.xy - 0.5) * skFade2 * skK2;${SCULPT ? '\n            skN2 *= uSkDetK;' : ''}
             skDet = vec4(0.5 + skN2, 0.5 + ((d1.z * 0.6 + d2.z * 0.4) - 0.5) * skFade + (d3.z - 0.5) * skFade2 * skK2, max(skFade, skFade2));
             // Pores and creases hold less oil: a touch rougher; the open skin between a touch smoother. The body a
             // little more matte than the face (no oily sheen on the chest and arms).
-            roughnessFactor = clamp(roughnessFactor * (skHead ? 1.0 : 1.12) * (1.0 + (0.5 - skDet.z) * 1.1), 0.15, 1.0);
+            roughnessFactor = clamp(roughnessFactor * (skHead ? 1.0 : 1.12) * (1.0 + (0.5 - skDet.z) * 1.1${SCULPT ? ' * uSkDetK' : ''}), ${SCULPT ? '0.42' : '0.15'}, 1.0);
           }
           #endif`,
         )
@@ -1359,7 +1374,7 @@ function humanBodyMaterial(
           #endif`,
         );
     },
-    key: idU ? 'human_id' : 'human',
+    key: (idU ? 'human_id' : 'human') + (SCULPT ? '_sc' : ''),
   });
   humanMatCache.set(key, m);
   return m;
@@ -1393,7 +1408,7 @@ function browMaterial(src: THREE.MeshStandardMaterial, color: number, u: WorldUn
   // (The second body's materials come out of Blender as "brows.001": by that name they fell through to the hair
   // material, which keeps the texture's own dark colour, so her brows never took the hair colour.)
   if (!/^brows(\.\d+)?$/.test(src.name)) return hairMaterial(src, color, u);
-  const key = `${src.uuid}|brow|${color}|${sex}`;
+  const key = `${src.uuid}|brow|${color}|${sex}${SCULPT ? '|sc' : ''}`;
   let m = humanMatCache.get(key);
   if (m) return m;
   m = src.clone();
@@ -1407,10 +1422,21 @@ function browMaterial(src: THREE.MeshStandardMaterial, color: number, u: WorldUn
   m.roughness = 0.8;
   patchWorldMaterial(m, u, {
     pre: (shader) => {
-      shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb = diffuse;\ndiffuseColor.a = min(diffuseColor.a * ' + (sex === 'f' ? '2.4' : '4.0') + ', 1.0);');
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <map_fragment>',
+        SCULPT
+          ? // The sculpt look: the brow as one clean painted shape (its blurred coverage, cut with a soft edge),
+            // strand hints painted into it (lighter strands from the sharp texture), darker at its lower edge.
+            `#include <map_fragment>
+            float brB = texture2D(map, vMapUv, 2.2).a;
+            float brA = smoothstep(${sex === 'f' ? '0.10, 0.22' : '0.08, 0.18'}, brB * 0.8 + sampledDiffuseColor.a * 0.2);
+            diffuseColor.rgb = diffuse * mix(0.75, 1.3, smoothstep(0.2, 0.8, sampledDiffuseColor.a) * (1.0 - sampledDiffuseColor.r)) * mix(0.8, 1.0, smoothstep(0.1, 0.5, brB));
+            diffuseColor.a = brA;`
+          : '#include <map_fragment>\ndiffuseColor.rgb = diffuse;\ndiffuseColor.a = min(diffuseColor.a * ' + (sex === 'f' ? '2.4' : '4.0') + ', 1.0);',
+      );
     },
     // Women's brows thinner (x2.4): at x4 hers closed into a heavy, hard-edged bar with a sharp peak.
-    key: sex === 'f' ? 'brow_f' : 'brow',
+    key: (sex === 'f' ? 'brow_f' : 'brow') + (SCULPT ? '_sc' : ''),
   });
   humanMatCache.set(key, m);
   return m;
@@ -1419,6 +1445,29 @@ function browMaterial(src: THREE.MeshStandardMaterial, color: number, u: WorldUn
 function hairMaterialFor(lib: AssetLibrary, color: number, u: WorldUniforms): THREE.MeshStandardMaterial | undefined {
   const any = lib.hair.values().next().value as THREE.SkinnedMesh | undefined;
   return any ? hairMaterial(any.material as THREE.MeshStandardMaterial, color, u) : undefined;
+}
+
+/** The sculpt look's eyes (lookStyle.ts): bold stylised irises on the identity atlas tile, a painted catchlight. */
+function sculptEyeMat(src: THREE.MeshStandardMaterial, u: WorldUniforms): THREE.MeshStandardMaterial {
+  if (!src.map || src.map.repeat.x >= 1) return worldMat(src, u, null);
+  const key = `${src.uuid}|eye_sc`;
+  let m = humanMatCache.get(key);
+  if (m) return m;
+  m = src.clone();
+  m.roughness = Math.min(m.roughness, 0.18);
+  const grid = new THREE.Vector2(1 / src.map.repeat.x, 1 / src.map.repeat.y);
+  patchWorldMaterial(m, u, {
+    key: 'eyes_sc',
+    pre: (sh) => {
+      sh.uniforms.uEyeGrid = { value: grid };
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform vec2 uEyeGrid;')
+        .replace('#include <map_fragment>', `#include <map_fragment>\n#ifdef USE_MAP\n${SCULPT_EYE_GLSL}\n#else\nfloat eyHL = 0.0;\n#endif`)
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(eyHL) * 1.4;');
+    },
+  });
+  humanMatCache.set(key, m);
+  return m;
 }
 
 function worldMat(src: THREE.MeshStandardMaterial, u: WorldUniforms, tint: number | null): THREE.MeshStandardMaterial {
@@ -1839,6 +1888,11 @@ export class CharacterView {
     this.bodyMeshes = skinnedMeshes;
     // Our own bodies wear real clothes (clothKit).
     const outfit = !!human;
+    // The sculpt look's painted skin needs the face's frame (lookStyle.ts).
+    if (SCULPT && human?.eyes) {
+      setFaceMarks(human.srcMaterial, human.body, human.eyes, this.model);
+      if (human.body.material !== human.srcMaterial) setFaceMarks(human.body.material as THREE.Material, human.body, human.eyes, this.model);
+    }
     for (const m of skinnedMeshes) {
       m.material = human
         ? humanBodyMaterial(human.body.material as THREE.MeshStandardMaterial, look, u, false, !!outfit)
@@ -1853,7 +1907,9 @@ export class CharacterView {
         m.material =
           m === human.brows
             ? browMaterial(identityTexturedMaterial('brows', look.sex, look.faceId, m.material as THREE.MeshStandardMaterial), look.zombie ? 0x2a2a24 : look.hairColor, u, look.sex)
-            : worldMat(m === human.eyes ? identityTexturedMaterial('eyes', look.sex, look.faceId, m.material as THREE.MeshStandardMaterial) : (m.material as THREE.MeshStandardMaterial), u, m === human.eyes && look.zombie ? 0xc8c0a0 : null);
+            : m === human.eyes && SCULPT && !look.zombie
+              ? sculptEyeMat(identityTexturedMaterial('eyes', look.sex, look.faceId, m.material as THREE.MeshStandardMaterial), u)
+              : worldMat(m === human.eyes ? identityTexturedMaterial('eyes', look.sex, look.faceId, m.material as THREE.MeshStandardMaterial) : (m.material as THREE.MeshStandardMaterial), u, m === human.eyes && look.zombie ? 0xc8c0a0 : null);
         m.castShadow = shadows && human.underwear.includes(m);
         m.frustumCulled = false;
       }
@@ -2181,7 +2237,7 @@ export class CharacterView {
     const geo = beardGeometry(this.human!.body, a.sex, a.beard, spec);
     if (!geo) return;
     const color = a.zombie ? 0x3a3530 : (a.beardColor ?? a.hairColor);
-    this.mountSkinned(geo, hairGenMaterial(color, this.u), `Beard_${a.beard}`);
+    this.mountSkinned(geo, hairGenMaterial(color, this.u, null, true), `Beard_${a.beard}`);
   }
 
   /** A mesh built in the body's bind space, skinned to the body's own skeleton. */
@@ -2249,8 +2305,11 @@ export class CharacterView {
    */
   private applyShape(): void {
     // The old (UBC) bodies' heads always take the field: it carries their proportion fix (bodyShape.ts OLD_FIX).
-    const idk = this.human?.lashes ? identityKey(this.look.faceId) : '';
-    const key0 = shapeKey(this.look.shape, this.look.face) || (this.human && !this.human.lashes && this.human.eyes ? 'base' : '');
+    // The sculpt look (lookStyle.ts) bakes the identity and the face sliders with a gain (its own cache keys).
+    const mix = this.human?.lashes ? sculptMix(this.look.faceId) : this.look.faceId;
+    const face = this.human?.lashes ? sculptFace(this.look.face, this.look.sex) : this.look.face;
+    const idk = this.human?.lashes ? identityKey(mix) : '';
+    const key0 = shapeKey(this.look.shape, face) || (this.human && !this.human.lashes && this.human.eyes ? 'base' : '');
     if (!this.human || (!key0 && !idk)) return;
     const key = `${key0}|${idk}`;
     this.atRest(() => {
@@ -2259,13 +2318,13 @@ export class CharacterView {
         this.model,
         this.look.shape ?? NEUTRAL_SHAPE,
         this.look.sex,
-        this.look.face ?? null,
+        face ?? null,
         this.eyeMark(),
         // The old bodies' eyes were what EYE_X / EYE_R were measured on; the MPFB ones are measured here.
         this.human!.lashes ? this.eyeDims : null,
       ));
       // The face identity: baked per vertex where a mesh has its targets (body, eyes, brows), else by its field.
-      if (idk && !field.mix) field.setIdentity(this.look.faceId!, identityField(this.human!.body, this.model, this.look.faceId));
+      if (idk && !field.mix) field.setIdentity(mix!, identityField(this.human!.body, this.model, mix));
       const all: THREE.SkinnedMesh[] = [];
       this.model.traverse((o) => (o as THREE.SkinnedMesh).isSkinnedMesh && all.push(o as THREE.SkinnedMesh));
       const eyes = this.human!.eyes;

@@ -6,7 +6,7 @@ written out raw for add_identities.mjs, which turns them into head-only morph ta
   ident/<sex>/<group>_base.bin   float32 xyz of the base human's vertices (Blender world, Z-up): body / eyes / brows / lashes
   ident/<sex>/<group>_<id>.bin   float32 xyz deltas (identity - base), body masked to the head + neck
   ident/<sex>/skin_<id>.bin      uint8 RGBA tile (TILE x TILE, rows top = glTF v0): RGB face detail ratio / 2, A roughness
-  ident/<sex>/eyes_<id>.png      iris texture (skin_bake.eye_texture)
+  ident/<sex>/eyes_<id>.png      iris texture (skin_bake.eye_texture; AI-sheet identities: ai_skin.ai_eye_texture)
   ident/<sex>/brow_<id>.png      brow card texture (in the identity brow asset's own UVs) + brow_<id>_uv.json
   ident/hair/<name>.bin + .json  MakeHuman CC0 hair meshes fitted to the base human (one per asset)
 
@@ -39,6 +39,8 @@ _saved = list(sys.argv)
 exec(compile(_src.split('exec(compile(open(os.path.join(HERE, "skin_bake.py")')[0], "build_base.py", "exec"))
 sys.argv = _saved
 exec(compile(open(os.path.join(HERE, "skin_bake.py"), encoding="utf-8").read(), "skin_bake.py", "exec"))
+# The AI-sheet identities' skin / irises (refs/ai, fit_ai.py): ai_skin_tile, ai_iris, ai_eye_texture.
+exec(compile(open(os.path.join(HERE, "ai_skin.py"), encoding="utf-8").read(), "ai_skin.py", "exec"))
 IDS = json.load(open(os.path.join(HERE, "identities.json")))
 ALL_TARGETS = set()
 _tdirs = [os.path.expanduser("~/Library/Application Support/Blender/5.3/extensions/user_default/mpfb/data/targets")]
@@ -344,7 +346,17 @@ def build(sex):
     brow_info["base"] = dict(asset=base_brow, **brow_uv(g["brows"]))
     meta = dict(sex=sex, tile=[TW, TH], rect_blender=rect, rect_gltf=[rect[0], 1 - rect[3], rect[2], 1 - rect[1]], landmarks=lm,
                 counts={k: int(len(a)) for k, a in base.items()}, identities=[], hair=hair_out)
+    old_meta = json.load(open(os.path.join(od, "meta.json"))) if os.path.exists(os.path.join(od, "meta.json")) else {"identities": []}
+    old_brows = json.load(open(os.path.join(od, "brow_uv.json"))) if os.path.exists(os.path.join(od, "brow_uv.json")) else {}
     for ident in IDS[sex]:
+        if "ai3d" in ident:
+            # fitted to its image-to-3D head by ai3d_fit.py (its files stay; run that after this)
+            prev = [e for e in old_meta["identities"] if e["id"] == ident["id"]]
+            meta["identities"].append(dict(prev[0], **ident) if prev else dict(ident))
+            if ident["id"] in old_brows:
+                brow_info[ident["id"]] = old_brows[ident["id"]]
+            print("IDENT", sex, ident["id"], "kept (ai3d_fit.py)", flush=True)
+            continue
         clear()
         bm2, brow = human(sex, ident)
         g2 = groups_of(bm2)
@@ -364,10 +376,16 @@ def build(sex):
                 d *= hw[:, None]
             d.astype(np.float32).tofile(os.path.join(od, f"{k}_{ident['id']}.bin"))
             stats[k] = float(np.abs(d).max())
-        tile = skin_tile(sex, ident, base_photo, rect, P, N, M, lm)
-        tile.tofile(os.path.join(od, f"skin_{ident['id']}.bin"))
         ep = mhmat_texture(os.path.join(MPFB_USER, "eyes", "materials", ident["eyes"] + ".mhmat"))
-        eye_texture(ep, os.path.join(od, f"eyes_{ident['id']}.png"))
+        if "ai" in ident:
+            # painted from its sheet, on its own (fitted) head
+            P2, N2, M2 = raster(bm2, rect, keep)
+            tile = ai_skin_tile(sex, ident, base_photo, rect, P2, N2, M2, lm)
+            ai_eye_texture(ep, os.path.join(od, f"eyes_{ident['id']}.png"), ai_iris(ident["ai"]["sheet"]))
+        else:
+            tile = skin_tile(sex, ident, base_photo, rect, P, N, M, lm)
+            eye_texture(ep, os.path.join(od, f"eyes_{ident['id']}.png"))
+        tile.tofile(os.path.join(od, f"skin_{ident['id']}.bin"))
         bp = mhmat_texture(AssetService.find_asset_absolute_path(brow + ".mhmat", "eyebrows"))
         hair_card_texture(bp, os.path.join(od, f"brow_{ident['id']}.png"), (0.05, 0.035, 0.025), 0.55 if sex == "m" else 0.75)
         brow_info[ident["id"]] = dict(asset=brow, **brow_uv(g2["brows"]))

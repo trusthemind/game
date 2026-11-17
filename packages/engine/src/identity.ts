@@ -15,6 +15,13 @@ export interface IdentityDef {
   desc: string;
   /** 0 young adult, 1 middle-aged, 2 older (NPC weighting, as hair.ts). */
   age: 0 | 1 | 2;
+  /**
+   * Pilot identities (painted from AI character sheets, tools/assets/mpfb-pilot/refs/ai): offered in the creator and
+   * the dev views, kept out of the NPC / Randomize pools so existing NPCs keep their faces.
+   */
+  pilot?: boolean;
+  /** The look the identity was designed with (dev views, creator suggestion): hair / beard ids, colours (hex). */
+  suggest?: { hair: string; hairColor: number; beard?: string; skin?: number; eyes?: number };
 }
 
 export const IDENTITIES: Record<Sex, readonly IdentityDef[]> = {
@@ -27,6 +34,7 @@ export const IDENTITIES: Record<Sex, readonly IdentityDef[]> = {
     { id: 'priya', label: 'Priya', desc: 'South Asian, 30', age: 1 },
     { id: 'kira', label: 'Kira', desc: 'Freckled, elfin, 20s', age: 0 },
     { id: 'rosa', label: 'Rosa', desc: 'Late 50s', age: 2 },
+    { id: 'ai_f2', label: 'Nia', desc: 'Dark-skinned, 20s, short afro', age: 0, pilot: true, suggest: { hair: 'mh_ai_afro', hairColor: 0x1c1612, skin: 0x6b4430, eyes: 0x3a2416 } },
   ],
   m: [
     { id: 'jack', label: 'Jack', desc: 'Rugged, 30s', age: 1 },
@@ -70,6 +78,11 @@ export function resolveIdentity(spec: IdentitySpec | undefined | null, sex: Sex)
   return top;
 }
 
+/** An identity's definition, or undefined. */
+export function identityDef(sex: Sex, id: string | null | undefined): IdentityDef | undefined {
+  return id ? BY_ID[sex].get(id) : undefined;
+}
+
 /** The identity that dominates a mix (eyes and brows come from it), or null. */
 export function mainIdentity(mix: IdentityMix): string | null {
   return mix.length ? [...mix].sort((a, b) => b.w - a.w)[0]!.id : null;
@@ -97,7 +110,7 @@ export const NPC_IDENTITY_VARIANTS = 48;
  */
 export function npcIdentity(sex: Sex, seed: number, age = 1): { id: string; w: number }[] {
   const s = Math.floor(hash(seed, 0x51a7) * NPC_IDENTITY_VARIANTS);
-  const list = IDENTITIES[sex];
+  const list = IDENTITIES[sex].filter((d) => !d.pilot);
   const weighted: string[] = [];
   for (const d of list) {
     const w = d.age === age ? 3 : Math.abs(d.age - age) === 1 ? 1 : age === 1 ? 1 : 0;
@@ -120,7 +133,7 @@ export function npcIdentity(sex: Sex, seed: number, age = 1): { id: string; w: n
 
 /** A random identity (the creator's Randomize): one, or (half the time) blended with a second. `rnd` returns 0..1. */
 export function randomIdentity(sex: Sex, rnd: () => number): { id: string; w: number }[] {
-  const list = IDENTITIES[sex];
+  const list = IDENTITIES[sex].filter((d) => !d.pilot);
   const a = list[Math.floor(rnd() * list.length)]!.id;
   if (rnd() < 0.5) return [{ id: a, w: 1 }];
   const rest = list.filter((d) => d.id !== a);

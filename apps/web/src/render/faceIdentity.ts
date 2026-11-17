@@ -267,6 +267,29 @@ export function identityField(body: THREE.SkinnedMesh, model: THREE.Object3D, mi
   return f;
 }
 
+/**
+ * The skin hue of the mix (linear RGB multipliers on the tone, the whole body; an identity fitted to an image-to-3D
+ * head carries its own: ai3d_fit.py), or null when none has one. The tone selector still sets how dark the skin is.
+ */
+export function identityTint(sex: 'm' | 'f', mix: IdentityMix | null | undefined): THREE.Color | null {
+  const d = IDENTITY_DATA[sex];
+  if (!d || !mix?.length || IDENTITIES_OFF) return null;
+  let any = false;
+  const c = new THREE.Color(0, 0, 0);
+  let ws = 0;
+  for (const { id, w } of mix) {
+    const t = d.ids.find((x) => x.id === id)?.tint;
+    if (t) any = true;
+    c.r += (t?.[0] ?? 1) * w;
+    c.g += (t?.[1] ?? 1) * w;
+    c.b += (t?.[2] ?? 1) * w;
+    ws += w;
+  }
+  if (!any) return null;
+  const rest = Math.max(0, 1 - ws);
+  return c.set(c.r + rest, c.g + rest, c.b + rest);
+}
+
 // ── Per-identity textures ─────────────────────────────────────────────────────
 
 interface IdTex {

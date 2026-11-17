@@ -11,3 +11,5 @@ ident/
 /*.jpg
 /*.png
 base/*.jpg
+refs/ai/
+ai/

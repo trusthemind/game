@@ -150,6 +150,9 @@ export const HAIR_STYLES: readonly HairStyleDef[] = [
   { id: 'mh_katherine', label: 'Angled bob (modelled)', group: 'Medium', sex: 'f', w: 2, asset: true },
   { id: 'mh_hazel', label: 'Long wavy (modelled)', group: 'Long', sex: 'f', w: 2, asset: true },
   { id: 'mh_updo', label: 'Updo (modelled)', group: 'Tied', sex: 'f', w: 1, asset: true },
+  // Cut out of the `ai_f2` identity's image-to-3D head (tools/assets/mpfb-pilot/ai3d_hair.py): her own short afro.
+  // Pilot: offered in the creator, never on NPCs (w 0).
+  { id: 'mh_ai_afro', label: 'Short afro, sculpted (modelled)', group: 'Curly & coily', sex: 'f', w: 0, asset: true },
 ];
 
 export const HAIR_BY_ID: Readonly<Record<string, HairStyleDef>> = Object.fromEntries(HAIR_STYLES.map((h) => [h.id, h]));

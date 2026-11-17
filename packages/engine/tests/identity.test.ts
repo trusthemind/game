@@ -23,7 +23,10 @@ describe('face identities', () => {
         seen.add(identityKey(mix));
       }
       expect(seen.size).toBeGreaterThan(20);
-      expect(new Set([...seen].map((k) => k.split(':')[0])).size).toBe(IDENTITIES[sex].length);
+      // every identity but the pilots (AI-sheet identities: offered in the creator, kept out of the NPC pool)
+      const npcIds = new Set([...seen].flatMap((k) => k.split(',').map((e) => e.split(':')[0])));
+      expect(new Set([...seen].map((k) => k.split(':')[0])).size).toBe(IDENTITIES[sex].filter((d) => !d.pilot).length);
+      for (const d of IDENTITIES[sex].filter((d) => d.pilot)) expect(npcIds.has(d.id)).toBe(false);
     }
     let x = 0.3;
     const rnd = () => (x = (x * 9301 + 0.4927) % 1);
@@ -34,6 +37,9 @@ describe('face identities', () => {
     expect(tidyLook({ ...old }).faceId).toBeUndefined();
     expect(tidyLook({ ...old, sex: 'f', faceId: 'nora' }).faceId).toBe('nora');
     expect(tidyLook({ ...old, sex: 'm', faceId: 'nora' }).faceId).toBeUndefined();
+    // a pilot identity is a normal, selectable identity of its sex
+    expect(tidyLook({ ...old, sex: 'f', faceId: 'ai_f2' }).faceId).toBe('ai_f2');
+    expect(resolveIdentity('ai_f2', 'f')).toEqual([{ id: 'ai_f2', w: 1 }]);
     expect(tidyLook({ ...old, sex: 'm', faceId: [{ id: 'jack', w: 0.7 }, { id: 'kofi', w: 0.3 }] }).faceId).toEqual([{ id: 'jack', w: 0.7 }, { id: 'kofi', w: 0.3 }]);
   });
 });

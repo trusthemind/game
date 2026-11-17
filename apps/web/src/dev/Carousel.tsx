@@ -9,6 +9,7 @@ import {
   HAIR_COLOR_BY_HEX,
   HAIR_PALETTE,
   IDENTITIES,
+  identityDef,
   NATURAL_HAIR,
   randomIdentity,
   hairStylesFor,
@@ -31,7 +32,8 @@ import { CharacterView, disposeCharacterCaches, lookBodies, playerAppearance, SK
  * `&yaw=` a fixed camera angle in degrees (default: a slow +-25 degree sway), `&d=` the camera distance (m).
  * Face identities (MPFB bodies, `?body=mpfb`): each look is the next identity of its sex (a random blend every
  * third), on the plain sliders; `&ids=0` the old way (slider presets, no identity), `&id=<id>` one identity only,
- * `&hair=<id>` one hairstyle only, `&skin=<index>` one tone.
+ * `&hair=<id>` one hairstyle only, `&skin=<index>` one tone. An identity with a designed look (`suggest`: the AI-sheet
+ * pilots) shows with its own hair, colour, beard, tone and eyes unless pinned.
  * Keys: Space pause, Left/Right previous/next, m cycles the sex mode.
  */
 
@@ -164,22 +166,26 @@ export function Carousel() {
         face = faceName;
       }
       const styles = hairStylesFor(sex);
-      const hair = (pinHair && styles.find((h) => h.id === pinHair)) || styles[(c.hair++ + (sex === 'f' ? 5 : 4)) % styles.length]!;
+      // An identity designed with a look (the AI-sheet pilots): its hair, colour, beard, tone and eyes.
+      const sug = typeof faceId === 'string' ? identityDef(sex, faceId)?.suggest : undefined;
+      const hair = (pinHair && styles.find((h) => h.id === pinHair)) || (sug && styles.find((h) => h.id === sug.hair)) || styles[(c.hair++ + (sex === 'f' ? 5 : 4)) % styles.length]!;
       const age = rng.pick([0, 1, 1, 2] as const);
       const r = rnd();
       // Colour: older heads grey (greying, grey, white), the middle-aged often; the rest natural, now and then a dye
       // (the palette's dyes include balayage tips and grown-out dark roots).
-      const hairColor = age === 2 && r < 0.85 ? rng.pick(GREY_HAIR) : age === 1 && r < 0.3 ? rng.pick(GREY_HAIR) : r > 0.86 ? rng.pick(DYED) : rng.pick(NATURAL_HAIR);
+      const hairColor = sug ? sug.hairColor : age === 2 && r < 0.85 ? rng.pick(GREY_HAIR) : age === 1 && r < 0.3 ? rng.pick(GREY_HAIR) : r > 0.86 ? rng.pick(DYED) : rng.pick(NATURAL_HAIR);
       let beard = 'none';
-      if (sex === 'm' && c.count % 3 === 1) beard = BEARDS[c.beard++ % BEARDS.length]!.id;
+      if (sug) beard = sug.beard ?? 'none';
+      else if (sex === 'm' && c.count % 3 === 1) beard = BEARDS[c.beard++ % BEARDS.length]!.id;
       c.count++;
-      const skinIdx = pinSkin !== null ? Number(pinSkin) % SKIN_TONES.length : n % SKIN_TONES.length;
+      const sugSkin = sug?.skin !== undefined ? SKIN_TONES.indexOf(sug.skin) : -1;
+      const skinIdx = pinSkin !== null ? Number(pinSkin) % SKIN_TONES.length : sugSkin >= 0 ? sugSkin : n % SKIN_TONES.length;
       const look: PlayerLook = { ...DEFAULT_LOOK, sex, skin: SKIN_TONES[skinIdx]!, hair: hair.id, hairColor, beard, shape: 'average', face, ...(faceId ? { faceId } : {}) };
       const col = HAIR_COLOR_BY_HEX.get(hairColor);
       return {
         n,
         look,
-        eyes: rng.pick(EYES),
+        eyes: sug?.eyes ?? rng.pick(EYES),
         age,
         faceName,
         idName,
@@ -301,6 +307,9 @@ export function Carousel() {
         return idx;
       },
       history,
+      get view() {
+        return view;
+      },
       info: renderer.info,
       get tris() {
         return renderer.info.render.triangles;

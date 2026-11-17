@@ -29,6 +29,7 @@ import { FACE_PRESETS } from '@ashfall/engine';
 import type { WorldUniforms } from '../render/patches';
 import { RandomLooks, StyleGrid } from './RandomLooks';
 import { Carousel } from './Carousel';
+import { LookCompare, LookGrid } from './LookGrid';
 import { loadAssetHair } from '../render/assetHair';
 
 /** Dev-only lineup of characters/outfits/weapons (open /#charlab). Used for visual checks and screenshots. */
@@ -45,6 +46,8 @@ function modAll(it: ItemInstance): void {
 export function CharLab() {
   const view = new URLSearchParams(location.hash.split('?')[1] ?? '').get('view');
   if (view === 'carousel') return <Carousel />;
+  if (view === 'lookcompare') return <LookCompare />;
+  if (view === 'lookgrid') return <LookGrid />;
   return view === 'randoms' ? <RandomLooks /> : view === 'hair' || view === 'beards' || view === 'facegrid' || view === 'identities' || view === 'bustgrid' || view === 'skin' ? <StyleGrid /> : <CharLabScene />;
 }
 
@@ -121,14 +124,20 @@ function CharLabScene() {
       // Bots as the raid dresses them (generateLoadout: uniforms, armour, helmets, packs) on their seeded looks
       // and body shapes. `&arch=guard` one archetype (default: scav, raider, guard, boss, three each).
       cast.length = 0;
-      const only = new URLSearchParams(location.hash.split('?')[1] ?? '').get('arch');
+      const cq = new URLSearchParams(location.hash.split('?')[1] ?? '');
+      const only = cq.get('arch');
       const archs = (only ? only.split(',') : ['scav', 'raider', 'guard', 'boss']) as BotArchetype[];
+      // `&face=ai_f2&hair=mh_ai_afro`: everyone a woman with that face identity and hairstyle (frame-time A/B).
+      const forceFace = cq.get('face');
+      const forceHair = cq.get('hair');
       archs.forEach((arch, j) => {
         for (let i = 0; i < (only ? 10 : 3); i++) {
           const seed = j * 100 + i + 7;
           const eq = generateLoadout(arch, new Rng(seed), 2);
           const ids = (Object.entries(eq.slots) as [string, { def: string } | null][]).filter(([sl, it]) => it && sl !== 'secondary' && sl !== 'melee' && sl !== 'secure').map(([sl, it]) => `${it!.def}:${sl}`);
-          cast.push({ look: actorLook(lookFor(seed, arch), eq), eq: ids, active: eq.slots.primary ? 'primary' : 'melee', speed: 0 });
+          const lk = actorLook(lookFor(seed, arch), eq);
+          const forced = forceFace || forceHair ? { ...lk, sex: 'f' as const, beard: 'none', ...(forceFace ? { faceId: [{ id: forceFace, w: 1 }] } : {}), ...(forceHair ? { hair: forceHair } : {}) } : lk;
+          cast.push({ look: forced, eq: ids, active: eq.slots.primary ? 'primary' : 'melee', speed: 0 });
         }
       });
       const span = cast.length * 1.35;

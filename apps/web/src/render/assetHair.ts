@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { HAIR_COLOR_BY_HEX } from '@ashfall/engine';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
+import { SCULPT, SCULPT_CARD_GLSL, SCULPT_SHEEN_GLSL } from './lookStyle';
 import type { HeadClip } from './hairGen';
 
 /**
@@ -32,6 +33,8 @@ export const ASSET_HAIR: Record<string, { asset: string; underlay: string }> = {
   mh_hazel: { asset: 'elvs_hazel_hair', underlay: 'wavy' },
   mh_updo: { asset: 'elvs_50s_updo', underlay: 'ponytail' },
   mh_katherine: { asset: 'elvs_katherine_hair', underlay: 'abob' },
+  // The `ai_f2` identity's own afro (tools/assets/mpfb-pilot/ai3d_hair.py): an opaque sculpted shell, skirted to the scalp.
+  mh_ai_afro: { asset: 'ai_f2_afro', underlay: 'short' },
 };
 
 let lib: Map<string, THREE.Mesh> | null = null;
@@ -164,19 +167,20 @@ export function assetHairMaterial(id: string, color: number, u: WorldUniforms, c
   m.transparent = false;
   m.depthWrite = true;
   m.side = THREE.DoubleSide;
-  m.roughness = 0.62;
+  m.roughness = SCULPT ? 0.75 : 0.62;
   m.metalness = 0;
   const def = HAIR_COLOR_BY_HEX.get(color);
   const grey = def?.grey ?? 0;
   const on = clip ? 1 : 0;
   patchWorldMaterial(m, u, {
-    key: `mhhair${on}`,
+    key: `mhhair${on}${SCULPT ? '_sc' : ''}`,
     pre: (sh) => {
       sh.uniforms.uClipOn = { value: on };
       sh.uniforms.uClipC = { value: clip?.c ?? new THREE.Vector3() };
       sh.uniforms.uClipR = { value: clip?.r ?? new THREE.Vector3(1, 1, 1) };
       sh.uniforms.uClipRim = { value: new THREE.Vector4(clip?.rim ?? 0, clip?.slope ?? 0, clip?.pivotZ ?? 0, clip?.band ?? 0.01) };
       sh.uniforms.uGrey = { value: grey };
+      sh.uniforms.uSheenK = { value: 1 };
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', '#include <common>\nuniform float uClipOn;\nuniform vec3 uClipC;\nuniform vec3 uClipR;\nuniform vec4 uClipRim;\nvarying vec3 vHairP;')
         .replace(
@@ -193,13 +197,15 @@ export function assetHairMaterial(id: string, color: number, u: WorldUniforms, c
           }`,
         );
       sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform float uGrey;\nvarying vec3 vHairP;\nfloat mhH(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }')
+        .replace('#include <common>', '#include <common>\nuniform float uGrey;\nuniform float uSheenK;\nvarying vec3 vHairP;\nfloat mhH(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }')
         .replace(
           '#include <map_fragment>',
           `#include <map_fragment>
           // Grey strands through it (the palette's greying), by texel so they follow the cards' strands.
+          ${SCULPT ? SCULPT_CARD_GLSL : ''}
           if (uGrey > 0.0) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.75) * (0.6 + 0.6 * sampledDiffuseColor.r), step(1.0 - uGrey, mhH(floor(vMapUv * 512.0))));`,
-        );
+        )
+        .replace('#include <emissivemap_fragment>', SCULPT ? '#include <emissivemap_fragment>\n' + SCULPT_SHEEN_GLSL : '#include <emissivemap_fragment>');
     },
   });
   MATS.set(key, m);

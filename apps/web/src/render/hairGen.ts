@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { HAIR_COLOR_BY_HEX } from '@ashfall/engine';
 import { patchWorldMaterial, type WorldUniforms } from './patches';
+import { SCULPT, SCULPT_HAIR_GLSL, SCULPT_SHEEN_GLSL } from './lookStyle';
 
 /**
  * Procedural hair and facial hair, built on the body's own head so it follows the skull, and skinned to the body's
@@ -1257,8 +1258,8 @@ const clipKey = (c: HeadClip | null | undefined) =>
  * fine wisps. A shaved scalp or stubble (density < 1) is a thin translucent shadow, not dots. `clip`: headwear over
  * it (HeadClip).
  */
-export function hairGenMaterial(color: number, u: WorldUniforms, clip?: HeadClip | null): THREE.MeshStandardMaterial {
-  const key = `${color}|${clipKey(clip)}`;
+export function hairGenMaterial(color: number, u: WorldUniforms, clip?: HeadClip | null, beard = false): THREE.MeshStandardMaterial {
+  const key = `${color}|${clipKey(clip)}${beard ? '|beard' : ''}`;
   let m = MATS.get(key);
   if (m) return m;
   m = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0, side: THREE.DoubleSide, transparent: true, depthWrite: true, alphaTest: 0.02 });
@@ -1276,11 +1277,13 @@ export function hairGenMaterial(color: number, u: WorldUniforms, clip?: HeadClip
   const rootK = new THREE.Vector3(roots.r / Math.max(base.r, 1e-3), roots.g / Math.max(base.g, 1e-3), roots.b / Math.max(base.b, 1e-3));
   const grey = def?.grey ?? 0;
   patchWorldMaterial(m, u, {
-    key: `hairgen${on}`,
+    key: `hairgen${on}${SCULPT ? '_sc' : ''}`,
     pre: (sh) => {
       sh.uniforms.uTipK = { value: tipK };
       sh.uniforms.uRootK = { value: rootK };
       sh.uniforms.uGrey = { value: grey };
+      // (beards: a softer sheen; the hair's own clumps and grooves read as wood grain on them)
+      sh.uniforms.uSheenK = { value: beard ? 0.35 : 1 };
       sh.uniforms.uClipOn = { value: on };
       sh.uniforms.uClipC = { value: C };
       sh.uniforms.uClipR = { value: R };
@@ -1331,6 +1334,7 @@ export function hairGenMaterial(color: number, u: WorldUniforms, clip?: HeadClip
           uniform vec3 uTipK;
           uniform vec3 uRootK;
           uniform float uGrey;
+          uniform float uSheenK;
           float hgH(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
           float hgN(vec2 p) {
             vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -1382,12 +1386,14 @@ export function hairGenMaterial(color: number, u: WorldUniforms, clip?: HeadClip
           if (uGrey > 0.0) {
             float hgG = step(1.0 - uGrey, hgN(vStrand * vec2(37.0, 0.5) + 61.0) * 0.7 + hgN(vStrand * vec2(5.0, 0.1) + 3.0) * 0.3);
             diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.76, 0.72) * (0.75 + 0.4 * hgS), hgG * 0.9);
-          }`,
+          }
+          ${SCULPT ? SCULPT_HAIR_GLSL : ''}`,
         )
+        .replace('#include <emissivemap_fragment>', SCULPT ? '#include <emissivemap_fragment>\n' + SCULPT_SHEEN_GLSL : '#include <emissivemap_fragment>')
         .replace(
           '#include <roughnessmap_fragment>',
           `#include <roughnessmap_fragment>
-          roughnessFactor = clamp(roughnessFactor * (0.8 + 0.45 * hgS), 0.3, 1.0);`,
+          roughnessFactor = clamp(roughnessFactor * (0.8 + 0.45 * hgS), ${SCULPT ? '0.6' : '0.3'}, 1.0);`,
         );
     },
   });

@@ -1,5 +1,5 @@
 {
- "_doc": "Face identities (build_identities.py). Each is the sex's base face (build_base.py BUILD[sex].face) with these MPFB2 targets set on top (a value here overrides the base's own for the same target; 'l-/r-' pairs written once as 'lr-'), its own race / age macros, skin photo (face features only: tone-neutral), eye texture and brow asset. Targets: MakeHuman system assets (CC0).",
+ "_doc": "Face identities (build_identities.py). Each is the sex's base face (build_base.py BUILD[sex].face) with these MPFB2 targets set on top (a value here overrides the base's own for the same target; 'l-/r-' pairs written once as 'lr-'), its own race / age macros, skin photo (face features only: tone-neutral), eye texture and brow asset. Targets: MakeHuman system assets (CC0). Entries with an 'ai' block (ids ai_*) are fitted to an AI character sheet (fit_ai.py fills their targets; their skin, irises come from the sheet: ai_skin.py).",
  "f": [
   {
    "id": "nora",
@@ -281,6 +281,72 @@
     "lr-ear-scale-incr": 0.3,
     "lr-ear-lobe-incr": 0.45,
     "lr-eye-scale-incr": 0.15
+   }
+  },
+  {
+   "id": "ai_f2",
+   "label": "Nia",
+   "desc": "Dark-skinned, 20s, short afro",
+   "race": [
+    0.9,
+    0.06,
+    0.04
+   ],
+   "age": 0.5,
+   "skin": "young_african_female",
+   "eyes": "brown",
+   "brow": "eyebrow006",
+   "ai": {
+    "sheet": "f2",
+    "source": "refs/ai/sheet_f2_nb.png (Higgsfield Nano Banana, 2026-11-17, invented person)",
+    "beard": 0,
+    "chroma_tol": 0.65,
+    "tone": "6b4430"
+   },
+   "targets": {
+    "head-scale-horiz-decr": 0.5,
+    "head-scale-vert-decr": 0.22,
+    "head-fat-decr": 0.22,
+    "forehead-trans-forward": 0.03,
+    "eyebrows-trans-up": 0.52,
+    "eyebrows-trans-forward": 0.35,
+    "lr-eye-scale-incr": 0.78,
+    "lr-eye-trans-out": 0.31,
+    "lr-eye-trans-down": 0.66,
+    "lr-eye-height2-incr": 0.31,
+    "lr-eye-corner2-down": 0.02,
+    "lr-eye-push1-out": 0.51,
+    "nose-scale-vert-decr": 0.67,
+    "nose-scale-depth-incr": 0.04,
+    "nose-trans-forward": 0.09,
+    "nose-hump-incr": 0.17,
+    "nose-point-width-decr": 0.1,
+    "nose-point-down": 0.1,
+    "mouth-scale-horiz-incr": 0.13,
+    "mouth-scale-vert-decr": 0.03,
+    "mouth-trans-up": 0.31,
+    "mouth-trans-down": 0.0,
+    "mouth-trans-backward": 0.1,
+    "mouth-upperlip-volume-incr": 0.08,
+    "mouth-lowerlip-volume-incr": 0.71,
+    "chin-height-incr": 0.56,
+    "chin-width-decr": 0.1,
+    "chin-prominent-incr": 0.14,
+    "chin-prognathism-decr": 0.14,
+    "lr-cheek-bones-incr": 0.05,
+    "lr-cheek-volume-incr": 0.0,
+    "lr-cheek-volume-decr": 0.02,
+    "head-oval": 0.45,
+    "head-invertedtriangular": 0.25,
+    "head-diamond": 0.02
+   },
+   "ai3d": {
+    "model": "refs/ai/3d/f2_tripo_h31.glb",
+    "source": "Higgsfield Starter (Tripo H3.1, detailed, PBR) from refs/ai/f2_front.png, 2026-11-17; Higgsfield ToS 4.4: outputs usable commercially",
+    "prep": "ai3d_prep.py <glb> refs/ai/3d/tripo -90",
+    "fit": "ai3d_fit.py refs/ai/3d/tripo",
+    "hair": "ai3d_hair.py refs/ai/3d/tripo -> mh_ai_afro",
+    "note": "face shape, skin, irises and brows from the 3D head (ai3d_fit.py); the targets below are the old landmark fit, unused"
    }
   }
  ],
