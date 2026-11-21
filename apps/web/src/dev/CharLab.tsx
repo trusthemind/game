@@ -266,7 +266,13 @@ function CharLabScene() {
         const base = lookFor(61, 'scav');
         const [pn, aw] = name.split('@');
         const shape = aw ? { ...presets[pn!]!, ai: +aw } : presets[pn!]!;
-        const look = { ...base, sex, hair: sex === 'f' ? ('ponytail' as const) : ('messy' as const), hat: null, clothed: true, shape };
+        // `&hair=bald` another hairstyle, `&fid=ai_f2` a face identity (`&fid=` none), `&beard=none`.
+        const fid = q.get('fid');
+        const look = {
+          ...base, sex, hair: (q.get('hair') ?? (sex === 'f' ? 'ponytail' : 'messy')) as never, hat: null, clothed: true, shape,
+          ...(fid !== null ? { faceId: fid ? [{ id: fid, w: 1 }] : undefined } : {}),
+          ...(q.get('beard') ? { beard: q.get('beard')! } : {}),
+        };
         // `&speed=1.4` walking, `&crouch=1` crouched.
         cast.push({ look, eq: [...wear, ...kit, ...(gun ? [`${gun}:primary`] : [])], active: gun ? 'primary' : 'melee', speed: +(q.get('speed') ?? 0), crouch: q.get('crouch') === '1' });
       }
@@ -818,8 +824,19 @@ function CharLabScene() {
           bone?.getWorldPosition(at);
         }
         at.y += dy;
-        const d = ({ front: [0, 0.1, 1], back: [0, 0.1, -1], side: [1, 0.15, 0.6], profile: [1, 0.02, 0], q34: [0.75, 0.08, 0.75], top: [0, 1.73, 1], q: [0.7, 0.6, 0.7] } as Record<string, number[]>)[mode] ?? [0, 0, 1];
+        // (`r…`: the same views turned with the figure, which a stance or clip may have yawed: a true profile / 3/4)
+        const rel = mode.startsWith('r');
+        const d = ({ front: [0, 0.1, 1], back: [0, 0.1, -1], side: [1, 0.15, 0.6], profile: [1, 0.02, 0], q34: [0.75, 0.08, 0.75], top: [0, 1.73, 1], q: [0.7, 0.6, 0.7] } as Record<string, number[]>)[rel ? mode.slice(1) : mode] ?? [0, 0, 1];
         const n = new THREE.Vector3(d[0], d[1], d[2]).normalize().multiplyScalar(dist);
+        if (rel) {
+          let hips: THREE.Object3D | undefined;
+          v.root.traverse((o) => {
+            if (!hips && (o as THREE.Bone).isBone && o.name === 'pelvis') hips = o;
+          });
+          const f = new THREE.Vector3(0, 0, 1).applyQuaternion((hips ?? v.root).getWorldQuaternion(new THREE.Quaternion()));
+          const yaw = Math.atan2(f.x, f.z);
+          n.applyAxisAngle(new THREE.Vector3(0, 1, 0), Number.isFinite(yaw) ? yaw : 0);
+        }
         cam.position.copy(at).add(n);
         cam.lookAt(at);
         cam.updateMatrixWorld();

@@ -2,7 +2,7 @@
 import { chromium } from 'playwright';
 const [presets = 'average,ai_athletic@0.5,ai_athletic', extra = '', port = '5174'] = process.argv.slice(2);
 const b = await chromium.launch({ args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
-for (const sex of ['m', 'f']) {
+for (const sex of (process.env.SEXES ?? 'm,f').split(',')) {
   const p = await b.newPage({ viewport: { width: 900, height: 600 } });
   await p.goto(`http://localhost:${port}/?r=${Date.now()}&mute=1${process.env.QUERY ? `&${process.env.QUERY}` : ''}#charlab?view=shapes&sex=${sex}&wear=&armor=0&presets=${presets}${extra}`);
   await p.waitForFunction(() => window.__labReady, null, { timeout: 120000 });

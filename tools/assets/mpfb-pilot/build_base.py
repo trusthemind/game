@@ -41,7 +41,7 @@ BUILD = {
     "m": dict(macro=dict(weight=0.5, muscle=0.7, height=0.5, proportions=0.9),
               targets=[("torso-vshape-incr", 0.3), ("torso-muscle-pectoral-incr", 0.35),
                        ("torso-muscle-dorsi-incr", 0.3), ("stomach-pregnant-decr", 0.25),
-                       ("measure-neck-circ-incr", 0.35), ("buttocks-volume-incr", 0.1)]
+                       ("measure-neck-circ-incr", 0.55), ("neck-scale-vert-decr", 0.15), ("buttocks-volume-incr", 0.1)]
               + [(f"{s}-{t}", v) for s in "lr" for t, v in [("upperarm-muscle-incr", 0.45), ("upperarm-shoulder-muscle-incr", 0.4),
                  ("lowerarm-muscle-incr", 0.35), ("upperleg-muscle-incr", 0.5), ("lowerleg-muscle-incr", 0.0)]],
               # Face tuned to the London Face Set's male medians (refs/face_targets.json, measure_face.mjs): the stock head's
@@ -55,7 +55,7 @@ BUILD = {
     "f": dict(macro=dict(weight=0.52, muscle=0.55, height=0.5, proportions=0.9, cupsize=0.7, firmness=1.0),
               targets=[("torso-vshape-incr", 0.1), ("stomach-pregnant-decr", 0.15), ("buttocks-volume-incr", 0.3),
                        ("measure-shoulder-dist-incr", 0.35), ("breast-trans-up", 0.3), ("breast-point-decr", 0.2), ("measure-thigh-circ-incr", 0.35),
-                       ("measure-neck-circ-incr", 0.3), ("l-leg-valgus-decr", 0.4), ("r-leg-valgus-decr", 0.4)]
+                       ("measure-neck-circ-incr", 0.3), ("neck-scale-vert-decr", 0.2), ("l-leg-valgus-decr", 0.4), ("r-leg-valgus-decr", 0.4)]
               + [(f"{s}-{t}", v) for s in "lr" for t, v in [("upperarm-muscle-incr", 0.25), ("upperarm-shoulder-muscle-incr", 0.45),
                  ("lowerarm-muscle-incr", 0.2), ("upperleg-muscle-incr", 0.3), ("lowerleg-muscle-incr", 0.35)]],
               # (Hollow cheeks under high cheekbones read as dark blotches there in game; bigger eyes as dark ones.)
@@ -69,6 +69,15 @@ BUILD = {
                       ("eye-trans-down", 0.4), ("eye-trans-out", 0.4)]],
               skin="young_caucasian_female", eyes="brownlight", brow="eyebrow010", lashes="eyelashes04"),
 }
+# ASHFALL_NECK_CIRC="m:0.65,f:0.8": the neck-girth target per sex instead of the builds' own (trials).
+for _kv in filter(None, os.environ.get("ASHFALL_NECK_CIRC", "").split(",")):
+    _s, _v = _kv.split(":")
+    BUILD[_s]["targets"] = [(t, float(_v) if t == "measure-neck-circ-incr" else v) for t, v in BUILD[_s]["targets"]]
+# ASHFALL_TARGETS="f:neck-scale-horiz-incr=0.3,m:...": extra / overriding body targets per sex (trials).
+for _kv in filter(None, os.environ.get("ASHFALL_TARGETS", "").split(",")):
+    _s, _tv = _kv.split(":", 1)
+    _t, _v = _tv.split("=")
+    BUILD[_s]["targets"] = [(t, v) for t, v in BUILD[_s]["targets"] if t != _t] + [(_t, float(_v))]
 TEX_DIR = os.path.join(HERE, "base", "tex")
 
 # Reuse the pilot's macro / face definitions (everything above its export loop).
@@ -93,8 +102,26 @@ TO_MPFB = {"Head": "head", "root": "Root"}
 # Our clips are rotation-only on fixed rest rotations (fix_skeleton.mjs), so they play the same on either spine shape;
 # only the limbs (A-pose -> T-pose) need the swing.
 # deg about the lateral axis, + = flexion (forward); see the T-pose loop. "" -> off.
-POSTURE = {k: float(v) for k, v in (kv.split(":") for kv in os.environ.get("ASHFALL_POSTURE", "spine_02:-3,spine_03:-8,neck_01:-16").split(",") if kv)}
-CLAV_BACK = float(os.environ.get("ASHFALL_CLAV_BACK", "10"))  # deg, see the T-pose loop
+# Posture of the rest pose, per sex. Rule (refs/NECK.md): the HEAD is never turned against the NECK in the rest pose.
+# Every degree the head is counter-rotated to keep the gaze level folds the skin round the head-neck junction (the
+# skin there is skinned half to each): at -16 neck / +27 head the neck stood as a vertical pole under the back of the
+# skull, at -32 / +47 the chin sank into the throat. So the thoracic spine stands up (spine_02 / spine_03 back) and the
+# NECK takes the opposite turn (the neck's world angle, and the head's, stay MPFB's own, a natural forward-leaning
+# neck), the bend going to the base of the neck under the trapezius. The clavicles are not drawn back (at 10 deg they
+# put the shoulders' joints 5-6 cm behind the hips). In game (CharLab __marks, Idle): shoulders 2.5-4 cm behind the
+# hips (was 5.6 / 5.8), head joint 7 / 5.5 cm ahead of the shoulders' joints, neck lean 11 / 10 deg.
+# ASHFALL_POSTURE / ASHFALL_CLAV_BACK override both sexes.
+POSTURE_BY_SEX = {"m": "spine_02:-3,spine_03:-10,neck_01:13", "f": "spine_02:-3,spine_03:-10,neck_01:13"}
+CLAV_BACK_BY_SEX = {"m": 0.0, "f": 2.0}
+_parse_posture = lambda t: {k: float(v) for k, v in (kv.split(":") for kv in t.split(",") if kv)}
+POSTURE = {}
+CLAV_BACK = 0.0
+
+
+def posture_for(sex):
+    global POSTURE, CLAV_BACK
+    POSTURE = _parse_posture(os.environ.get("ASHFALL_POSTURE", POSTURE_BY_SEX[sex]))
+    CLAV_BACK = float(os.environ.get("ASHFALL_CLAV_BACK", CLAV_BACK_BY_SEX[sex]))  # deg, see the T-pose loop
 NO_AIM = {"pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "clavicle_l", "clavicle_r"}
 def export(rig, path):
     bpy.ops.object.select_all(action="DESELECT")
@@ -232,7 +259,63 @@ def definition_normals(info, settings, weight=0.0):
     return out
 
 
+# The neck a little fuller (the scan-fitted MPFB necks measured ANSUR P13 m / P6 f; the face's MPFB neck targets barely
+# reach its thinnest section under the jaw): radially off the neck bone's axis, by the neck weight, most at mid-neck,
+# fading out into the head and the shoulders. Relative push per sex (ASHFALL_NECK_PUSH="m:0.07,f:0.13"), mostly the
+# sides and the nape at mid / lower neck; just under the jaw the neck goes a little in (ASHFALL_NECK_TOP_IN).
+NECK_PUSH = {k: float(v) for k, v in (kv.split(":") for kv in os.environ.get("ASHFALL_NECK_PUSH", "m:0.07,f:0.13").split(",") if kv)}
+
+
+NECK_TOP_IN = float(os.environ.get("ASHFALL_NECK_TOP_IN", "0.12"))
+
+
+def neck_girth(sex, body, rig):
+    k = NECK_PUSH.get(sex, 0.0)
+    if not k or "neck_01" not in body.vertex_groups:
+        return
+    Mw = rig.matrix_world
+    b = rig.data.bones["neck_01"]
+    a0, a1 = Mw @ b.head_local, Mw @ rig.data.bones["head"].head_local
+    ax = (a1 - a0).normalized()
+    L = (a1 - a0).length
+    gi = body.vertex_groups["neck_01"].index
+    hi = body.vertex_groups["head"].index if "head" in body.vertex_groups else -1
+    Mb, Mbi = body.matrix_world, body.matrix_world.inverted()
+    n = 0
+    for v in body.data.vertices:
+        w = next((g.weight for g in v.groups if g.group == gi), 0.0)
+        wh = next((g.weight for g in v.groups if g.group == hi), 0.0)
+        if w + wh <= 0.05:
+            continue
+        p = Mb @ v.co
+        t = (p - a0).dot(ax) / L
+        # in from the shoulders, out well below the jaw (pushed up there it filled the throat under the chin: the jaw
+        # must stay a free edge), and the front (throat) only a little: the fullness goes to the sides and the nape
+        prof = min(1.0, max(0.0, (t + 0.7) / 0.5)) * min(1.0, max(0.0, (0.6 - t) / 0.5))
+        r = (p - a0) - ax * (p - a0).dot(ax)
+        if r.length > 0.09 or r.length < 1e-6:
+            continue
+        front = max(0.0, -r.normalized().y)  # Blender: front = -y
+        # ... and just under the jaw / behind its angle a little in (not the nape): the jaw a free edge over a
+        # narrower neck, a throat under the chin, instead of a column running straight up into the cheek
+        top = min(1.0, max(0.0, (t - 0.55) / 0.3)) * min(1.0, max(0.0, (1.25 - t) / 0.25)) * (1 - max(0.0, r.normalized().y))
+        # (the top in: the neck's skin under the jaw only -- head-weighted too -- not the jaw itself, farther out)
+        top *= min(1.0, max(0.0, (0.07 - r.length) / 0.01))
+        v.co = Mbi @ (p + r * (min(1.0, w / 0.6) * k * prof * (1 - 0.7 * front) - min(1.0, (w + wh) / 0.6) * NECK_TOP_IN * top))
+        n += 1
+    # (the body carries shape keys: the basis decides what's exported, so it takes the same positions)
+    if body.data.shape_keys:
+        import numpy as _np
+        co = _np.empty(len(body.data.vertices) * 3, _np.float32)
+        body.data.vertices.foreach_get("co", co)
+        for kb in body.data.shape_keys.key_blocks:
+            kb.data.foreach_set("co", co)
+    body.data.update()
+    print("NECK girth push", sex, k, "verts", n, flush=True)
+
+
 def build(sex):
+    posture_for(sex)
     face = FACES[0]
     cfg = BUILD[sex]
     pheno = TargetService.get_default_macro_info_dict()
@@ -281,6 +364,7 @@ def build(sex):
     if anatomy and anatomy not in others:
         others.append(anatomy)
     pre_fit_normals = fit_to_scan(sex, body, rig, others, FIT_DEBUG, info, settings) if FIT_SCAN else None
+    neck_girth(sex, body, rig)
     if os.environ.get("ASHFALL_VARIANTS"):  # dir: fitted body + MPFB weight / muscle macro deltas, for measuring
         export_variants(sex, body, info, settings, os.environ["ASHFALL_VARIANTS"])
     if os.environ.get("ASHFALL_FIT_ONLY") == "1":

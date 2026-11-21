@@ -298,6 +298,22 @@ for (const sex of ['m', 'f']) {
     const ymin = Math.min(...Sh.filter((_, i) => hw[i] > 0).map((p) => p[1])) - 0.02;
     deltas.body = Object.fromEntries(ids.map((id) => [id, new Float32Array(P.length * 3)]));
     let n = 0, far = 0;
+    // How much of an identity a shipped vertex takes: by its own skinning to the head (the neck's skin under the jaw
+    // half, the neck below none) and by how well it matches the full-res head. Unweighted, the throat of the posed,
+    // T-posed body (its neck stands at another angle than the source human's) landed on the source's chin underside and
+    // took the chin's deltas: a column of neck up into the jaw, the head reading as pasted on.
+    const skin = prims.body.node.getSkin();
+    const hj = skin ? skin.listJoints().findIndex((j) => /^head$/i.test(j.getName())) : -1;
+    const J0 = pr.getAttribute('JOINTS_0'), W0 = pr.getAttribute('WEIGHTS_0');
+    const headW = (v) => {
+      if (hj < 0 || !J0 || !W0) return 1;
+      const j = J0.getElement(v, [0, 0, 0, 0]), w = W0.getElement(v, [0, 0, 0, 0]);
+      let s = 0, t = 0;
+      for (let k = 0; k < 4; k++) (t += w[k]), (s += j[k] === hj ? w[k] : 0);
+      return t ? s / t : 0;
+    };
+    const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    let faded = 0;
     P.forEach((p, v) => {
       if (p[1] < ymin) return;
       const nv = Nrm ? Nrm.getElement(v, [0, 0, 0]) : null;
@@ -314,12 +330,15 @@ for (const sex of ['m', 'f']) {
       if (bd > 0.012 ** 2) far++;
       n++;
       const [a, b, c, w] = best;
+      const f = sstep(0.05, 0.6, headW(v)) * (1 - sstep(0.008, 0.02, Math.sqrt(bd)));
+      if (f < 0.999) faded++;
       for (const id of ids) {
         const D = B.body.d[id];
-        const dl = [0, 1, 2].map((k) => w[0] * D[a * 3 + k] + w[1] * D[b * 3 + k] + w[2] * D[c * 3 + k]);
+        const dl = [0, 1, 2].map((k) => (w[0] * D[a * 3 + k] + w[1] * D[b * 3 + k] + w[2] * D[c * 3 + k]) * f);
         deltas.body[id].set(rot(T, dl), v * 3);
       }
     });
+    console.log(sex, 'body verts faded (neck / far)', faded);
     console.log(sex, 'body verts mapped', n, 'farther than 12 mm', far);
   }
   // ── morph targets ──

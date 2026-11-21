@@ -139,7 +139,7 @@ for yaw in (yaw0, yaw0 + math.pi):
     Q = Q - [0, Q[:, 1].min(), 0]
     nh_t, nw_t = neck_height(Q[::7])
     nh_o, nw_o = neck_height(U)
-    k = nh_o / nh_t
+    k = float(os.environ["AIB_SCALE"]) if os.environ.get("AIB_SCALE") else nh_o / nh_t  # (subject scale.k: fixed)
     Q = Q * k + [0, Hmin, 0]
     cands.append((yaw, k, Q, nh_t, nh_o))
 # The toes point forward (+z): the floor-level points' z relative to the ankles' (just above)
@@ -278,9 +278,11 @@ def subtree(b):
 
 POSE = [  # bone, range a1 (fwd/back swing), range a2 (side swing), coarse step (deg)
     ("spine_01", 12, 6, 2), ("spine_02", 12, 6, 2), ("spine_03", 14, 6, 2), ("neck_01", 30, 12, 2),
-    ("clavicle_l", 14, 14, 2), ("clavicle_r", 14, 14, 2),
+    # (arms first, then the clavicles: searched with the arm still in the T-pose, a clavicle drooped to the search's
+    # limit to pull the arm down -- shoulders sunk, arms RMS 12 mm)
     ("upperarm_l", 40, 100, 4), ("upperarm_r", 40, 100, 4),
     ("lowerarm_l", 45, 45, 3), ("lowerarm_r", 45, 45, 3),
+    ("clavicle_l", 14, 14, 2), ("clavicle_r", 14, 14, 2),
     ("thigh_l", 25, 25, 2), ("thigh_r", 25, 25, 2),
     ("calf_l", 20, 20, 2), ("calf_r", 20, 20, 2),
 ]
@@ -490,7 +492,7 @@ Ds = lap_smooth(D, 4)
 D = D * (1 - reg[:, None]) + Ds * reg[:, None]
 # Neck girth up towards ANSUR's median (the MPFB necks measured P13 / P6): radially off the neck's axis (neck joint ->
 # head joint), most at mid-neck, nothing at the head (the identities' jaw) and fading into the shoulders' fill.
-NECK_K = float(os.environ.get("AIB_NECK", {"m": 0.13, "f": 0.08}[SEX]))
+NECK_K = float(os.environ.get("AIB_NECK", {"m": 0.03, "f": 0.02}[SEX]))  # (the base neck is already fuller: build_base.py NECK_PUSH)
 a0, a1 = JP[JI["neck_01"]], JP[JI["Head"]]
 ax = (a1 - a0) / np.linalg.norm(a1 - a0)
 rel = U - a0

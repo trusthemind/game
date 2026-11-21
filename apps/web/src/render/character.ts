@@ -1818,11 +1818,6 @@ const _curlQ = new THREE.Quaternion();
 const _hv = new THREE.Vector3();
 const _hv2 = new THREE.Vector3();
 const _hup = new THREE.Vector3(0, 1, 0);
-/** The AI athletic build's upright neck at full weight (rad: the upper chest and the neck turned back; CharacterView.uprightNeck). */
-const NECK_UP: Record<'m' | 'f', { chest: number; neck: number }> = {
-  m: { chest: (4 * Math.PI) / 180, neck: (10 * Math.PI) / 180 },
-  f: { chest: (4 * Math.PI) / 180, neck: (9 * Math.PI) / 180 },
-};
 const _hm = new THREE.Matrix4();
 const _hq0 = new THREE.Quaternion();
 const _hq1 = new THREE.Quaternion();
@@ -3008,12 +3003,11 @@ export class CharacterView {
     // Skip skinning work for actors the player can't see (big win with 40 bots).
     if (!this.hidden) {
       // Undo last frame's leg twist first (the mixer only rewrites bones its clips animate).
-      // (newest first: a bone saved twice -- the upright neck, then the head lift -- ends at its first copy)
+      // (newest first: a bone saved twice ends at its first copy)
       for (let k = this.yawSaved.length - 1; k >= 0; k--) this.yawSaved[k]![0].quaternion.copy(this.yawSaved[k]![1]);
       this.yawSaved.length = 0;
       this.mixer.update(dt);
       this.twistLegs(a, dt, moving && !zombie && !sprint && !a.crouching ? along : null);
-      this.uprightNeck();
       this.liftHead(dt);
     }
     this.placeHeld(a, dt);
@@ -3023,41 +3017,7 @@ export class CharacterView {
 
   private headLift = 0;
   private headBone: THREE.Bone | null | undefined;
-  private neckBone: THREE.Bone | null | undefined;
-  private chestBone: THREE.Bone | null | undefined;
-  /**
-   * The AI athletic build (BodyShape.ai) stands its neck up: the upper chest (spine_03) and the neck turned back about
-   * their roots by NECK_UP (scaled by the build's weight) and the head forward by 60 % of both: the neck stands up, the
-   * head comes back over the chest, the face a few degrees up (the clips carry the head ~7-10 deg forward of the neck's root, which on its
-   * muscled shoulders read as a forward, craning neck). On top of the clip, restored next frame like the leg twist.
-   */
-  private uprightNeck(): void {
-    const w = this.human?.lashes ? Math.max(0, Math.min(1, this.look.shape?.ai ?? 0)) : 0;
-    if (w <= 0 || this.dead) return;
-    if (this.neckBone === undefined) this.neckBone = this.skinned.skeleton.bones.find((b) => b.name === 'neck_01') ?? null;
-    if (this.headBone === undefined) this.headBone = this.skinned.skeleton.bones.find((b) => /^head$/i.test(b.name)) ?? null;
-    this.chestBone ??= this.skinned.skeleton.bones.find((b) => b.name === 'spine_03') ?? null;
-    const n = this.neckBone;
-    const h = this.headBone;
-    const c = this.chestBone;
-    if (!n || !h || !c || !c.parent || h.parent !== n || n.parent !== c) return;
-    // The body's own left-right axis (world): a turn about it tips a bone back (-) or forward (+).
-    const axis = _hv2.set(1, 0, 0).applyQuaternion(this.model.getWorldQuaternion(_hq2)).normalize();
-    const up = NECK_UP[this.look.sex];
-    const turn = (b: THREE.Bone, ang: number) => {
-      this.yawSaved.push([b, b.quaternion.clone()]);
-      b.parent!.updateWorldMatrix(true, false);
-      // a world-space turn R as a local one: q' = (P^-1 R P) q, P the parent's world rotation
-      const P = b.parent!.getWorldQuaternion(_hq3);
-      b.quaternion.premultiply(_hq0.copy(P).invert().multiply(_hq1.setFromAxisAngle(axis, ang)).multiply(P));
-    };
-    // upper chest up a little, the neck back over it, the head forward by both (the gaze as the clip has it)
-    turn(c, -up.chest * w);
-    turn(n, -up.neck * w);
-    // (the head only 60 % of the way back: turned by the whole, the chin sank into the throat -- the jaw's skin weights
-    // fold there; the face a few degrees up reads as the upright carriage it is)
-    turn(h, 0.6 * (up.chest + up.neck) * w);
-  }
+
 
   /**
    * The gun stances bow the head ~20° over the sights; from the raid camera (~59° above) the face was then all

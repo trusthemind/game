@@ -34,6 +34,7 @@ export function bodyStages(ctx) {
     ...(po.abdomenEase !== undefined ? { AIB_ABD: String(po.abdomenEase) } : {}),
     ...(po.upperBackEase !== undefined ? { AIB_UBK: String(po.upperBackEase) } : {}),
     ...(po.neckGirth !== undefined ? { AIB_NECK: String(po.neckGirth) } : {}),
+    ...(typeof S.scale?.k === 'number' ? { AIB_SCALE: String(S.scale.k) } : {}),
     ...(S.orientation?.yawDeg !== undefined && S.orientation?.yawDeg !== null ? { AIB_YAW: String(S.orientation.yawDeg) } : {}),
   };
   const src = abs(S.source.glb);

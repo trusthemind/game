@@ -114,7 +114,7 @@ export async function measureData({ tris, joints }, file, sexKeyIn) {
   for (let f = 1 - headH * 0.42; f < 0.995; f += 0.003) { const b = center(Y(f)); if (!b) continue; headBreadth = Math.max(headBreadth, b.x1 - b.x0); headCirc = Math.max(headCirc, girth(b.pts)); }
   // Neck: min girth between the shoulders' top and the menton.
   let neckCirc = 1e9;
-  for (let f = 0.80; f < menton - 0.005; f += 0.003) { const b = center(Y(f)); if (b && b.x1 - b.x0 < 0.12 * S) neckCirc = Math.min(neckCirc, girth(b.pts)); }
+  for (let f = 0.80; f < menton - 0.005; f += 0.003) { const b = center(Y(f)); if (b && b.x1 - b.x0 < 0.12 * S && b.x1 - b.x0 > 0.04 * S) neckCirc = Math.min(neckCirc, girth(b.pts)); } // (> 4 % S: not a stray blob of the shoulders' top)
   const sec = (f) => { const b = center(Y(f)); return { girth: girth(b.pts), breadth: b.x1 - b.x0, depth: Math.max(...b.pts.map((q) => q[1])) - Math.min(...b.pts.map((q) => q[1])) }; };
   const T = await import('node:fs').then((fs) => JSON.parse(fs.readFileSync(new URL('./refs/body_targets.json', import.meta.url))));
   const sexKey = sexKeyIn ?? (/_f|woman|female/i.test(file) ? 'f' : 'm');

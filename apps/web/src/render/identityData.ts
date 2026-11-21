@@ -204,9 +204,9 @@ export const IDENTITY_DATA: Record<'m' | 'f', IdentitySet | null> = {
      0.04
     ],
     "tint": [
-     0.8473,
-     0.9547,
-     1.2363
+     0.8478,
+     0.9546,
+     1.2356
     ]
    }
   ],

@@ -14,8 +14,9 @@
     "note": "null = auto (toe-forward test of ai_body_fit.py)"
   },
   "scale": {
-    "rule": "neckHeight",
-    "note": "target scaled so floor-to-neck height equals ours"
+    "rule": "fixed",
+    "k": 1.8252,
+    "note": "fixed at the neck-height scale measured on the 2026-11-17 base: the 2026-11-21 posture / neck fix moved our narrowest neck section, which would rescale the target (arms RMS 6.9 -> 10.9 mm)"
   },
   "underwear": {
     "luma": 0.35,
@@ -25,8 +26,8 @@
   "posture": {
     "abdomenEase": 0.6,
     "upperBackEase": 0.5,
-    "neckGirth": 0.13,
-    "note": "the committed defaults of ai_body_fit.py"
+    "neckGirth": 0.07,
+    "note": "neckGirth small: the base neck is already ANSUR-median (build_base.py NECK_PUSH, 2026-11-21)"
   },
   "keep": [
     "head",
