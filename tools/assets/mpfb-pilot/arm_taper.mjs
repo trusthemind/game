@@ -1,7 +1,7 @@
 // Arm taper of a T-posed body GLB (rest pose): tape girth (convex hull) of cuts across the left arm, from the deltoid
 // to the wrist, and the deltoid / wrist ratio; plus waist / buttock (WHR) from measure_body.
 //   node arm_taper.mjs <body.glb> [...]
-import { load, measure } from './measure_body.mjs';
+import { load, measureData } from './measure_body.mjs';
 
 const hull = (P) => {
   P = [...P].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -14,8 +14,9 @@ const hull = (P) => {
   let s = 0; for (let i = 0; i < h.length; i++) s += Math.hypot(h[i][0] - h[(i + 1) % h.length][0], h[i][1] - h[(i + 1) % h.length][1]);
   return s;
 };
-for (const file of process.argv.slice(2)) {
-  const { tris, joints } = await load(file);
+export async function armTaper(file, sex) {
+  const data = await load(file);
+  const { tris, joints } = data;
   const ua = joints.upperarm_l, hand = joints.hand_l;
   const prof = [];
   for (let t = 0.05; t <= 1.0001; t += 0.05) {
@@ -29,6 +30,10 @@ for (const file of process.argv.slice(2)) {
   }
   const delt = Math.max(...prof.filter(([t]) => t >= 0.1 && t <= 0.35).map((p) => p[1]));
   const wrist = Math.min(...prof.filter(([t]) => t >= 0.85 && t <= 0.97).map((p) => p[1]));
-  const m = await measure(file);
-  console.log(JSON.stringify({ file: file.split('/').slice(-2).join('/'), deltoid_cm: delt, wrist_cm: wrist, ratio: +(delt / wrist).toFixed(2), whr: +(m.waist_circ / m.buttock_circ).toFixed(3), profile: prof.map((p) => p[1]).join(' ') }));
+  const m = await measureData(data, file, sex);
+  return { file: file.split('/').slice(-2).join('/'), deltoid_cm: delt, wrist_cm: wrist, ratio: +(delt / wrist).toFixed(2), whr: +(m.waist_circ / m.buttock_circ).toFixed(3), profile: prof.map((p) => p[1]).join(' ') };
+}
+
+if (process.argv[1] && process.argv[1].endsWith('arm_taper.mjs')) {
+  for (const file of process.argv.slice(2)) console.log(JSON.stringify(await armTaper(file, /_f|woman|female/i.test(file) ? 'f' : 'm')));
 }

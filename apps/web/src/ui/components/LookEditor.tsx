@@ -39,7 +39,7 @@ const groupsOf = <T extends { group: string }>(list: readonly T[]) => {
 };
 const SKIN_NAMES = ['Fair', 'Light', 'Tan', 'Brown', 'Dark'];
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
-const cap = (s: string) => (s.charAt(0).toUpperCase() + s.slice(1)).replace(/_/g, ' ');
+const cap = (s: string) => (s.charAt(0).toUpperCase() + s.slice(1)).replace(/_/g, ' ').replace(/^Ai /, 'AI ');
 
 /** Slider captions: label, the -1 end, the +1 end, and where on the little figure the icon marks (x, y). */
 const BODY_META: Record<keyof BodyShape, [string, string, string, number, number]> = {
@@ -54,6 +54,8 @@ const BODY_META: Record<keyof BodyShape, [string, string, string, number, number
   thighs: ['Thighs', 'Thin', 'Thick', 5.5, 15.5],
   calves: ['Calves', 'Thin', 'Thick', 5.5, 19],
   arms: ['Arms', 'Thin', 'Thick', 2.5, 10],
+  // (0..1: how much of the AI athletic build; the sliders above add to it)
+  ai: ['AI build', 'Off', 'Full', 7, 9],
 };
 /** The bust slider reads as pecs on the male body. */
 const bodyMeta = (sex: Sex): typeof BODY_META => (sex === 'm' ? { ...BODY_META, bust: ['Pecs', 'Flat', 'Full', 8.5, 8.5] } : BODY_META);
@@ -310,7 +312,9 @@ function FineTune<K extends string>({
           {g.keys.map((k) => {
             const [label, lo, hi, x, y] = meta[k];
             const v = values[k];
-            const pct = Math.round((v / HUMAN_LIMIT) * 100);
+            // (the AI build is a 0..1 blend, not a -/+ push)
+            const blend = k === 'ai';
+            const pct = Math.round((blend ? v : v / HUMAN_LIMIT) * 100);
             return (
               <div className="tune-row" key={k}>
                 <RegionIcon face={face} x={x} y={y} />
@@ -322,8 +326,8 @@ function FineTune<K extends string>({
                 <input
                   id={`${bodyId}-${k}`}
                   type="range"
-                  min={-HUMAN_LIMIT}
-                  max={HUMAN_LIMIT}
+                  min={blend ? 0 : -HUMAN_LIMIT}
+                  max={blend ? 1 : HUMAN_LIMIT}
                   step={0.05}
                   value={v}
                                     aria-valuetext={`${label} ${pct > 0 ? '+' : ''}${pct} (${v < 0 ? lo : v > 0 ? hi : 'neutral'})`}

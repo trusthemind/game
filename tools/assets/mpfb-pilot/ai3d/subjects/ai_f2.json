@@ -1,0 +1,67 @@
+{
+  "id": "ai_f2",
+  "kind": "face",
+  "sex": "f",
+  "source": {
+    "glb": "refs/ai/3d/f2_tripo_h31.glb",
+    "baseSkin": "refs/ai/3d/tripo/base_skin_f.png"
+  },
+  "work": "refs/ai/3d/tripo",
+  "orientation": {
+    "yawDeg": -90,
+    "note": "Tripo faces +X: -90 turns the face to -Y (ai3d init detects it from the eye whites)"
+  },
+  "scale": {
+    "rule": "landmarks-similarity",
+    "note": "eye openings + midline profile -> similarity, then non-rigid ICP"
+  },
+  "tone": "6b4430",
+  "parts": {
+    "face": true,
+    "skin": true,
+    "irises": true,
+    "brows": "painted in the skin",
+    "hair": {
+      "name": "ai_f2_afro"
+    }
+  },
+  "keep": [
+    "scalp under the hair",
+    "neck",
+    "body below the neck",
+    "hands",
+    "feet",
+    "skeleton",
+    "uv",
+    "weights"
+  ],
+  "build": {
+    "only": "mpfb",
+    "outputs": [
+      "apps/web/public/models/human_f.glb",
+      "apps/web/public/textures/ident/face_f.webp",
+      "apps/web/public/textures/ident/eyes_f.webp",
+      "apps/web/public/textures/ident/brows_f.webp",
+      "apps/web/src/render/identityData.ts"
+    ]
+  },
+  "budgets": {
+    "faceRmsMm": 5,
+    "faceP95Mm": 10,
+    "glbKB": 950,
+    "texKB": {
+      "face": 700,
+      "eyes": 200,
+      "brows": 200
+    }
+  },
+  "provenance": {
+    "provider": "Higgsfield (Starter plan)",
+    "model": "Tripo H3.1 detailed, PBR",
+    "date": "2026-11-17",
+    "tos": "Higgsfield ToS 4.4: outputs usable commercially",
+    "licence": "Tripo output via Higgsfield; no real-person likeness",
+    "invented": true,
+    "source2d": "refs/ai/sheet_f2_nb.png (Higgsfield Nano Banana, 2026-11-17, invented person) -> refs/ai/f2_front.png"
+  }
+}

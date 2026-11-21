@@ -136,7 +136,9 @@ function CharLabScene() {
           const eq = generateLoadout(arch, new Rng(seed), 2);
           const ids = (Object.entries(eq.slots) as [string, { def: string } | null][]).filter(([sl, it]) => it && sl !== 'secondary' && sl !== 'melee' && sl !== 'secure').map(([sl, it]) => `${it!.def}:${sl}`);
           const lk = actorLook(lookFor(seed, arch), eq);
-          const forced = forceFace || forceHair ? { ...lk, sex: 'f' as const, beard: 'none', ...(forceFace ? { faceId: [{ id: forceFace, w: 1 }] } : {}), ...(forceHair ? { hair: forceHair } : {}) } : lk;
+          const forced: typeof lk = forceFace || forceHair ? { ...lk, sex: 'f' as const, beard: 'none', ...(forceFace ? { faceId: [{ id: forceFace, w: 1 }] } : {}), ...(forceHair ? { hair: forceHair } : {}) } : lk;
+          // `&ai=1`: everyone in the AI athletic build on their own shape (frame-time A/B).
+          if (cq.get('ai') === '1') forced.shape = { ...SHAPE_PRESETS[forced.sex].average, ...(forced.shape ?? {}), ai: 1 };
           cast.push({ look: forced, eq: ids, active: eq.slots.primary ? 'primary' : 'melee', speed: 0 });
         }
       });
@@ -257,10 +259,16 @@ function CharLabScene() {
       const wear = wearIds.map((c) => `${c}:${getDef(c).clothing!.slot}`);
       // `&eq=b_attack:backpack,ssh68:helmet` more kit (rigid gear rides on the shaped body).
       const kit = [...(q.get('armor') === '0' ? [] : ['trooper:armor']), ...(q.get('eq') ?? '').split(',').filter(Boolean)];
-      for (const name of Object.keys(presets)) {
+      // `&presets=average,ai_athletic` just those builds.
+      // (`ai_athletic@0.5`: that preset with the AI build at 0.5)
+      const names = q.get('presets')?.split(',').filter((n) => presets[n.split('@')[0]!]) ?? Object.keys(presets);
+      for (const name of names) {
         const base = lookFor(61, 'scav');
-        const look = { ...base, sex, hair: sex === 'f' ? ('ponytail' as const) : ('messy' as const), hat: null, clothed: true, shape: presets[name] };
-        cast.push({ look, eq: [...wear, ...kit, ...(gun ? [`${gun}:primary`] : [])], active: gun ? 'primary' : 'melee', speed: 0 });
+        const [pn, aw] = name.split('@');
+        const shape = aw ? { ...presets[pn!]!, ai: +aw } : presets[pn!]!;
+        const look = { ...base, sex, hair: sex === 'f' ? ('ponytail' as const) : ('messy' as const), hat: null, clothed: true, shape };
+        // `&speed=1.4` walking, `&crouch=1` crouched.
+        cast.push({ look, eq: [...wear, ...kit, ...(gun ? [`${gun}:primary`] : [])], active: gun ? 'primary' : 'melee', speed: +(q.get('speed') ?? 0), crouch: q.get('crouch') === '1' });
       }
       cam.position.set(0, 1.45, Math.max(3.4, cast.length * 0.8));
       cam.lookAt(0, 1.0, 0);
@@ -795,7 +803,7 @@ function CharLabScene() {
           const h = a.eq.slots.helmet;
           if (h) h.visorDown = down || undefined;
         });
-      // Close-ups for checking gear: `__look(i, 'front'|'back'|'side'|'top', dist, y | boneName, dy)` shows only
+      // Close-ups for checking gear: `__look(i, 'front'|'back'|'side'|'profile'|'q34'|'top', dist, y | boneName, dy)` (q34: a level three-quarter view) shows only
       // the i-th figure, aimed at a height or at a bone.
       (window as unknown as { __look: unknown }).__look = (i: number, mode: string, dist = 1.5, y: number | string = 1.3, dy = 0) => {
         views.forEach((l, j) => l.v.root.children.forEach((ch) => (ch.visible = j === i)));
@@ -810,11 +818,28 @@ function CharLabScene() {
           bone?.getWorldPosition(at);
         }
         at.y += dy;
-        const d = ({ front: [0, 0.1, 1], back: [0, 0.1, -1], side: [1, 0.15, 0.6], profile: [1, 0.02, 0], top: [0, 1.73, 1], q: [0.7, 0.6, 0.7] } as Record<string, number[]>)[mode] ?? [0, 0, 1];
+        const d = ({ front: [0, 0.1, 1], back: [0, 0.1, -1], side: [1, 0.15, 0.6], profile: [1, 0.02, 0], q34: [0.75, 0.08, 0.75], top: [0, 1.73, 1], q: [0.7, 0.6, 0.7] } as Record<string, number[]>)[mode] ?? [0, 0, 1];
         const n = new THREE.Vector3(d[0], d[1], d[2]).normalize().multiplyScalar(dist);
         cam.position.copy(at).add(n);
         cam.lookAt(at);
         cam.updateMatrixWorld();
+      };
+      // Posture marks of figure i as it stands now (its own frame, mm; +z forward): head / neck joints vs the shoulders'
+      // and hips' midpoints, the neck's lean (deg, + forward). `__marks(i)`.
+      (window as unknown as { __marks: unknown }).__marks = (i: number) => {
+        const root = views[i]!.v.root;
+        root.updateMatrixWorld(true);
+        const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+        const at = (re: RegExp) => {
+          let b: THREE.Object3D | undefined;
+          root.traverse((o) => {
+            if (!b && (o as THREE.Bone).isBone && re.test(o.name)) b = o;
+          });
+          return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv) : new THREE.Vector3();
+        };
+        const head = at(/^head$/i), neck = at(/^neck_01$/), sh = at(/^upperarm_l$/).add(at(/^upperarm_r$/)).multiplyScalar(0.5), hip = at(/^thigh_l$/).add(at(/^thigh_r$/)).multiplyScalar(0.5);
+        const mm = (v: number) => Math.round(v * 1000);
+        return { headVsShoulder: mm(head.z - sh.z), neckVsShoulder: mm(neck.z - sh.z), shoulderVsHip: mm(sh.z - hip.z), neckLean: Math.round((Math.atan2(head.z - neck.z, head.y - neck.y) * 180) / Math.PI), neckLen: mm(head.distanceTo(neck)) };
       };
       // A contact sheet of head close-ups: every figure (a column each) from each view (a row each), drawn over the
       // page. `__sheet(['front','side','top'], 0.62, 160)`; `__sheet(['front','back'], 2.4, 160, 0, 0.9)` whole figures

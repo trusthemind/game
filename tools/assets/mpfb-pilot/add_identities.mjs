@@ -19,9 +19,15 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, '../../..');
-const ID = path.join(here, 'ident');
-const TEX_OUT = path.join(ROOT, 'apps/web/public/textures/ident');
-fs.mkdirSync(TEX_OUT, { recursive: true });
+// ai3d.mjs --out: AI3D_IDENT_DIR = a scratch copy of ident/, AI3D_SHIP_OUT = where everything shipped goes instead
+// (<dir>/base/human_*_mpfb_id.glb, <dir>/textures/ident, <dir>/models/hair_mh.glb, <dir>/identityData.ts).
+const SHIP = process.env.AI3D_SHIP_OUT ? path.resolve(process.env.AI3D_SHIP_OUT) : null;
+const ID = process.env.AI3D_IDENT_DIR ? path.resolve(process.env.AI3D_IDENT_DIR) : path.join(here, 'ident');
+const TEX_OUT = SHIP ? path.join(SHIP, 'textures/ident') : path.join(ROOT, 'apps/web/public/textures/ident');
+const BASE_OUT = SHIP ? path.join(SHIP, 'base') : path.join(here, 'base');
+const HAIR_OUT = SHIP ? path.join(SHIP, 'models/hair_mh.glb') : path.join(ROOT, 'apps/web/public/models/hair_mh.glb');
+const TS_OUT = SHIP ? path.join(SHIP, 'identityData.ts') : path.join(ROOT, 'apps/web/src/render/identityData.ts');
+for (const d of [TEX_OUT, BASE_OUT, path.dirname(HAIR_OUT)]) fs.mkdirSync(d, { recursive: true });
 await MeshoptDecoder.ready;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
 
@@ -331,7 +337,7 @@ for (const sex of ['m', 'f']) {
     console.log(sex, g, 'targets', ids.length, 'max |d| mm', (mx * 1000).toFixed(1));
   }
   // The brows mesh holds brows + lashes: every primitive of a mesh needs the same targets (done above for both).
-  await io.write(path.join(here, 'base', `human_${sex}_mpfb_id.glb`), doc);
+  await io.write(path.join(BASE_OUT, `human_${sex}_mpfb_id.glb`), doc);
 
   // ── atlases ──
   const [TW, TH] = meta.tile;
@@ -440,7 +446,7 @@ if (hairParts.length) {
   // (positions stay float: the game re-skins them into the body's bind space by the head bone)
   await doc.transform(reorder({ encoder: MeshoptEncoder }), quantize({ quantizePosition: 16, quantizeNormal: 10, quantizeTexcoord: 12 }), meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
   const wio = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
-  const file = path.join(ROOT, 'apps/web/public/models/hair_mh.glb');
+  const file = HAIR_OUT;
   await wio.write(file, doc);
   console.log('hair_mh.glb', hairParts.length, 'meshes', (fs.statSync(file).size / 1024).toFixed(0), 'KB');
 }
@@ -451,5 +457,5 @@ export interface IdentityInfo { id: string; label: string; desc: string; age: nu
 export interface IdentitySet { ids: IdentityInfo[]; cols: number; rows: number; faceRect: [number, number, number, number] }
 export const IDENTITY_DATA: Record<'m' | 'f', IdentitySet | null> = ${JSON.stringify(out, null, 1)};
 `;
-fs.writeFileSync(path.join(ROOT, 'apps/web/src/render/identityData.ts'), ts);
+fs.writeFileSync(TS_OUT, ts);
 console.log('identityData.ts written');

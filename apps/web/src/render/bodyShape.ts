@@ -82,6 +82,8 @@ export class ShapeField {
     // so the presets' pushes are scaled down there (MPFB_GAIN) to stay inside ANSUR's 5th-95th percentiles.
     const g = m.eyeX !== undefined ? MPFB_GAIN[sex] : null;
     for (const k of Object.keys(out) as (keyof BodyShape)[]) {
+      // (the AI build is a morph target's weight, baked with the identities: faceIdentity.ts, character.ts applyShape)
+      if (k === 'ai') continue;
       const [up, down] = g?.[k] ?? [1, 1];
       out[k] = out[k] > 0 ? out[k] * GAIN_UP * up : out[k] * GAIN_DOWN * down;
     }

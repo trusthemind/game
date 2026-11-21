@@ -16,13 +16,21 @@ export interface BodyShape {
   arms: number;
   /** The bust (a woman's breasts, a man's pecs): a rounded volume swelling out from the chest, not a stretch. */
   bust: number;
+  /**
+   * The AI athletic build, 0..1: how much of the `ai_body` morph target (our body fitted to an AI 3D body,
+   * tools/assets/mpfb-pilot/ai_body_fit.py) and its skin detail the MPFB body takes; the sliders above add to it.
+   * Saves from before it read 0 (the modelled body); the old UBC bodies have no such target and ignore it.
+   */
+  ai: number;
 }
 
 export type Sex = 'm' | 'f';
 
-export const SHAPE_KEYS: readonly (keyof BodyShape)[] = ['height', 'shoulders', 'chest', 'bust', 'waist', 'belly', 'hips', 'glutes', 'thighs', 'calves', 'arms'];
+export const SHAPE_KEYS: readonly (keyof BodyShape)[] = ['height', 'shoulders', 'chest', 'bust', 'waist', 'belly', 'hips', 'glutes', 'thighs', 'calves', 'arms', 'ai'];
+/** The sliders that push the body (-1..1); `ai` is a 0..1 blend, never jittered or randomised. */
+export const PUSH_KEYS: readonly (keyof BodyShape)[] = SHAPE_KEYS.filter((k) => k !== 'ai');
 
-export const NEUTRAL_SHAPE: BodyShape = { height: 0, shoulders: 0, chest: 0, bust: 0, waist: 0, belly: 0, hips: 0, glutes: 0, thighs: 0, calves: 0, arms: 0 };
+export const NEUTRAL_SHAPE: BodyShape = { height: 0, shoulders: 0, chest: 0, bust: 0, waist: 0, belly: 0, hips: 0, glutes: 0, thighs: 0, calves: 0, arms: 0, ai: 0 };
 
 const P = (s: Partial<BodyShape>): BodyShape => ({ ...NEUTRAL_SHAPE, ...s });
 // Calibrated against ANSUR II's 5th-95th percentiles of the measured shaped figures (tools/assets/mpfb-pilot/
@@ -33,6 +41,8 @@ export const SHAPE_PRESETS: Record<Sex, Record<string, BodyShape>> = {
     average: NEUTRAL_SHAPE,
     slim: P({ height: 0.2, shoulders: -0.35, chest: -0.4, bust: -0.4, waist: -0.25, belly: -0.35, hips: -0.15, glutes: -0.1, thighs: -0.2, calves: -0.2, arms: -0.4 }),
     athletic: P({ shoulders: 0.6, chest: 0.5, bust: 0.5, waist: -0.2, belly: -0.5, glutes: 0.2, thighs: 0.35, calves: 0.1, arms: 0.5 }),
+    // Our body fitted to an AI-generated athletic adult (shape + skin detail; see BodyShape.ai). Player-picked only.
+    ai_athletic: P({ ai: 1 }),
     heavy: P({ height: -0.1, shoulders: 0.4, chest: 0.6, bust: 0.5, waist: 0.85, belly: 0.9, hips: 0.3, glutes: 0.3, thighs: 0.5, calves: 0.2, arms: 0.6 }),
     stocky: P({ height: -0.6, shoulders: 0.6, chest: 0.4, bust: 0.3, waist: 0.4, belly: 0.3, thighs: 0.35, calves: 0.2, arms: 0.5 }),
   },
@@ -42,21 +52,28 @@ export const SHAPE_PRESETS: Record<Sex, Record<string, BodyShape>> = {
     curvy: P({ chest: 0.2, bust: 0.7, waist: -0.3, hips: 0.3, glutes: 0.4, thighs: 0.35, calves: 0.15 }),
     pear: P({ shoulders: -0.3, chest: -0.2, bust: -0.2, hips: 0.35, glutes: 0.4, thighs: 0.45, calves: 0.2 }),
     athletic: P({ shoulders: 0.5, chest: 0.1, bust: -0.2, waist: -0.2, belly: -0.5, glutes: 0.4, thighs: 0.4, calves: 0.25, arms: 0.5 }),
+    ai_athletic: P({ ai: 1 }),
     heavy: P({ height: -0.1, shoulders: 0.3, chest: 0.4, bust: 0.7, waist: 0.8, belly: 0.8, hips: 0.25, glutes: 0.35, thighs: 0.5, calves: 0.3, arms: 0.6 }),
   },
 };
 
 const clamp1 = (x: number) => (x < -1 ? -1 : x > 1 ? 1 : x);
+const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+/** The presets a random body (NPCs, Randomize, seeds) is drawn from: not the AI build (player-picked only). */
+export function randomShapePresets(sex: Sex): string[] {
+  return Object.keys(SHAPE_PRESETS[sex]).filter((n) => !SHAPE_PRESETS[sex][n]!.ai);
+}
 
 /** A shape by seed: a preset, jittered a little (deterministic). */
 export function shapeFromSeed(sex: Sex, seed: number, preset?: string): BodyShape {
   let s = (seed * 2654435761) >>> 0;
   const rnd = () => (s = (Math.imul(s ^ (s >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0) / 4294967296;
-  const names = Object.keys(SHAPE_PRESETS[sex]);
+  const names = randomShapePresets(sex);
   const pick = names[Math.floor(rnd() * names.length)]!;
   const base = SHAPE_PRESETS[sex][preset && SHAPE_PRESETS[sex][preset] ? preset : pick]!;
   const out = { ...base };
-  for (const k of SHAPE_KEYS) out[k] = clamp1(out[k] + (rnd() - 0.5) * 0.4);
+  for (const k of PUSH_KEYS) out[k] = clamp1(out[k] + (rnd() - 0.5) * 0.4);
   // Height is nearly independent of build: people of every build come tall and short (±6% at the extremes).
   out.height = clamp1(base.height * 0.5 + (rnd() - 0.5) * 1.6);
   return humanShape(out);
@@ -69,7 +86,7 @@ export const NPC_SHAPE_VARIANTS = 12;
  * so a crowd always shows the whole range (not a run of near-average bodies). */
 export function npcShape(sex: Sex, seed: number): BodyShape {
   const v = ((Math.imul(seed | 0, 2246822519) ^ 0x5bd1e995) >>> 0) % NPC_SHAPE_VARIANTS;
-  const names = Object.keys(SHAPE_PRESETS[sex]).filter((n) => n !== 'average');
+  const names = randomShapePresets(sex).filter((n) => n !== 'average');
   return shapeFromSeed(sex, 7919 * (v + 1) + (sex === 'f' ? 101 : 0), names[v % names.length]);
 }
 
@@ -83,7 +100,7 @@ export function resolveShape(sex: Sex, spec: ShapeSpec | undefined | null): Body
   const out = { ...NEUTRAL_SHAPE };
   for (const k of SHAPE_KEYS) {
     const v = (spec as Partial<BodyShape>)[k];
-    out[k] = typeof v === 'number' && Number.isFinite(v) ? clamp1(v) : 0;
+    out[k] = typeof v === 'number' && Number.isFinite(v) ? (k === 'ai' ? clamp01(v) : clamp1(v)) : 0;
   }
   // Saves from before the bust slider: their chest slider drove the bust too.
   if (typeof (spec as Partial<BodyShape>).bust !== 'number') out.bust = out.chest;
@@ -272,7 +289,8 @@ const LEG_TOP = 1.35;
 /** A shape kept to human proportions (see HUMAN_LIMIT). Presets already are; this tames jitter and stacking. */
 export function humanShape(s: BodyShape): BodyShape {
   const out = { ...s };
-  for (const k of SHAPE_KEYS) out[k] = Math.max(-HUMAN_LIMIT, Math.min(HUMAN_LIMIT, out[k]));
+  for (const k of PUSH_KEYS) out[k] = Math.max(-HUMAN_LIMIT, Math.min(HUMAN_LIMIT, out[k]));
+  out.ai = clamp01(out.ai ?? 0);
   const mean = SOFT.reduce((a, k) => a + Math.abs(out[k]), 0) / SOFT.length;
   if (mean > SOFT_MEAN) for (const k of SOFT) out[k] *= SOFT_MEAN / mean;
   // Hips and thighs both widen the top of the leg; together they're capped (no breeches silhouette).
@@ -298,10 +316,10 @@ const JITTER = 0.15;
 
 /** A random build: the preset (or one picked) with a small jitter, kept human. `rnd` returns 0..1. */
 export function randomHumanShape(sex: Sex, rnd: () => number, preset?: string): BodyShape {
-  const names = Object.keys(SHAPE_PRESETS[sex]);
+  const names = randomShapePresets(sex);
   const base = SHAPE_PRESETS[sex][preset && SHAPE_PRESETS[sex][preset] ? preset : names[Math.floor(rnd() * names.length)]!]!;
   const out = { ...base };
-  for (const k of SHAPE_KEYS) out[k] = base[k] + (rnd() * 2 - 1) * JITTER;
+  for (const k of PUSH_KEYS) out[k] = base[k] + (rnd() * 2 - 1) * JITTER;
   return humanShape(out);
 }
 

@@ -28,7 +28,7 @@ import sharp from 'sharp';
 import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const OUT = path.join(ROOT, 'apps/web/public/models');
+const OUT = process.env.AI3D_MODELS_OUT ? path.resolve(process.env.AI3D_MODELS_OUT) : path.join(ROOT, 'apps/web/public/models'); // (ai3d.mjs build --out: a scratch dir)
 const SRC = process.env.ASSET_SRC;
 if (!SRC) throw new Error('Set ASSET_SRC to the folder with extracted packs');
 fs.mkdirSync(OUT, { recursive: true });
@@ -509,11 +509,13 @@ async function buildHumans() {
 // their PBR skin (albedo / normal / ORM, 2048 WebP) and toggleable groups (body, eyes, brows, underwear,
 // anatomy). Here they only get meshopt compression; the textures stay as baked.
 async function buildMpfbHumans() {
-  const dir = path.join(ROOT, 'tools/assets/mpfb-pilot/base');
+  const dir = process.env.AI3D_BASE_DIR ? path.resolve(process.env.AI3D_BASE_DIR) : path.join(ROOT, 'tools/assets/mpfb-pilot/base');
   for (const sex of ['m', 'f']) {
-    // With face identities (add_identities.mjs: head-only morph targets), else the plain body.
+    // With the AI body build (ai_body_add.mjs: the `ai_body` target on top of the identities), else with face
+    // identities (add_identities.mjs: head-only morph targets), else the plain body.
+    const withAi = path.join(dir, `human_${sex}_mpfb_ai.glb`);
     const withIds = path.join(dir, `human_${sex}_mpfb_id.glb`);
-    const src = fs.existsSync(withIds) ? withIds : path.join(dir, `human_${sex}_mpfb.glb`);
+    const src = [withAi, withIds].find((f) => fs.existsSync(f)) ?? path.join(dir, `human_${sex}_mpfb.glb`);
     if (!fs.existsSync(src)) {
       console.warn(`  ! ${path.relative(ROOT, src)} missing (run build_base.py + fix_skeleton.mjs)`);
       continue;

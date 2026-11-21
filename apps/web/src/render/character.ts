@@ -34,7 +34,7 @@ import { beardGeometry, buildUnderlay, disposeHairGen, hairGenMaterial, hairGeom
 import { BEARD_SPECS, GLB_HAIR, HAIR_SPECS } from './hairStyles';
 import { ASSET_HAIR, assetHairGeometry, assetHairLoaded, assetHairMaterial, disposeAssetHair, loadAssetHair } from './assetHair';
 import { SCULPT, SCULPT_EYE_GLSL, SCULPT_RIM_GLSL, SCULPT_SKIN_GLSL, faceMarkUniform, sculptFace, sculptMix, setFaceMarks, wrappedLightsChunk } from './lookStyle';
-import { FACE_ID_GLSL, IDENTITIES_OFF, faceSkinUniforms, identityField, identityTexturedMaterial, identityTint } from './faceIdentity';
+import { FACE_ID_GLSL, IDENTITIES_OFF, faceSkinUniforms, identityField, identityTexturedMaterial, identityTint, withAiBody } from './faceIdentity';
 import { ease, newPalm, palmFrame, reachPalm, type Arm } from './armIK';
 import { nudity, nudityVersion } from './nudity';
 
@@ -1197,6 +1197,32 @@ const skinDetailU: { value: THREE.Texture | null } = { value: null };
 skinDetailMap();
 
 /**
+ * The AI athletic build's skin (tools/assets/mpfb-pilot/ai_body_bake.py), per sex, loaded on first use: `n` RG the AI
+ * body's normal detail (tangent space), B how much of it applies (0 on the head, hands, feet and where the AI wore
+ * underwear); `c` the AI's albedo as a ratio / 2 over our own skin (mean 1: the tone selector sets the colour). Until
+ * they arrive (and on the old bodies) the build has no skin effect.
+ */
+const aiSkinU: Record<'m' | 'f', { n: { value: THREE.Texture }; c: { value: THREE.Texture } }> = {} as never;
+function aiSkin(sex: 'm' | 'f'): { n: { value: THREE.Texture }; c: { value: THREE.Texture } } {
+  if (aiSkinU[sex]) return aiSkinU[sex];
+  const px = (r: number, g: number, b: number) => {
+    const t = new THREE.DataTexture(new Uint8Array([r, g, b, 255]), 1, 1);
+    t.needsUpdate = true;
+    return t;
+  };
+  const u = (aiSkinU[sex] = { n: { value: px(128, 128, 0) as THREE.Texture }, c: { value: px(128, 128, 128) as THREE.Texture } });
+  if (typeof document !== 'undefined')
+    for (const k of ['n', 'c'] as const)
+      new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}textures/ai_body/${k}_${sex}.webp`, (t) => {
+        t.colorSpace = THREE.NoColorSpace;
+        t.flipY = false; // our body's glTF UVs
+        t.anisotropy = 4;
+        u[k].value = t;
+      });
+  return u;
+}
+
+/**
  * PBR skin: the photographic texture re-tinted to the actor's skin tone, all over (a body with nothing on is
  * bare). Parts under worn garments are cut away along the smooth hem lines (markCuts).
  */
@@ -1240,6 +1266,9 @@ function humanBodyMaterial(
   const hairCol = new THREE.Color(a.zombie ? 0x3a3530 : a.hairColor);
   // The face identity's skin character (faceIdentity.ts): its own detail and roughness over the face.
   const idU = faceSkinUniforms(src, a.sex, a.faceId);
+  // The AI athletic build's skin (MPFB bodies only: the old ones have no normal map and other UVs).
+  const aiW = src.normalMap ? Math.max(0, Math.min(1, a.shape?.ai ?? 0)) : 0;
+  const aiU = aiW > 0 ? aiSkin(a.sex) : null;
   // The sculpt look (lookStyle.ts): painted skin, less photographic relief.
   if (SCULPT && m.normalScale) m.normalScale.multiplyScalar(0.45);
   patchWorldMaterial(m, u, {
@@ -1268,6 +1297,11 @@ function humanBodyMaterial(
       // The back of the neck sinks forward under a collar (along its normals it would open at the UV seam there).
       shader.uniforms.uNapeIn = { value: on('top') ? 0.025 : 0 };
       shader.uniforms.uSkinTint = { value: tint };
+      if (aiU) {
+        shader.uniforms.uAiN = aiU.n;
+        shader.uniforms.uAiC = aiU.c;
+        shader.uniforms.uAiW = { value: aiW };
+      }
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -1316,7 +1350,7 @@ function humanBodyMaterial(
             int f1 = f0 == 15 ? 0 : f0 + 1;
             if (uHide[5] > 0.5 && vCutB.y < mix(uBootCut[fs * 16 + f0], uBootCut[fs * 16 + f1], fract(ft))) discard;
           } else for (int i = 0; i < 9; i++) if (i == ri && uHide[i] > 0.5) discard;
-          diffuseColor.rgb = min(diffuseColor.rgb * uSkinTint, vec3(1.0));
+          diffuseColor.rgb = min(diffuseColor.rgb * uSkinTint${aiU ? ' * mix(vec3(1.0), texture2D(uAiC, vMapUv).rgb * 2.0, uAiW)' : ''}, vec3(1.0));
           ${SCULPT ? `#ifdef USE_MAP\n${SCULPT_SKIN_GLSL}\n#endif` : ''}
           ${idU ? `if (int(vRegion + 0.5) == 0) {${SCULPT ? FACE_ID_GLSL.replace('texture2D(uIdFace, (cr + tq) / uIdGrid)', 'texture2D(uIdFace, (cr + tq) / uIdGrid, 2.0)').replace('idRatio += s.rgb * 2.0 * w;', 'idRatio += mix(vec3(0.5), s.rgb, 0.6) * 2.0 * w;') : FACE_ID_GLSL}}` : ''}
           if (int(vRegion + 0.5) == 0 || int(vRegion + 0.5) == 8) {${UNDERLAY_GLSL}
@@ -1373,8 +1407,26 @@ function humanBodyMaterial(
           }
           #endif`,
         );
+      // (after the skin detail's own edit of the same chunk)
+      if (aiU) {
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', '#include <common>\nuniform sampler2D uAiN;\nuniform sampler2D uAiC;\nuniform float uAiW;')
+          .replace(
+            '#include <normal_fragment_maps>',
+            THREE.ShaderChunk.normal_fragment_maps.replace(
+              'mapN.xy *= normalScale;',
+              `{
+                // the AI build's normal detail over the body's own, as far as its mask says
+                vec3 aiS = texture2D(uAiN, vNormalMapUv).xyz;
+                vec2 aiXY = (aiS.xy * 2.0 - 1.0) * 0.85;
+                mapN = normalize(mix(mapN, vec3(aiXY, sqrt(saturate(1.0 - dot(aiXY, aiXY)))), aiS.z * uAiW));
+              }
+              mapN.xy *= normalScale;`,
+            ),
+          );
+      }
     },
-    key: (idU ? 'human_id' : 'human') + (SCULPT ? '_sc' : ''),
+    key: (idU ? 'human_id' : 'human') + (SCULPT ? '_sc' : '') + (aiU ? '_ai' : ''),
   });
   humanMatCache.set(key, m);
   return m;
@@ -1766,6 +1818,11 @@ const _curlQ = new THREE.Quaternion();
 const _hv = new THREE.Vector3();
 const _hv2 = new THREE.Vector3();
 const _hup = new THREE.Vector3(0, 1, 0);
+/** The AI athletic build's upright neck at full weight (rad: the upper chest and the neck turned back; CharacterView.uprightNeck). */
+const NECK_UP: Record<'m' | 'f', { chest: number; neck: number }> = {
+  m: { chest: (4 * Math.PI) / 180, neck: (10 * Math.PI) / 180 },
+  f: { chest: (4 * Math.PI) / 180, neck: (9 * Math.PI) / 180 },
+};
 const _hm = new THREE.Matrix4();
 const _hq0 = new THREE.Quaternion();
 const _hq1 = new THREE.Quaternion();
@@ -2306,7 +2363,8 @@ export class CharacterView {
   private applyShape(): void {
     // The old (UBC) bodies' heads always take the field: it carries their proportion fix (bodyShape.ts OLD_FIX).
     // The sculpt look (lookStyle.ts) bakes the identity and the face sliders with a gain (its own cache keys).
-    const mix = this.human?.lashes ? sculptMix(this.look.faceId) : this.look.faceId;
+    // The AI build (BodyShape.ai) rides with the identities: a morph target on the MPFB body (faceIdentity.ts).
+    const mix = this.human?.lashes ? withAiBody(sculptMix(this.look.faceId), this.look.shape?.ai) : this.look.faceId;
     const face = this.human?.lashes ? sculptFace(this.look.face, this.look.sex) : this.look.face;
     const idk = this.human?.lashes ? identityKey(mix) : '';
     const key0 = shapeKey(this.look.shape, face) || (this.human && !this.human.lashes && this.human.eyes ? 'base' : '');
@@ -2950,10 +3008,12 @@ export class CharacterView {
     // Skip skinning work for actors the player can't see (big win with 40 bots).
     if (!this.hidden) {
       // Undo last frame's leg twist first (the mixer only rewrites bones its clips animate).
-      for (const [b, q] of this.yawSaved) b.quaternion.copy(q);
+      // (newest first: a bone saved twice -- the upright neck, then the head lift -- ends at its first copy)
+      for (let k = this.yawSaved.length - 1; k >= 0; k--) this.yawSaved[k]![0].quaternion.copy(this.yawSaved[k]![1]);
       this.yawSaved.length = 0;
       this.mixer.update(dt);
       this.twistLegs(a, dt, moving && !zombie && !sprint && !a.crouching ? along : null);
+      this.uprightNeck();
       this.liftHead(dt);
     }
     this.placeHeld(a, dt);
@@ -2963,6 +3023,42 @@ export class CharacterView {
 
   private headLift = 0;
   private headBone: THREE.Bone | null | undefined;
+  private neckBone: THREE.Bone | null | undefined;
+  private chestBone: THREE.Bone | null | undefined;
+  /**
+   * The AI athletic build (BodyShape.ai) stands its neck up: the upper chest (spine_03) and the neck turned back about
+   * their roots by NECK_UP (scaled by the build's weight) and the head forward by 60 % of both: the neck stands up, the
+   * head comes back over the chest, the face a few degrees up (the clips carry the head ~7-10 deg forward of the neck's root, which on its
+   * muscled shoulders read as a forward, craning neck). On top of the clip, restored next frame like the leg twist.
+   */
+  private uprightNeck(): void {
+    const w = this.human?.lashes ? Math.max(0, Math.min(1, this.look.shape?.ai ?? 0)) : 0;
+    if (w <= 0 || this.dead) return;
+    if (this.neckBone === undefined) this.neckBone = this.skinned.skeleton.bones.find((b) => b.name === 'neck_01') ?? null;
+    if (this.headBone === undefined) this.headBone = this.skinned.skeleton.bones.find((b) => /^head$/i.test(b.name)) ?? null;
+    this.chestBone ??= this.skinned.skeleton.bones.find((b) => b.name === 'spine_03') ?? null;
+    const n = this.neckBone;
+    const h = this.headBone;
+    const c = this.chestBone;
+    if (!n || !h || !c || !c.parent || h.parent !== n || n.parent !== c) return;
+    // The body's own left-right axis (world): a turn about it tips a bone back (-) or forward (+).
+    const axis = _hv2.set(1, 0, 0).applyQuaternion(this.model.getWorldQuaternion(_hq2)).normalize();
+    const up = NECK_UP[this.look.sex];
+    const turn = (b: THREE.Bone, ang: number) => {
+      this.yawSaved.push([b, b.quaternion.clone()]);
+      b.parent!.updateWorldMatrix(true, false);
+      // a world-space turn R as a local one: q' = (P^-1 R P) q, P the parent's world rotation
+      const P = b.parent!.getWorldQuaternion(_hq3);
+      b.quaternion.premultiply(_hq0.copy(P).invert().multiply(_hq1.setFromAxisAngle(axis, ang)).multiply(P));
+    };
+    // upper chest up a little, the neck back over it, the head forward by both (the gaze as the clip has it)
+    turn(c, -up.chest * w);
+    turn(n, -up.neck * w);
+    // (the head only 60 % of the way back: turned by the whole, the chin sank into the throat -- the jaw's skin weights
+    // fold there; the face a few degrees up reads as the upright carriage it is)
+    turn(h, 0.6 * (up.chest + up.neck) * w);
+  }
+
   /**
    * The gun stances bow the head ~20° over the sights; from the raid camera (~59° above) the face was then all
    * crown, and under a helmet nothing but the dome. While a gun is up, level the gaze (eased; at most

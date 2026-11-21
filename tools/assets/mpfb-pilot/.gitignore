@@ -13,3 +13,6 @@ ident/
 base/*.jpg
 refs/ai/
 ai/
+ai3d/.ai3d/
+ai/.ai3d/
+ai/report/

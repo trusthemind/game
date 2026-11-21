@@ -16,6 +16,7 @@ import {
   resolveFace,
   resolveShape,
   SHAPE_PRESETS,
+  randomShapePresets,
   tidyLook,
   type FaceShape,
   type BodyShape,
@@ -141,7 +142,8 @@ export function CustomizeModal({ onClose }: { onClose: () => void }) {
   const randomize = () => {
     const pick = <T,>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)]!;
     const sex = draft.sex;
-    const body = pick(Object.keys(SHAPE_PRESETS[sex]));
+    // (never the AI build: player-picked only)
+    const body = pick(randomShapePresets(sex));
     const faceId = pick(Object.keys(FACE_PRESETS));
     setBodyBase(body);
     setFaceBase(faceId);

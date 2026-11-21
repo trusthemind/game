@@ -20,6 +20,20 @@ interface Morphs {
   data: Float32Array[];
 }
 const MORPHS = new WeakMap<THREE.BufferGeometry, Morphs>();
+/**
+ * The AI athletic build (shape.ts BodyShape.ai; tools/assets/mpfb-pilot/ai_body_fit.py): a whole-body morph target on
+ * the MPFB body, carried like an identity (character.ts applyShape adds it to the mix the geometry is baked with), so
+ * the body bakes it per vertex and everything fitted to it (underwear, anatomy, clothes, armour) follows by the field.
+ */
+export const AI_BODY = 'ai_body';
+/** The mix the geometry is baked with: the face identities plus the AI build at weight `ai` (0: the mix as it is). */
+export function withAiBody(mix: IdentityMix | null | undefined, ai: number | undefined): IdentityMix | null | undefined {
+  return ai && ai > 0 ? [...(mix ?? []), { id: AI_BODY, w: ai }] : mix;
+}
+/** Whether a loaded body has the AI build's target. */
+export function hasAiBody(g: THREE.BufferGeometry): boolean {
+  return !!MORPHS.get(g)?.names.includes(AI_BODY);
+}
 const TAKEN = new WeakSet<THREE.Object3D>();
 /** The materials of meshes that had identity targets (their UVs are the atlases' layout): only those take them. */
 const ID_MATS = new WeakSet<THREE.Material>();
@@ -68,7 +82,9 @@ const BLEND = new WeakMap<THREE.BufferGeometry, Map<string, Float32Array | null>
 /** Σ w·Δ for a geometry (geometry space), or null when it has no identities (or none of the mix). Cached. */
 export function identityDeltas(g: THREE.BufferGeometry, mix: IdentityMix | null | undefined): Float32Array | null {
   const mo = MORPHS.get(g);
-  if (!mo || !mix?.length || IDENTITIES_OFF) return null;
+  // (`?ids=0` turns the faces off, not the AI build)
+  if (IDENTITIES_OFF) mix = mix?.filter((e) => e.id === AI_BODY);
+  if (!mo || !mix?.length) return null;
   const key = identityKey(mix);
   let per = BLEND.get(g);
   if (!per) BLEND.set(g, (per = new Map()));
@@ -242,9 +258,12 @@ export function identityField(body: THREE.SkinnedMesh, model: THREE.Object3D, mi
   const m3 = new THREE.Matrix3();
   // The head and neck skin: every vertex any identity moves (zero ones next to them anchor the field's edge).
   const mo = MORPHS.get(geo)!;
+  // (the AI build's target moves the whole body: only part of the field when it is in the mix)
+  const withAi = !!mix?.some((e) => e.id === AI_BODY);
+  const targets = mo.data.filter((_, k) => withAi || mo.names[k] !== AI_BODY);
   for (let i = 0; i < pos.count; i++) {
     let any = false;
-    for (const a of mo.data) if (a[i * 3] || a[i * 3 + 1] || a[i * 3 + 2]) (any = true);
+    for (const a of targets) if (a[i * 3] || a[i * 3 + 1] || a[i * 3 + 2]) (any = true);
     if (!any) continue;
     e.fill(0);
     let ws = 0;

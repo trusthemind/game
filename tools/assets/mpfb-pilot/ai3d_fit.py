@@ -25,11 +25,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 _argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 AI_DIR = os.path.abspath(_argv[0])
 TONE = _argv[1] if len(_argv) > 1 else "6b4430"
-IDENT = "ai_f2"
-SEX = "f"
+IDENT = os.environ.get("AI3D_IDENT", "ai_f2")  # ai3d.mjs: the subject id / sex (defaults: the Nia pilot)
+SEX = os.environ.get("AI3D_SEX", "f")
 sys.argv = [sys.argv[0], "--", SEX, "nohair"]
 _src = open(os.path.join(HERE, "build_identities.py"), encoding="utf-8").read().split("\nfor s in ID_SEXES:")[0]
 exec(compile(_src, "build_identities.py", "exec"))
+OUTD = os.environ.get("AI3D_IDENT_DIR") or OUTD  # ai3d.mjs --out: a scratch copy of ident/
 T0 = time.time()
 
 
@@ -546,7 +547,7 @@ got = got.reshape(TH_, TW_) & (M > 0)
 tl_ = tlab_t.reshape(TH_, TW_)
 log("texels projected", int(got.sum()), "of", int((M > 0).sum()))
 # the game's albedo at the identity's tone: base map x tint (character.ts humanBodyMaterial)
-bimg = bpy.data.images.load(os.path.join(AI_DIR, "base_skin_f.png"))
+bimg = bpy.data.images.load(os.path.join(AI_DIR, f"base_skin_{SEX}.png"))
 base = crop(bimg.filepath, rect)  # linear, rows top = glTF v0
 tone = s2l(np.array([int(TONE[i:i + 2], 16) for i in (0, 2, 4)], np.float64) / 255.0)
 game = base * (tone / TEX_SKIN)

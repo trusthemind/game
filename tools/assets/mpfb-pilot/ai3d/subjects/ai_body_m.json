@@ -1,0 +1,86 @@
+{
+  "id": "ai_body_m",
+  "kind": "body",
+  "sex": "m",
+  "source": {
+    "glb": "refs/ai/bodies/man_tripo.glb",
+    "sam": {
+      "glb": "refs/ai/bodies/pair_sam3dbody.glb",
+      "node": "person_00"
+    }
+  },
+  "orientation": {
+    "yawDeg": null,
+    "note": "null = auto (toe-forward test of ai_body_fit.py)"
+  },
+  "scale": {
+    "rule": "neckHeight",
+    "note": "target scaled so floor-to-neck height equals ours"
+  },
+  "underwear": {
+    "luma": 0.35,
+    "rb": 0.06,
+    "note": "fabric = darker than luma and red-blue under rb: never copied"
+  },
+  "posture": {
+    "abdomenEase": 0.6,
+    "upperBackEase": 0.5,
+    "neckGirth": 0.13,
+    "note": "the committed defaults of ai_body_fit.py"
+  },
+  "keep": [
+    "head",
+    "neck",
+    "hands",
+    "feet",
+    "skeleton",
+    "uv",
+    "weights",
+    "clothing fit"
+  ],
+  "regions": {
+    "fit": [
+      "torso",
+      "arms",
+      "legs"
+    ],
+    "hold": [
+      "head",
+      "neck",
+      "hands",
+      "feet"
+    ]
+  },
+  "build": {
+    "only": "mpfb",
+    "preset": "ai_athletic",
+    "texSize": 2048,
+    "bakeRes": 2048,
+    "outputs": [
+      "apps/web/public/models/human_m.glb",
+      "apps/web/public/textures/ai_body/n_m.webp",
+      "apps/web/public/textures/ai_body/c_m.webp"
+    ]
+  },
+  "budgets": {
+    "rmsMm": {
+      "torso": 10,
+      "arms": 8,
+      "legs": 3
+    },
+    "glbKB": 950,
+    "texKB": {
+      "n": 450,
+      "c": 350
+    }
+  },
+  "provenance": {
+    "provider": "Higgsfield (Starter plan)",
+    "model": "Tripo H3.1 detailed, PBR",
+    "date": "2026-11-17",
+    "tos": "Higgsfield ToS 4.4: outputs usable commercially",
+    "licence": "Tripo output via Higgsfield; no real-person likeness",
+    "invented": true,
+    "source2d": "refs/ai/bodies/man_front.png (our AI character image, invented adult)"
+  }
+}

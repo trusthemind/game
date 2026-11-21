@@ -14,8 +14,9 @@ from mathutils.bvhtree import BVHTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 AI_DIR = os.path.abspath(sys.argv[sys.argv.index("--") + 1])
-NAME = "ai_f2_afro"
-SEX = "f"
+NAME = os.environ.get("AI3D_HAIR_NAME", "ai_f2_afro")  # ai3d.mjs: parts.hair.name / sex
+SEX = os.environ.get("AI3D_SEX", "f")
+IDENT_DIR = os.environ.get("AI3D_IDENT_DIR") or os.path.join(HERE, "ident")
 MAX_TRIS = 11500
 TEX = 512
 NB = 13380
@@ -29,7 +30,7 @@ TA = A["T"]
 FUV = A["FUV"]
 lab = F["lab"].copy()
 Xf, V0, hw, tris = F["Xf"], F["V0"], F["hw"], F["tris"]
-meta = json.load(open(os.path.join(HERE, "ident", SEX, "meta.json")))
+meta = json.load(open(os.path.join(IDENT_DIR, SEX, "meta.json")))
 lm = meta["landmarks"]
 ez = lm["eye_z"]
 # the crown: hair whatever its colour (its lit curls read as skin by colour alone)
@@ -249,7 +250,7 @@ for _ in range(6):
     img[grow] = acc[grow] / cnt[grow][:, None]
     cov |= grow
 img[~cov] = img[cov].mean(0)
-hd = os.path.join(HERE, "ident", "hair")
+hd = os.path.join(IDENT_DIR, "hair")
 tex_path = os.path.join(hd, f"{SEX}_{NAME}.png")
 pimg = bpy.data.images.new(NAME, TEX, TEX, alpha=True)
 rgba = np.ones((TEX, TEX, 4), np.float32)

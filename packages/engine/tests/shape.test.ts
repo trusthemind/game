@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createProfile, migrateProfile, PROFILE_VERSION } from '../src/profile';
-import { FACE_KEYS, FACE_PARTS, FACE_PRESETS, faceFromSeed, HUMAN_LIMIT, facePresetOf, npcShape, NPC_SHAPE_VARIANTS, presetOf, resolveFace, resolveShape, SHAPE_KEYS, SHAPE_PRESETS, shapeFromSeed } from '../src/shape';
+import { FACE_KEYS, FACE_PARTS, FACE_PRESETS, faceFromSeed, HUMAN_LIMIT, facePresetOf, npcShape, NPC_SHAPE_VARIANTS, presetOf, resolveFace, resolveShape, SHAPE_KEYS, SHAPE_PRESETS, shapeFromSeed, humanShape, NEUTRAL_SHAPE, randomShapePresets, randomHumanShape } from '../src/shape';
 
 describe('body shapes', () => {
   it('presets stay within -1..1 and both sexes have an average', () => {
@@ -107,5 +107,26 @@ describe('faces and the bust (v13)', () => {
     for (const k of FACE_KEYS) expect(typeof face[k]).toBe('number');
     expect((m.look.shape as unknown as Record<string, number>).bust).toBe(0.6);
     expect(resolveFace('soft').eyeSize).toBe(0);
+  });
+});
+
+describe('AI athletic build (BodyShape.ai)', () => {
+  it('old saves read 0 and the value is clamped to 0..1', () => {
+    expect(resolveShape('m', { height: 0.2 } as never).ai).toBe(0);
+    expect(resolveShape('f', { ai: 3 } as never).ai).toBe(1);
+    expect(resolveShape('f', { ai: -1 } as never).ai).toBe(0);
+    expect(resolveShape('m', 'ai_athletic').ai).toBe(1);
+    expect(humanShape({ ...NEUTRAL_SHAPE, ai: 1 }).ai).toBe(1);
+  });
+  it('is never picked or jittered for NPCs and random looks', () => {
+    for (const sex of ['m', 'f'] as const) {
+      expect(randomShapePresets(sex)).not.toContain('ai_athletic');
+      for (let s = 0; s < 200; s++) {
+        expect(npcShape(sex, s).ai).toBe(0);
+        expect(shapeFromSeed(sex, s).ai).toBe(0);
+        let k = s + 1;
+        expect(randomHumanShape(sex, () => ((k = (k * 16807) % 2147483647) / 2147483647)).ai).toBe(0);
+      }
+    }
   });
 });
